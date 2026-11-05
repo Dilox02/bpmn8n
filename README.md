@@ -56,6 +56,33 @@ Then open:
 
 **Needs:** Docker, Node.js and, on a Mac, [uv](https://docs.astral.sh/uv/). Add an LLM provider key in *Admin → Settings*, or point it to a local model.
 
+## Local Ollama models and web research
+
+Studio already supports Ollama through its OpenAI-compatible chat-completions API. Start Ollama, pull the model you want to use, then add an LLM provider in **Admin → Settings**:
+
+| Field | Value |
+|---|---|
+| Preset | `ollama` |
+| Model | The exact installed model tag shown by `ollama list` |
+| Base URL with Django in Docker Desktop | Leave empty for `http://host.docker.internal:11434/v1` |
+| Base URL with Django on the same host | `http://localhost:11434/v1` |
+| API key | Empty for a local Ollama server |
+| Timeout | Increase from 120 seconds if the model needs more time |
+
+Choose that provider as the default LLM in Settings. The same provider can supply n8n workflow agent credentials. Both Django and the n8n worker must be able to reach the configured URL. On Linux Docker Engine, add `host.docker.internal:host-gateway` to the relevant services' `extra_hosts`, or use a reachable Ollama service address. Configure Ollama's listening interface for that network and restrict access to trusted clients.
+
+The [Ollama API guide](https://docs.ollama.com/api/openai-compatibility) documents the compatible `/v1/chat/completions` endpoint.
+
+### Domain research with a local model
+
+The existing Studio research loop works with the default Ollama provider. Docker Compose includes SearXNG and sets `SEARCH_URL=http://searxng:8080` for Django. With Django outside Docker, set `SEARCH_URL` to a reachable SearXNG instance with its JSON API enabled. An empty value disables web research.
+
+After creating a Studio project and describing the process, research runs before the interview. The model plans up to three searches, reads up to two results per query and looks for missing information in a second round. It writes domain notes with source URLs that the interview, design and activity generation can read. The interview can request two additional research jobs, for a maximum of three per project. Constants live in `bpmn8n/studio/research.py`.
+
+For example, describe a hospital booking workflow and ask it to research appointment scheduling, service directories and staff handoffs. Supply the hospital's current rules and integrations during the interview. Check the research cards for notes and sources. If search fails, the interview continues with the information available. A local LLM keeps inference on your model server, while SearXNG queries and public page retrieval still use the network.
+
+To check configuration, verify the exact model tag with `ollama list`, confirm that Django can reach `/v1/chat/completions`, and check that SearXNG returns JSON for `/search?q=hospital+appointment+workflow&format=json` from the Django network. Avoid personal patient data in public searches. Web research supports workflow design. Hospital adapters must provide current availability and eligibility at booking time.
+
 ## One task, one function
 
 ```python

@@ -190,6 +190,17 @@ class LLMTest(TestCase):
         with self.assertRaisesRegex(ValidationError, "model"):  # OpenAI has no default model: say which one
             LLMProvider(name="O", preset="openai").full_clean()
 
+    def test_ollama_uses_chat_completions_in_studio_and_n8n(self):
+        provider = LLMProvider(name="Ollama", preset="ollama", model="local-demo", timeout=600)
+        client = provider.client()
+        self.assertIsInstance(client, OpenAICompatible)
+        self.assertEqual(client.base_url, "http://host.docker.internal:11434/v1")
+        self.assertEqual((client.api_key, client.timeout), ("", 600))
+        kind, credential = provider.n8n_credential()
+        self.assertEqual(kind, "openAiApi")
+        self.assertEqual(credential["url"], client.base_url)
+        self.assertFalse(provider.n8n_chat_model()["parameters"]["responsesApiEnabled"])
+
 
 class WebTest(SimpleTestCase):
     def test_a_pages_text_and_only_public_addresses(self):

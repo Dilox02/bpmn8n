@@ -11,7 +11,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from ..clients.llm import LLMError
-from ..models import Card, Project
+from ..models import Card, Project, LLMProvider, Settings
 from ..studio.build import PROJECTS, ROOT, ProjectBuilder
 from ..studio.interview import Interview
 from ..studio.prompts import MAX_QUESTIONS, Prompts
@@ -91,6 +91,30 @@ class InterviewTest(TestCase):
 @override_settings(SEARCH_URL="http://search")
 class ResearchTest(TestCase):
     PAGE = {"title": "Leave in Italy", "url": "https://law.example/leave", "snippet": "Leave rules"}
+
+    @patch("bpmn8n.clients.llm.ChatEndpoint.call")
+    def test_ollama_default_model_runs_both_research_rounds(self, complete):
+        provider = LLMProvider.objects.create(name="Local research", preset="ollama", model="local-demo")
+        settings = Settings.load()
+        settings.llm = provider
+        settings.save()
+        project = Project.objects.create(name="Hospital", status=Project.RESEARCH)
+        texts = ['{"queries": ["hospital appointment workflow"]}', "First page notes",
+                 '{"queries": ["hospital service directory integration"]}', "Second page notes",
+                 "Workflow notes [1] [2]"]
+        complete.side_effect = [{"choices": [{"message": {"content": text}}]} for text in texts]
+        pages = [dict(self.PAGE, url="https://example.org/appointments"),
+                 dict(self.PAGE, url="https://example.org/directory")]
+        with patch.object(web, "search", side_effect=[[page] for page in pages]) as search, \
+                patch.object(web, "page_text", return_value="Domain information"):
+            Research(project, "hospital booking").run()
+        self.assertEqual(search.call_count, 2)
+        self.assertEqual(complete.call_count, 5)
+        self.assertTrue(all(call.args[0]["model"] == "local-demo" for call in complete.call_args_list))
+        project.refresh_from_db()
+        self.assertEqual(len(project.research_topics[0]["sources"]), 2)
+        self.assertIn("Workflow notes", project.research_topics[0]["notes"])
+        self.assertIn("Workflow notes", Prompts(project).local())
 
     @patch("bpmn8n.studio.research.background")
     def test_the_domain_is_researched_before_the_first_question(self, background):
@@ -342,3 +366,4 @@ class BuildTest(TestCase):
         self.assertEqual(verify.status, Card.FAILED)
         self.assertIn("no_such_task", verify.detail)
         self.assertFalse((PROJECTS / "studio_test_quotes").exists())  # nothing broken is published
+
