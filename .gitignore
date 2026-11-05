@@ -16,3 +16,30 @@ projects/_*/
 node_modules/
 dist/
 .ruff_cache/
+
+# Local environments and packaging output
+venv/
+env/
+build/
+.coverage
+.coverage.*
+htmlcov/
+*.py[cod]
+
+# Local configuration and SQLite transaction files
+.env.*
+!.env.example
+!.env.sample
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Editor, operating system and test output
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+*.log
+test-results/
+playwright-report/

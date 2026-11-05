@@ -83,6 +83,20 @@ For example, describe a hospital booking workflow and ask it to research appoint
 
 To check configuration, verify the exact model tag with `ollama list`, confirm that Django can reach `/v1/chat/completions`, and check that SearXNG returns JSON for `/search?q=hospital+appointment+workflow&format=json` from the Django network. Avoid personal patient data in public searches. Web research supports workflow design. Hospital adapters must provide current availability and eligibility at booking time.
 
+## Python environment
+
+Install Python 3.12 (minimum 3.11), then create the local environment from the repository root:
+
+```bash
+python tools/setup_env.py
+# Include testing and browser dependencies:
+python tools/setup_env.py --dev
+```
+
+On Windows with the Python launcher, use `py -3.12 tools/setup_env.py`. The script creates `.venv`, installs `requirements.txt` (or `requirements-dev.txt` with `--dev`) and can be rerun to update dependencies. It also works when invoked from another directory. Activate it with `.venv\Scripts\Activate.ps1` on PowerShell or `source .venv/bin/activate` on macOS/Linux. Then run `python manage.py migrate` and `python manage.py runserver`.
+
+This sets up the Python application. Docker/Node.js, n8n, model servers and SearXNG have their own setup described above and in the guide. Browser tests also require `python -m playwright install chromium` after the development dependencies.
+
 ## One task, one function
 
 ```python
