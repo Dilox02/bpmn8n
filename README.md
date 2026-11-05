@@ -124,6 +124,8 @@ python manage.py test projects.hospital
 
 The complete guide lives in [`docs/GUIDE.md`](docs/GUIDE.md): the nodes, the workflow check, Studio, people and states, extraction, OCR, process mining, BPMN coverage, tests and known limits.
 
+The [hospital appointment project presentation](docs/presentations/hospital-appointment-management.pptx) covers the booking use case, four agent roles and their proposed course-pattern taxonomy, the complete editable workflow and its connection to bpmn8n. It contains 10 slides in English with speaker notes timed for a five-minute presentation.
+
 ## Licence
 
 [AGPL-3.0](LICENSE): free for everyone. If you offer a modified bpmn8n as a network service, you must publish your changes under the same licence. Need to use it in a closed product? Open an issue to ask about a commercial licence.
