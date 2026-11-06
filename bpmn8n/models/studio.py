@@ -2,8 +2,10 @@
 project folder with its activities (@task code) and its n8n workflow. Cards are a job's steps, shown as
 a kanban."""
 import re
+from pathlib import Path
 from datetime import timedelta
 
+from django.conf import settings as django_settings
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -39,7 +41,8 @@ class Project(models.Model):
         if not self.slug:
             base = re.sub(r"^(?=\d)", "p_", slugify(self.name).replace("-", "_")) or "process"
             self.slug, n = base, 1
-            while Project.objects.filter(slug=self.slug).exists():
+            folders = Path(django_settings.BASE_DIR) / "projects"  # not a project Studio did not build
+            while Project.objects.filter(slug=self.slug).exists() or (folders / self.slug).exists():
                 n += 1
                 self.slug = f"{base}_{n}"
         super().save(*args, **kwargs)
@@ -60,6 +63,11 @@ class Project(models.Model):
             self.status = self.FAILED if self.building else self.INTERVIEW
             self.save(update_fields=["status", "updated"])
         return self
+
+    @property
+    def unanswered(self):
+        """The person spoke last and no job will answer: the LLM call (or the research before it) failed."""
+        return not self.busy and bool(self.messages) and self.messages[-1]["role"] == "user"
 
     @property
     def research_topics(self):

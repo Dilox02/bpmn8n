@@ -205,7 +205,8 @@ BPMN tasks done by software (Python functions), by people (a form in an inbox, b
 model that reads text, or by conditions on the data) and, where it is worth it, an LLM that drafts text
 for a person. People always take the final decisions.
 
-Ask ONE short, concrete question at a time, in the person's language, building on the answers. Find out:
+Ask ONE short, concrete question at a time, in the language the person writes in (not the language of a
+few domain terms they quote), building on the answers. Find out:
 what starts the process and with which data; the steps in order; who does each human step (a role);
 each decision with its branches and criteria, and who is accountable for it; what each step needs and
 produces; the personal data involved and why it is needed; the systems involved; what happens when

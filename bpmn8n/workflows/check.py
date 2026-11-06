@@ -62,7 +62,8 @@ class WorkflowCheck:
     @cached_property
     def problems(self):
         rules = (self.has_trigger, self.reachable, self.tasks_exist, self.outputs_connected, self.conditions_valid,
-                 self.lanes_exist, self.subprocesses_run_through, self.data_provided, self.people_decide)
+                 self.lanes_exist, self.subprocesses_run_through, self.data_provided, self.people_decide,
+                 self.one_wait_at_a_time)
         return [problem for rule in rules for problem in rule()]
 
     @property
@@ -175,6 +176,46 @@ class WorkflowCheck:
                 what = "the LLM agent's answer" if node["type"] == AGENT else "this automatic decision"
                 yield Problem(name, "human", f"{what} reaches {end!r}, an end, without a person deciding: "
                                              "put a user task on the way", "error" if node["type"] == AGENT else "warning")
+
+    def one_wait_at_a_time(self):
+        """n8n parks an execution on one wait at a time: when branches run at once (a parallel or inclusive
+        gateway, or one output leading to several steps), at most one of them may wait (a person, a message,
+        a long timer). Otherwise the case resumes only when the last wait ends, whatever the others got:
+        a person's answer waits for a timer months away."""
+        for name, node in self.nodes.items():
+            concurrent = node["type"] in (node_type("parallelGateway"), node_type("inclusiveGateway"))
+            starts = [n for port in self.outs[name] for n in port] if concurrent else \
+                next((port for port in self.outs[name] if len(port) > 1), [])
+            if len(starts) < 2:
+                continue
+            reach = [self.after(start) for start in starts]
+            shared = set.intersection(*reach)  # after the branches join
+            waiting = [sorted(n for n in r - shared if self.waits(n)) for r in reach]
+            if sum(map(bool, waiting)) > 1:
+                yield Problem(name, "wait", "these branches run at once and more than one waits (" +
+                              "; ".join(", ".join(w) for w in waiting if w) + "): n8n waits on one thing at a "
+                              "time, so the case would stall until the last wait ends. Keep the waits in one branch "
+                              "(a deadline: an event-based gateway's timeout) or start the other wait as its own process")
+
+    def after(self, start):
+        """`start` and every step it leads to."""
+        seen, queue = {start}, deque([start])
+        while queue:
+            for n in {n for port in self.outs[queue.popleft()] for n in port} - seen:
+                seen.add(n)
+                queue.append(n)
+        return seen
+
+    def waits(self, name):
+        """Whether the step parks the execution: a person, a message, a timer longer than a minute."""
+        node = self.nodes[name]
+        if node["type"] in WAITING:
+            return True
+        if node["type"] != node_type("timerEvent"):
+            return False
+        p = node["parameters"]
+        seconds = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400, "weeks": 604800}
+        return p.get("mode") == "until" or float(p.get("amount") or 0) * seconds.get(p.get("unit", "hours"), 3600) > 60
 
     def end_without_person(self, name):
         """The first end reached from `name` without passing a user or manual task, or None."""

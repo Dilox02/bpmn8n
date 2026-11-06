@@ -35,6 +35,14 @@ class BuilderTest(SimpleTestCase):
                   {"from": "Join", "to": ["Decide"]},
                   {"from": "Decide", "branch": "default", "to": ["Review"]}]}
 
+    def test_a_timer_waits_for_a_span_or_until_a_date_of_the_case(self):
+        w = Workflow("Deadline").start("In", "in").timer("Two Days", 2, "days").timer("Before Departure", until="{{alert_date}}")
+        params = {n["name"]: n["parameters"] for n in w.nodes}
+        self.assertEqual(params["Two Days"], {"mode": "for", "amount": 2, "unit": "days"})
+        self.assertEqual(params["Before Departure"], {"mode": "until", "until": "={{ $json.alert_date }}"})
+        with self.assertRaises(SpecError):
+            Workflow("Bad").timer("When", until="15 days before departure")
+
     def test_a_spec_laid_out_in_levels(self):
         """Time runs right; the longest branch stays on the gateway's row, the other goes below, the join after both."""
         at = {n["name"]: n["position"] for n in Workflow.from_spec(self.SPEC).as_json()["nodes"]}
@@ -113,6 +121,9 @@ class BuilderTest(SimpleTestCase):
         self.assertEqual(nodes["Draft: model"]["credentials"], {"googlePalmApi": {"id": "7"}})
         self.assertEqual(nodes["Draft: prompt"]["parameters"]["input"]["value"], {"prompt": "Reply to {{message}}"})
         self.assertIn("never present your answer as a final decision", nodes["Draft"]["parameters"]["options"]["systemMessage"])
+        # the provider down (after 3 tries): the error goes on as its answer, for the person after it
+        self.assertEqual((nodes["Draft"]["retryOnFail"], nodes["Draft"]["onError"]), (True, "continueRegularOutput"))
+        self.assertIn("The LLM did not answer", nodes["Draft: answer"]["parameters"]["assignments"]["assignments"][0]["value"])
         self.assertEqual(nodes["Draft: model"]["position"][0], nodes["Draft"]["position"][0])  # under its agent
         self.assertGreater(nodes["Draft: model"]["position"][1], nodes["Draft"]["position"][1])
 
@@ -160,6 +171,16 @@ class CheckTest(TestCase):
         self.assertTrue({("Ghost", "task", "error"), ("Wrong Node", "task", "error"),
                          ("Bad Condition", "condition", "error"), ("Bad Condition", "condition", "warning"),
                          ("Bad Condition", "output", "warning"), ("Orphan", "reachable", "error")} <= rules(workflow))
+
+    def test_branches_at_once_may_not_both_wait(self):
+        """n8n parks an execution on one wait: a person's answer would wait for the other branch's timer."""
+        def both(timer):
+            return rules(timer(Workflow("Deadline").start("In", "in").parallel_gateway("Both", ["review", "deadline"])
+                               .user_task("Review", "Review", "managers", form=[["ok", "OK", "boolean"]]))
+                         .flow("In", "Both").flow("Both", "Review", output=0).flow("Both", "Wait", output=1).as_json())
+        self.assertIn(("Both", "wait", "error"), both(lambda w: w.timer("Wait", until="{{alert_date}}")))
+        self.assertIn(("Both", "wait", "error"), both(lambda w: w.timer("Wait", 2, "days")))
+        self.assertNotIn(("Both", "wait", "error"), both(lambda w: w.timer("Wait", 30, "seconds")))  # sleeps in place
 
     def test_probable_mistakes_are_warnings(self):
         workflow = (Workflow("Odd").start("Start", "odd")

@@ -220,3 +220,26 @@ class WebTest(SimpleTestCase):
         with self.settings(SEARCH_URL="http://searxng:8080/"):
             self.assertEqual(web.search("leave law"), [{"title": "A", "url": "https://a.example/", "snippet": "a"}])
         self.assertEqual(request_json.call_args.args[1], "http://searxng:8080/search?q=leave+law&format=json")
+
+
+class N8nSaveTest(SimpleTestCase):
+    """A rebuild updates its workflow in place: a second copy could not take the same webhook."""
+
+    WORKFLOW = {"name": "W", "nodes": [], "connections": {}, "settings": {}, "active": False}
+
+    def test_update_in_place_else_create(self):
+        from ..clients import n8n
+        with patch.object(n8n, "request", return_value={"id": "A1"}) as call:
+            n8n.save_workflow(self.WORKFLOW, "A1")
+            n8n.save_workflow(self.WORKFLOW)
+        self.assertEqual([c.args[:2] for c in call.call_args_list], [("PUT", "/workflows/A1"), ("POST", "/workflows")])
+        self.assertNotIn("active", call.call_args_list[0].args[2])  # n8n's API refuses read-only fields
+
+        gone = [n8n.N8nError("n8n: 404", 404), {"id": "B2"}]
+        with patch.object(n8n, "request", side_effect=gone) as call:
+            self.assertEqual(n8n.save_workflow(self.WORKFLOW, "A1"), {"id": "B2"})
+        self.assertEqual(call.call_args_list[1].args[:2], ("POST", "/workflows"))
+
+        active = n8n.N8nError("n8n: HTTP 403 Your change was saved as a draft. It wasn't published", 403)
+        with patch.object(n8n, "request", side_effect=active):
+            self.assertEqual(n8n.save_workflow(self.WORKFLOW, "A1"), {"id": "A1", "draft": True})

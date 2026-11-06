@@ -4,7 +4,7 @@ from django.contrib.auth.models import Group, User
 from django.test import TestCase, override_settings
 
 from ..clients.http import ServiceUnavailable
-from ..models import Event, MessageSubscription, UserTask
+from ..models import Case, Event, MessageSubscription, UserTask
 
 RESUME = "bpmn8n.models.waiting.post_json"
 
@@ -172,6 +172,17 @@ class MessageTest(TestCase):
 
     def test_unknown_key_is_404(self):
         self.assertEqual(self.send("ORD-1").status_code, 404)
+
+    @patch(RESUME)
+    def test_a_message_never_changes_what_the_case_has(self, resume):
+        """A reply from outside cannot redirect a payout: it adds variables, the case's own stay."""
+        case_id = MessageSubscription.objects.get().case_id
+        Case.objects.update_or_create(case_id=case_id, defaults={"variables": {"iban": "IT-REAL", "amount": 10}})
+        r = self.client.post("/api/messages/payment-confirmed", {"correlation_key": "ORD-42", "payload": {
+            "amount": 1, "iban": "IT-ATTACKER", "receipt": "R-1"}}, content_type="application/json")
+        self.assertEqual(r.json()["reason"], "left out, the case already has them: amount, iban")
+        self.assertEqual(resume.call_args.args[1], {"receipt": "R-1", "_message": "payment-confirmed", "_correlation_key": "ORD-42"})
+        self.assertEqual(Case.objects.get(case_id=case_id).variables, {"iban": "IT-REAL", "amount": 10, "receipt": "R-1"})
 
     @patch(RESUME, side_effect=ServiceUnavailable("down"))
     def test_n8n_down_keeps_waiting(self, _):

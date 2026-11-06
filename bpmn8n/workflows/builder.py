@@ -1,5 +1,6 @@
 """n8n workflows made of bpmn8n's BPMN nodes, as the n8n editor saves them: the JSON to import,
 publish through n8n's API or show in its canvas. Pure Python, no Django."""
+import re
 import uuid
 from collections import defaultdict
 
@@ -132,9 +133,19 @@ class Workflow:
         return self.add(name, node_type("callActivity"),
                         {"workflowId": {"__rl": True, "mode": "id", "value": workflow_id}}, row, bpmn=False)
 
-    def timer(self, name, amount, unit, row=0, same_column=False):
-        return self.add(name, node_type("timerEvent"), {"mode": "for", "amount": amount, "unit": unit},
-                        row, bpmn=False, same_column=same_column)
+    def timer(self, name, amount=None, unit="hours", until=None, row=0, same_column=False):
+        """Waits for amount unit (seconds | minutes | hours | days | weeks), or until a moment: until is a
+        {{variable}} holding an ISO date or date-time that an earlier step produced (a deadline)."""
+        if until is not None:
+            variable = re.fullmatch(r"\{\{\s*([\w.]+)\s*\}\}", str(until).strip())
+            if not variable:
+                raise SpecError(f"{name}: until must be one {{{{variable}}}} with a date, not {until!r}")
+            parameters = {"mode": "until", "until": f"={{{{ $json.{variable.group(1)} }}}}"}
+        elif amount is None:
+            raise SpecError(f"{name}: missing amount (and unit), or until: a timer waits for a time or until a date")
+        else:
+            parameters = {"mode": "for", "amount": amount, "unit": unit}
+        return self.add(name, node_type("timerEvent"), parameters, row, bpmn=False, same_column=same_column)
 
     def manual_task(self, name, title, lane, context="", row=0, same_column=False):
         return self.user_task(name, title, lane, form=[], context=context, row=row, same_column=same_column,
@@ -166,7 +177,8 @@ class Workflow:
         self.add(name, AGENT, {"promptType": "define", "text": "={{ $json.prompt }}",
                                "options": {"systemMessage": f"{instructions}\n\n{self.AGENT_RULES}".strip()}},
                  bpmn=False, version=3.1,  # an external provider's 429/503 ("high demand") is often gone in seconds
-                 retryOnFail=True, maxTries=3, waitBetweenTries=5000)
+                 retryOnFail=True, maxTries=3, waitBetweenTries=5000,
+                 onError="continueRegularOutput")  # then the error goes on as its answer: a person sees it
         if self.chat_model:
             self.add(f"{name}: model", self.chat_model["type"], self.chat_model["parameters"], bpmn=False,
                      version=self.chat_model["typeVersion"], same_column=True,
@@ -174,7 +186,8 @@ class Workflow:
             self.connections[f"{name}: model"] = {"ai_languageModel": [[{"node": name, "type": "ai_languageModel",
                                                                          "index": 0}]]}
         self.add(last, SET, {"mode": "manual", "assignments": {"assignments": [
-            {"id": str(uuid.uuid4()), "name": output, "value": "={{ $json.output }}", "type": "string"}]},
+            {"id": str(uuid.uuid4()), "name": output, "type": "string", "value":
+             "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"}]},
             "includeOtherFields": False, "options": {}}, bpmn=False, version=3.4)
         self.flow(first, name, last)
         self.steps[name] = (first, last)  # after its own flow: other steps' flows reach its first and leave its last

@@ -193,6 +193,16 @@ class ProseTest(TestCase):
         self.assertIn("&lt;script&gt;", html)
         self.assertNotIn("<script>", html)
 
+    def test_only_web_and_mail_links_survive(self):
+        """A research note copied from a hostile page cannot run script in a staff session."""
+        from ..templatetags.bpmn8n import prose
+        for link in ("javascript:alert(1)", "JaVaScRiPt:alert(1)",
+                     "data:text/html;base64,PHNjcmlwdD4=", "vbscript:msgbox(1)"):
+            self.assertIn('href="#"', prose(f"[rules]({link})"), link)
+        self.assertIn('src="#"', prose("![x](javascript:alert(1))"))
+        for link in ("https://www.garanteprivacy.it/", "mailto:dpo@example.com", "/docs/", "#notes"):
+            self.assertIn(f'href="{link}"', prose(f"[rules]({link})"), link)
+
 
 @override_settings(SEARCH_URL="")
 class StudioPagesTest(TestCase):
@@ -211,6 +221,7 @@ class StudioPagesTest(TestCase):
         self.assertContains(page, "Who approves?")
         project = Project.objects.get()
         self.assertEqual(project.slug, "purchase_requests")
+        self.assertEqual(Project.objects.create(name="ACME").slug, "acme_2")  # projects/acme is not Studio's
         self.client.post("/studio/purchase_requests/build/")
         self.assertFalse(start.called)  # no brief yet
         self.assertContains(self.client.post("/studio/purchase_requests/", {"answer": "Managers."}, follow=True), "Build it")
@@ -276,6 +287,17 @@ class BuildTest(TestCase):
         self.project = Project.objects.create(name="Studio Test Quotes", status=Project.BUILDING, brief="Price a product.")
         self.addCleanup(lambda: [shutil.rmtree(PROJECTS / name, ignore_errors=True)
                                  for name in (self.project.slug, f"_{self.project.slug}")])
+
+    def test_publish_never_replaces_a_folder_studio_did_not_write(self):
+        project = Project.objects.create(name="Elsewhere", brief="x", spec=SPEC)
+        Project.objects.filter(pk=project.pk).update(slug="acme")  # as if the slug had been taken before the check
+        project.refresh_from_db()
+        builder = ProjectBuilder(project)
+        builder.draft.mkdir(parents=True)
+        self.addCleanup(shutil.rmtree, builder.draft, True)
+        with self.assertRaisesRegex(Exception, "was not built by Studio"):
+            builder.publish()
+        self.assertTrue((PROJECTS / "acme" / "processes.py").exists())
 
     def test_mcp_client_builds_without_an_llm(self):
         """An MCP client plays the LLM: it saves the design, writes the module, checks and publishes."""
