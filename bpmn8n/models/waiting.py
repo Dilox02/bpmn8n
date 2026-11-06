@@ -270,7 +270,13 @@ class MessageSubscription(WaitingActivity):
                                                           reason=f"“{self.name}” came first")
 
     def deliver(self, payload):
-        self.finish(f"message:{self.name}", payload=payload)
+        """A message comes from outside (a bank, a customer's reply): it adds process variables, it
+        never changes the ones the case has (an IBAN, an amount, a decision). Those are left out and
+        named in `reason`."""
+        known = Case.objects.filter(case_id=self.case_id).values_list("variables", flat=True).first() or {}
+        kept = sorted(k for k in payload if k in known)
+        self.finish(f"message:{self.name}", payload={k: v for k, v in payload.items() if k not in known},
+                    **({"reason": f"left out, the case already has them: {', '.join(kept)}"[:500]} if kept else {}))
 
     def output(self):
         return self.payload or {}
