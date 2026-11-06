@@ -28,6 +28,18 @@ n8n runs workflows well, but it does not speak the language of business processe
 | 🤖 **Small models where they shine** | [GLiNER2.5](https://github.com/fastino-ai/GLiNER2) fills task inputs from free text, [Laya](https://github.com/NandhaKishorM/laya) decides gateways in about 20 ms, Vision reads scanned documents. |
 | 📈 **Process mining** | Every step lands in an event log, ready for PM4Py. |
 
+## Screenshots
+
+| Studio: interview, build and who decides | The workflow in n8n, with the BPMN nodes |
+|---|---|
+| ![A Studio project: its build steps and the interview](docs/screenshots/studio-project.png) | ![A workflow on n8n's canvas, laid out in levels](docs/screenshots/n8n-canvas.png) |
+| **A node's panel: the Python function behind it** | **An LLM agent: the only variables it is sent** |
+| ![A task's panel: its function with path and line, inputs and outputs](docs/screenshots/n8n-panel-task.png) | ![An LLM agent's panel: provider and data sent](docs/screenshots/n8n-panel-llm-agent.png) |
+| **The people inbox** | **A task: the form, the case data, how it got here** |
+| ![The inbox of a lane](docs/screenshots/inbox.png) | ![A user task's page](docs/screenshots/task.png) |
+
+The screenshots show synthetic test processes (a data breach response, a motor insurance claim).
+
 ## How it fits together
 
 ```
@@ -95,6 +107,8 @@ bpmn8n is also an MCP server, so an MCP client can stand in for the LLM provider
 | `api` | any route of the REST API: user tasks, cases, messages, metrics, process mining, workflow checks |
 
 Ask it, for example, *"design an expense approval process in bpmn8n Studio"* or *"which user tasks are open?"*.
+
+The [MCP guide](docs/MCP.md) covers installing it in Claude Code, Claude Desktop or without Docker, every tool, building a process step by step, and troubleshooting.
 
 ## Python environment
 
