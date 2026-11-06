@@ -9,6 +9,11 @@
 // ponytail: n8n's class names are hashed per build, so the CSS matches data-* attributes and
 // [class*=...]; an n8n upgrade that renames them only brings back n8n's own look.
 (() => {
+  // the editor (no ?theme, which only Studio's preview gets) in n8n's dark theme, as in Studio's preview:
+  // light marks and names on the dark canvas. ponytail: overrides the user's n8n theme on every load
+  if (!new URLSearchParams(location.search).has('theme')) {
+    try { localStorage.setItem('N8N_THEME', 'dark'); } catch (_) { /* private mode: n8n's default */ }
+  }
   const ICONS = '/icons/CUSTOM/nodes/icons/';
   const SIDE = 96, TASK = 120, DIAMOND = 64, CIRCLE = 44;  // px: BPMN's 100x80 task, 50 gateway, 36 event, scaled
   const type = t => `[data-test-id=canvas-node][data-node-type="${t}"]`;
@@ -105,6 +110,32 @@
     ${Object.entries(START).map(([t, glyph]) =>
       `${onBpmn} ${type(t)} ${icon} { background-image: url(${ICONS}bpmn/events/${glyph}.svg); }`).join('\n')}
     body[data-theme=dark] ${any([MERGE, STARTS])} ${icon} { filter: invert(1); }
+
+    /* Studio's look (n8n-editor/preview.js) in the editor too: a flat dark canvas, no dot grid */
+    ${onBpmn} { background: #0d0d12 !important; }
+    ${onBpmn} [data-test-id=canvas-background] { display: none !important; }
+
+    /* tints (below): a flat colour per node, white marks on it */
+    ${onBpmn} [data-test-id=canvas-node][style*="--tinta"] { --bpmn-fill: var(--tinta); }
+    :where(${onBpmn} [data-test-id=canvas-node][style*="--tinta"]) ${box} {  /* :where: gateways, events stay bare */
+      background: var(--tinta) !important;
+    }
+    ${onBpmn} [style*="--tinta"] .n8n-node-icon, ${onBpmn} [style*="--tinta"] .n8n-node-icon * { color: #f4f4f8 !important; }
+    ${TASKS}[style*="--tinta"] ${name} { color: #f4f4f8 !important; }
   `;
   document.head.appendChild(style);
+
+  // every node a flat tint from its name (the same name, the same tint), in the editor as in Studio's
+  // preview; ?theme=light (Studio's page in light mode) keeps n8n's own colours
+  if (new URLSearchParams(location.search).get('theme') === 'light') return;
+  const hue = text => {  // the name without the " 2", " 3"... n8n adds to repeated names
+    let h = 2166136261;  // FNV-1a: deterministic, well spread
+    for (const c of text.replace(/ \d+$/, '')) h = Math.imul(h ^ c.codePointAt(0), 16777619);
+    return ((h >>> 0) * 137.508) % 360;  // golden angle: near names drift apart
+  };
+  const paint = () => document.querySelectorAll('[data-test-id=canvas-node][data-node-name]').forEach(node => {
+    const tint = `hsl(${hue(node.dataset.nodeName)} 45% 36%)`;  // dark enough for white marks, clear of #0d0d12
+    if (node.style.getPropertyValue('--tinta') !== tint) node.style.setProperty('--tinta', tint);
+  });
+  new MutationObserver(paint).observe(document.documentElement, { childList: true, subtree: true });
 })();

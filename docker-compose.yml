@@ -63,11 +63,15 @@ services:
       QUEUE_BULL_REDIS_HOST: redis
       OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
       N8N_RUNNERS_ENABLED: "true"
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=2  # BPMN shapes on the canvas; n8n caches /static for a day: bump v on edits
+      # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
+      # ?bpmn8n=); n8n caches /static for a day: bump v on edits
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=4;/static/bpmn8n-panel.js?v=3&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
+      N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro
+      - ./n8n-editor/panel.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-panel.js:ro
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -89,7 +93,7 @@ services:
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_CONTENT_SECURITY_POLICY: '{"frame-ancestors": ["''self''", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8080", "http://127.0.0.1:8080"]}'
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=2;/static/bpmn8n-theme.js?v=6  # bump v on edits
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=4;/static/bpmn8n-theme.js?v=7  # bump v on edits
     volumes:
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro

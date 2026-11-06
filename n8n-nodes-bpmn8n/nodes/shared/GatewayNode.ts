@@ -29,6 +29,7 @@ export abstract class GatewayNode implements INodeType {
 					displayName: 'Question',
 					name: 'question',
 					type: 'string',
+					typeOptions: { rows: 2 },
 					default: '',
 					required: kind === 'exclusive',
 					displayOptions: { show: { decider: ['laya'] } },

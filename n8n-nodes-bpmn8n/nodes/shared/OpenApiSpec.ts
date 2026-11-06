@@ -16,6 +16,7 @@ interface Operation {
 	summary?: string;
 	description?: string;
 	'x-bpmn-task'?: string;
+	'x-bpmn-source'?: string; // path:line of the Python function
 	requestBody?: { content?: { 'application/json'?: { schema?: JsonSchema } } };
 }
 
@@ -28,11 +29,16 @@ export interface OpenApiDoc {
 export class OpenApiSpec {
 	constructor(private readonly doc: OpenApiDoc) {}
 
-	/** POST endpoints tagged `x-bpmn-task: <kind>`, as dropdown options whose value is the path. */
+	/** POST endpoints tagged `x-bpmn-task: <kind>`, as dropdown options whose value is the path and whose
+	 * description says what the function does and where it is written. */
 	tasks(kind: string): INodePropertyOptions[] {
 		return Object.entries(this.doc.paths).flatMap(([path, { post }]) =>
 			post?.['x-bpmn-task'] === kind
-				? [{ name: post.summary ?? path, value: path, description: post.description }]
+				? [{
+						name: post.summary ?? path,
+						value: path,
+						description: [post.description?.split('\n')[0], post['x-bpmn-source']].filter(Boolean).join(' · '),
+					}]
 				: [],
 		);
 	}

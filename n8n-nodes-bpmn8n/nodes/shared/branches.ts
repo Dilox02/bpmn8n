@@ -35,7 +35,8 @@ export function branchesProperty(describe?: string): INodeProperties {
 		displayName: 'Branches',
 		name: 'branches',
 		type: 'fixedCollection',
-		typeOptions: { multipleValues: true, sortable: true },
+		// each branch titled by its name (n8n's default: "Branch 1", "Branch 2"...)
+		typeOptions: { multipleValues: true, sortable: true, fixedCollection: { itemTitle: '={{ $collection.item.value.name }}' } },
 		default: { values: [{ name: 'Branch 1' }, { name: 'Branch 2' }] },
 		placeholder: 'Add Branch',
 		description: 'Each branch is an output of this node, in this order',
