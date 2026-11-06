@@ -43,3 +43,6 @@ Desktop.ini
 *.log
 test-results/
 playwright-report/
+
+# n8n workflows exported from a local instance (./start.sh export): personal, never committed
+/workflows/

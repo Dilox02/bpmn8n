@@ -10,6 +10,8 @@ test('lists only the tasks of the requested BPMN kind', () => {
 	assert.deepStrictEqual(spec.tasks('scriptTask').map((t) => t.value), ['/api/tasks/normalize_alert']);
 	assert.ok(spec.tasks('serviceTask').some((t) => t.value === '/api/tasks/register_ticket'));
 	assert.deepStrictEqual(spec.tasks('userTask'), []); // user tasks are not endpoints
+	const refund = spec.tasks('serviceTask').find((t) => t.value === '/api/tasks/register_ticket');
+	assert.ok(!refund.description.includes('\n')); // one line: what it does (and, live, where it is written)
 });
 
 test('maps the request body schema to optional text fields (choices keep a dropdown)', () => {

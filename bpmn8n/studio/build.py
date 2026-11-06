@@ -46,7 +46,9 @@ def defines(code, name):
 
 class ProjectBuilder:
     def __init__(self, project, llm=None):
-        self.project, self.llm = project, llm or Settings.llm_client()
+        self.project = project
+        if llm:
+            self.llm = llm
         self.draft, self.final = PROJECTS / f"_{project.slug}", PROJECTS / project.slug
         self.prompts = Prompts(project)
 
@@ -57,6 +59,11 @@ class ProjectBuilder:
         project.status = Project.BUILDING
         project.save(update_fields=["status", "updated"])
         background("build_project", project)
+
+    @cached_property
+    def llm(self):
+        """The default LLM, needed only by the steps that ask it (an MCP client writes its own)."""
+        return Settings.llm_client()
 
     @property
     def spec(self):

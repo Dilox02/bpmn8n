@@ -35,6 +35,14 @@ class BuilderTest(SimpleTestCase):
                   {"from": "Join", "to": ["Decide"]},
                   {"from": "Decide", "branch": "default", "to": ["Review"]}]}
 
+    def test_a_spec_laid_out_in_levels(self):
+        """Time runs right; the longest branch stays on the gateway's row, the other goes below, the join after both."""
+        at = {n["name"]: n["position"] for n in Workflow.from_spec(self.SPEC).as_json()["nodes"]}
+        self.assertEqual(at["Request"], [0, 0])
+        self.assertEqual(sorted([at["Quote"][1], at["Budget"][1]]), [at["Both"][1], at["Both"][1] + 200])
+        self.assertEqual(at["Quote"][0], at["Budget"][0])
+        self.assertTrue(at["Request"][0] < at["Both"][0] < at["Quote"][0] < at["Join"][0] < at["Review"][0])
+
     def test_a_spec_builds_a_laid_out_workflow(self):
         workflow = Workflow.from_spec(self.SPEC).as_json()
         nodes = {n["name"]: n for n in workflow["nodes"]}
@@ -44,7 +52,6 @@ class BuilderTest(SimpleTestCase):
         self.assertEqual(workflow["connections"]["Decide"]["main"][1], [{"node": "Review", "type": "main", "index": 0}])
         self.assertEqual([nodes[n]["position"][0] for n in ("Request", "Both", "Quote", "Join", "Decide")],
                          [0, 280, 560, 840, 1120])  # columns by distance from the trigger
-        self.assertEqual(nodes["Quote"]["position"][1], -nodes["Budget"]["position"][1])  # a column is centred
 
     def test_a_join_comes_after_its_longest_branch_and_a_loop_moves_nothing(self):
         w = (Workflow("Join").start("Start", "j").parallel_gateway("Split", ["a", "b"])

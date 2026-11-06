@@ -3,6 +3,7 @@
 case's process variables (by name, or {{templates}}), optionally extracted from text, and the
 result is remembered as process data."""
 import inspect
+import json
 import logging
 import math
 import pkgutil
@@ -11,10 +12,12 @@ import warnings
 from functools import wraps
 from importlib import import_module
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 import pydantic
 from django.apps import apps
+from django.conf import settings
 from django.http import HttpRequest
 from django.utils.module_loading import module_has_submodule
 from ninja import Router, Schema
@@ -80,6 +83,31 @@ class Task:
         return self.fn.__module__
 
     @property
+    def location(self):
+        """Where the function is written, path:line from the repository root (n8n's node panel shows it)."""
+        try:
+            path, line = Path(inspect.getsourcefile(self.fn)), inspect.getsourcelines(self.fn)[1]
+        except (OSError, TypeError):  # no source file
+            return self.module
+        root = Path(settings.BASE_DIR)
+        return f"{path.relative_to(root) if path.is_relative_to(root) else path}:{line}"
+
+    @property
+    def examples(self):
+        """Its examples from its project's examples.json (next to tasks.py or to the tasks/ package)."""
+        try:
+            here = Path(inspect.getsourcefile(self.fn)).parent
+        except TypeError:
+            return []
+        for folder in (here, here.parent):
+            if (path := folder / "examples.json").exists():
+                try:
+                    return json.loads(path.read_text()).get(self.name, [])
+                except ValueError:
+                    return []
+        return []
+
+    @property
     def inputs(self):
         return field_specs(self.schema)
 
@@ -120,7 +148,8 @@ class Task:
         return None
 
     def register(self, router, **options):
-        router.post(f"/{self.name}", operation_id=self.name, tags=[self.kind], openapi_extra={"x-bpmn-task": self.kind},
+        router.post(f"/{self.name}", operation_id=self.name, tags=[self.kind], openapi_extra={"x-bpmn-task": self.kind, "x-bpmn-source": self.location,
+                                                                       "x-bpmn-examples": self.examples},
                     **({"response": self.output} if self.output else {}), **options)(self.run)
 
         def run(request, data: RunIn):  # ninja tags the view function: no bound methods

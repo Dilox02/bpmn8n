@@ -165,7 +165,8 @@ class Workflow:
         self.task(first, "scriptTask", "compose_prompt", fields={"prompt": prompt})
         self.add(name, AGENT, {"promptType": "define", "text": "={{ $json.prompt }}",
                                "options": {"systemMessage": f"{instructions}\n\n{self.AGENT_RULES}".strip()}},
-                 bpmn=False, version=3.1)
+                 bpmn=False, version=3.1,  # an external provider's 429/503 ("high demand") is often gone in seconds
+                 retryOnFail=True, maxTries=3, waitBetweenTries=5000)
         if self.chat_model:
             self.add(f"{name}: model", self.chat_model["type"], self.chat_model["parameters"], bpmn=False,
                      version=self.chat_model["typeVersion"], same_column=True,
@@ -207,9 +208,11 @@ class Workflow:
         return sum(c["node"] == name for outs in self.connections.values() for port in outs.get("main", []) for c in port)
 
     def layout(self):
-        """Columns by the longest path from the triggers (time runs left to right, and a join comes after
-        all its branches), each column centred; a chat model goes under its agent. A flow back to an
-        earlier step (a loop) moves nothing."""
+        """Levels left to right: a step's column is its longest path from the trigger (a join comes after
+        all its branches). The longest path runs straight along the top row; every other branch takes the
+        first row below that is free for the columns it spans, so branches never overlap, and a step that
+        branches join goes in the highest of their rows (the one its longest branch kept free). Flows then run right and down, as n8n draws them
+        (out on the right, in on the left); only loops go back. A chat model goes under its agent."""
         models = {name: outs["ai_languageModel"][0][0]["node"] for name, outs in self.connections.items()
                   if "ai_languageModel" in outs}
         after = {name: [c["node"] for port in outs.get("main", []) for c in port] for name, outs in self.connections.items()}
@@ -228,17 +231,34 @@ class Workflow:
             visit(name)
         order.reverse()
         rank, depth = {n: i for i, n in enumerate(order)}, dict.fromkeys(order, 0)
+        forward = {n: [c for c in dict.fromkeys(after.get(n, [])) if rank[c] > rank[n]] for n in order}  # no loops
         for name in order:
-            for n in after.get(name, []):
-                if rank[n] > rank[name]:  # not a loop back
-                    depth[n] = max(depth[n], depth[name] + 1)
-        depth |= {model: depth.get(agent, 0) for model, agent in models.items()}
-        columns = defaultdict(list)
-        for node in self.nodes:
-            columns[depth.get(node["name"], 0)].append(node)
-        for column, nodes in columns.items():
-            for row, node in enumerate(nodes):
-                node["position"] = [column * 280, round((row - (len(nodes) - 1) / 2) * 200)]
+            for n in forward[name]:
+                depth[n] = max(depth[n], depth[name] + 1)
+        tail = {}  # columns from a step to the end of its longest path
+        for name in reversed(order):
+            tail[name] = max((tail[c] + depth[c] - depth[name] for c in forward[name]), default=0)
+        agents = {agent: model for model, agent in models.items()}
+        busy, offered, row = set(), defaultdict(list, {n: [i] for i, n in enumerate(starts)}), {}  # (column, row)
+        for name in sorted(order, key=depth.get):
+            row[name] = min(offered[name])
+            busy.add((depth[name], row[name]))
+            if name in agents:  # its chat model, in the first free row under it
+                below = row[name] + 1
+                while (depth[name], below) in busy:
+                    below += 1
+                busy.add((depth[name], below))
+                row[agents[name]], depth[agents[name]] = below, depth[name]
+            for i, child in enumerate(sorted(forward[name], key=lambda c: -tail[c])):
+                lane, columns = row[name], range(depth[child], depth[child] + tail[child] + 1)
+                if i:  # a side branch
+                    lane += 1
+                    while any((c, lane) in busy for c in columns):
+                        lane += 1
+                    busy.update((c, lane) for c in columns)
+                offered[child].append(lane)
+        for node in self.nodes:  # ponytail: unconnected nodes (no flow in or out) all go at the origin
+            node["position"] = [depth.get(node["name"], 0) * 280, row.get(node["name"], 0) * 200]
         return self
 
     @classmethod
