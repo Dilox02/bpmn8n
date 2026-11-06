@@ -222,8 +222,9 @@ class Workflow:
 
     def layout(self):
         """Levels left to right: a step's column is its longest path from the trigger (a join comes after
-        all its branches). The longest path runs straight along the top row; every other branch takes the
-        first row below that is free for the columns it spans, so branches never overlap, and a step that
+        all its branches). The longest path runs straight along the top row, except a detour (a branch
+        that joins its sibling later goes below, so the direct flow never passes behind it); every other branch takes the
+        first row below that is free until it joins the others, so branches never overlap, and a step that
         branches join goes in the highest of their rows (the one its longest branch kept free). Flows then run right and down, as n8n draws them
         (out on the right, in on the left); only loops go back. A chat model goes under its agent."""
         models = {name: outs["ai_languageModel"][0][0]["node"] for name, outs in self.connections.items()
@@ -248,9 +249,29 @@ class Workflow:
         for name in order:
             for n in forward[name]:
                 depth[n] = max(depth[n], depth[name] + 1)
-        tail = {}  # columns from a step to the end of its longest path
+        tail, downstream = {}, {}  # columns from a step to the end of its longest path; the steps after it
         for name in reversed(order):
             tail[name] = max((tail[c] + depth[c] - depth[name] for c in forward[name]), default=0)
+            downstream[name] = set(forward[name]).union(*(downstream[c] for c in forward[name]))
+
+        joins = {n for n in order if sum(n in forward[m] for m in order) > 1}  # steps that branches join
+
+        def own_columns(child):
+            """The columns a branch keeps its row for: from its first step up to the step it joins, so that
+            its flow into that step passes no other step either."""
+            if child in joins:
+                return range(depth[child], depth[child] + 1)
+            last = child
+            while forward[last] and (nxt := straight_first(last)[0]) not in joins:
+                last = nxt
+            joined = straight_first(last)[0] if forward[last] else None
+            return range(depth[child], depth[joined] if joined else depth[last] + 1)
+
+        def straight_first(name):
+            """Its next steps, the one that stays on its row first: not a detour (a branch that joins a
+            sibling later, whose flow would else pass behind it), then the longest."""
+            nexts = forward[name]
+            return sorted(nexts, key=lambda c: (any(o in downstream[c] for o in nexts if o != c), -tail[c]))
         agents = {agent: model for model, agent in models.items()}
         busy, offered, row = set(), defaultdict(list, {n: [i] for i, n in enumerate(starts)}), {}  # (column, row)
         for name in sorted(order, key=depth.get):
@@ -262,8 +283,10 @@ class Workflow:
                     below += 1
                 busy.add((depth[name], below))
                 row[agents[name]], depth[agents[name]] = below, depth[name]
-            for i, child in enumerate(sorted(forward[name], key=lambda c: -tail[c])):
-                lane, columns = row[name], range(depth[child], depth[child] + tail[child] + 1)
+            for i, child in enumerate(straight_first(name)):
+                lane, columns = row[name], own_columns(child)
+                if i and offered[child] and min(offered[child]) <= lane:  # placed higher already: no lane to keep
+                    continue
                 if i:  # a side branch
                     lane += 1
                     while any((c, lane) in busy for c in columns):

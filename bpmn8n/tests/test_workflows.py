@@ -43,6 +43,29 @@ class BuilderTest(SimpleTestCase):
         with self.assertRaises(SpecError):
             Workflow("Bad").timer("When", until="15 days before departure")
 
+    def test_no_flow_passes_behind_a_step(self):
+        """A detour (a branch that joins its sibling later) goes below the direct flow, and a branch keeps
+        its row up to the step it joins: a flow along a row never crosses another step."""
+        def behind(workflow):
+            at = {n["name"]: tuple(n["position"]) for n in workflow["nodes"]}
+            return [(a, b, c) for a, outs in workflow["connections"].items() for port in outs.get("main", [])
+                    for b in (link["node"] for link in port) if at[a][1] == at[b][1] and at[b][0] > at[a][0]
+                    for c, (x, y) in at.items() if y == at[a][1] and at[a][0] < x < at[b][0]]
+        detour = (Workflow("Detour").start("In", "in")
+                  .condition_gateway("Personal Data?", "exclusive", {"yes": "{{personal}}", "no": "not {{personal}}"})
+                  .user_task("Confirm", "Confirm", "dpo", form=[["personal", "Personal", "boolean"]])
+                  .condition_gateway("Overruled?", "exclusive", {"yes": "{{personal}}", "no": "not {{personal}}"})
+                  .user_task("Assess", "Assess", "dpo", form=[["risk", "Risk", "boolean"]])
+                  .manual_task("Record", "Record", "dpo")
+                  .flow("In", "Personal Data?").flow("Personal Data?", "Assess", "Record", output=0)
+                  .flow("Personal Data?", "Confirm", "Overruled?", output=1).flow("Overruled?", "Assess", output=0)
+                  .flow("Overruled?", "Record", output=1).layout().as_json())
+        rows = {n["name"]: n["position"][1] for n in detour["nodes"]}
+        self.assertEqual((rows["Assess"], rows["Record"]), (0, 0))  # the direct flow stays on the top row
+        self.assertGreater(rows["Confirm"], 0)  # the detour goes below it
+        for workflow in [detour, *(build().as_json() for build in PROCESSES.values())]:
+            self.assertEqual(behind(workflow), [], workflow["name"])
+
     def test_a_spec_laid_out_in_levels(self):
         """Time runs right; the longest branch stays on the gateway's row, the other goes below, the join after both."""
         at = {n["name"]: n["position"] for n in Workflow.from_spec(self.SPEC).as_json()["nodes"]}
