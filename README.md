@@ -30,15 +30,15 @@ n8n runs workflows well, but it does not speak the language of business processe
 
 ## Screenshots
 
-| Studio: interview, build and who decides | The workflow in n8n, with the BPMN nodes |
-|---|---|
-| ![A Studio project: its build steps and the interview](docs/screenshots/studio-project.png) | ![A workflow on n8n's canvas, laid out in levels](docs/screenshots/n8n-canvas.png) |
-| **A node's panel: the Python function behind it** | **An LLM agent: the only variables it is sent** |
-| ![A task's panel: its function with path and line, inputs and outputs](docs/screenshots/n8n-panel-task.png) | ![An LLM agent's panel: provider and data sent](docs/screenshots/n8n-panel-llm-agent.png) |
-| **The people inbox** | **A task: the form, the case data, how it got here** |
-| ![The inbox of a lane](docs/screenshots/inbox.png) | ![A user task's page](docs/screenshots/task.png) |
+[![The hospital appointment booking workflow in n8n, laid out in levels: the main path along the top row, the exceptions below, the loops back underneath](docs/screenshots/hospital-workflow.png)](docs/screenshots/hospital-workflow.png)
 
-The screenshots show synthetic test processes (a data breach response, a motor insurance claim).
+*Hospital appointment booking (UC-01), with its four agents and the patient's data pseudonymised before the external LLM, as bpmn8n lays it out in n8n: the main path along the top row, the exceptions below it, the loops back underneath. Click to see it full size.*
+
+| Studio: the build and the interview | A task's panel: the Python function behind it |
+|---|---|
+| ![A Studio project: its build steps and the interview](docs/screenshots/studio-project.png) | ![A task's panel: its function with path and line, inputs and outputs](docs/screenshots/n8n-panel-task.png) |
+| **An LLM agent: the only variables it is sent** | **A person's task: the form, the case data, how it got here** |
+| ![An LLM agent's panel: provider and data sent](docs/screenshots/n8n-panel-llm-agent.png) | ![A user task's page](docs/screenshots/task.png) |
 
 ## How it fits together
 
