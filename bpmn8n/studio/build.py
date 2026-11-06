@@ -232,14 +232,18 @@ class ProjectBuilder:
         note = "\nThe LLM agents have no credential: choose one on their chat model nodes in n8n" \
             if self.agents and not self.llm_credential else ""
         try:
-            created = n8n.create_workflow(self.workflow())
+            created = n8n.save_workflow(self.workflow(), self.project.n8n_id)
         except n8n.N8nError as e:
             if e.status in (None, 401, 403):
-                raise Skip(f"{e}. Import projects/{self.project.slug}/workflow.json in the n8n editor "
+                rebuild = f" over workflow {self.project.n8n_id} (re-run ./start.sh: its key can update workflows)" \
+                    if self.project.n8n_id and e.status == 403 else ""
+                raise Skip(f"{e}. Import projects/{self.project.slug}/workflow.json in the n8n editor{rebuild} "
                            "(⋯ → Import from File)") from e
             raise
         self.project.n8n_id = created["id"]
         self.project.save(update_fields=["n8n_id", "updated"])
+        if created.get("draft"):
+            note += "\nSaved as a draft of the active workflow: publish it in the n8n editor to run it"
         return f"{settings.N8N_PUBLIC_URL}/workflow/{created['id']}{note}"
 
     def reload(self):

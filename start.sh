@@ -91,17 +91,19 @@ write_env() {  # .env: every later `docker compose ...` (not only this script) g
 ensure_api_key() {  # n8n API key: process mining reads workflows, Studio creates them (never activates) and
   local key; key=$(env_get N8N_API_KEY)  # gives their LLM agents the credential of admin → Settings' LLM
   [ -n "$key" ] && curl -sf -o /dev/null -H "X-N8N-API-KEY: $key" "http://localhost:5678/api/v1/workflows?limit=1" &&
-    curl -sf -o /dev/null -H "X-N8N-API-KEY: $key" "http://localhost:5678/api/v1/credentials?limit=1" && return
+    curl -sf -o /dev/null -H "X-N8N-API-KEY: $key" "http://localhost:5678/api/v1/credentials?limit=1" &&
+    [ "$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "X-N8N-API-KEY: $key" -H 'content-type: application/json' \
+      -d '{}' "http://localhost:5678/api/v1/workflows/0")" != 403 ] && return  # a key from before Studio updated workflows
   local old; old=$(curl -sf -b "$JAR" http://localhost:5678/rest/api-keys |  # its label must be free
     json_field 'next((k["id"] for k in d["items"] if k["label"] == "bpmn8n"), "")')
   [ -z "$old" ] || curl -sf -o /dev/null -X DELETE -b "$JAR" "http://localhost:5678/rest/api-keys/$old"
   key=$(curl -sf -b "$JAR" -H 'content-type: application/json' http://localhost:5678/rest/api-keys \
-    -d '{"label":"bpmn8n","scopes":["workflow:read","workflow:list","workflow:create","credential:list","credential:create","credential:update"],"expiresAt":null}' |
+    -d '{"label":"bpmn8n","scopes":["workflow:read","workflow:list","workflow:create","workflow:update","credential:list","credential:create","credential:update"],"expiresAt":null}' |
     sed -n 's/.*"rawApiKey":"\([^"]*\)".*/\1/p')
   [ -n "$key" ] || { echo "! n8n API key not created: conformance checking and Studio's import stay off"; return; }
   env_set N8N_API_KEY "$key"
   RESTART_WEB=1
-  echo "✓ n8n API key created (workflows: read, list, create; credentials: list, create, update)"
+  echo "✓ n8n API key created (workflows: read, list, create, update; credentials: list, create, update)"
 }
 
 ensure_credential() {  # the n8n credential the BPMN nodes use to reach bpmn8n; its id goes to .env for Studio

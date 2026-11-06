@@ -1,4 +1,4 @@
-"""n8n's public API (/api/v1 with N8N_API_KEY): read workflows (conformance, checks) and create
+"""n8n's public API (/api/v1 with N8N_API_KEY): read workflows (conformance, checks), create and update
 them (Studio)."""
 from ..conf import settings
 from .http import ServiceUnavailable, request_json
@@ -29,6 +29,20 @@ def workflow(workflow_id):
 def create_workflow(data):
     """Creates it (not active) and returns it, with its id."""
     return request("POST", "/workflows", {k: data[k] for k in ("name", "nodes", "connections", "settings")})
+
+
+def save_workflow(data, workflow_id=""):
+    """A rebuild updates its workflow in place (same id, same webhook): a second copy could not be
+    activated while the first holds the webhook path. Creates it the first time, or when it is gone."""
+    if workflow_id:
+        try:
+            return request("PUT", f"/workflows/{workflow_id}", {k: data[k] for k in ("name", "nodes", "connections", "settings")})
+        except N8nError as e:
+            if e.status == 403 and "saved as a draft" in str(e):  # n8n 2: an active workflow's change waits
+                return {"id": workflow_id, "draft": True}         # for someone to publish it (Studio never does)
+            if e.status != 404:
+                raise
+    return create_workflow(data)
 
 
 def ensure_credential(name, type_, data):
