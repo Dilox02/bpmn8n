@@ -1,5 +1,6 @@
 """n8n workflows made of bpmn8n's BPMN nodes, as the n8n editor saves them: the JSON to import,
 publish through n8n's API or show in its canvas. Pure Python, no Django."""
+import re
 import uuid
 from collections import defaultdict
 
@@ -132,9 +133,19 @@ class Workflow:
         return self.add(name, node_type("callActivity"),
                         {"workflowId": {"__rl": True, "mode": "id", "value": workflow_id}}, row, bpmn=False)
 
-    def timer(self, name, amount, unit, row=0, same_column=False):
-        return self.add(name, node_type("timerEvent"), {"mode": "for", "amount": amount, "unit": unit},
-                        row, bpmn=False, same_column=same_column)
+    def timer(self, name, amount=None, unit="hours", until=None, row=0, same_column=False):
+        """Waits for amount unit (seconds | minutes | hours | days | weeks), or until a moment: until is a
+        {{variable}} holding an ISO date or date-time that an earlier step produced (a deadline)."""
+        if until is not None:
+            variable = re.fullmatch(r"\{\{\s*([\w.]+)\s*\}\}", str(until).strip())
+            if not variable:
+                raise SpecError(f"{name}: until must be one {{{{variable}}}} with a date, not {until!r}")
+            parameters = {"mode": "until", "until": f"={{{{ $json.{variable.group(1)} }}}}"}
+        elif amount is None:
+            raise SpecError(f"{name}: missing amount (and unit), or until: a timer waits for a time or until a date")
+        else:
+            parameters = {"mode": "for", "amount": amount, "unit": unit}
+        return self.add(name, node_type("timerEvent"), parameters, row, bpmn=False, same_column=same_column)
 
     def manual_task(self, name, title, lane, context="", row=0, same_column=False):
         return self.user_task(name, title, lane, form=[], context=context, row=row, same_column=same_column,
