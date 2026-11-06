@@ -277,6 +277,37 @@ class BuildTest(TestCase):
         self.addCleanup(lambda: [shutil.rmtree(PROJECTS / name, ignore_errors=True)
                                  for name in (self.project.slug, f"_{self.project.slug}")])
 
+    def test_mcp_client_builds_without_an_llm(self):
+        """An MCP client plays the LLM: it saves the design, writes the module, checks and publishes."""
+        from ..management.commands.mcp import handle
+
+        def call(name, **arguments):
+            reply = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                            "params": {"name": name, "arguments": arguments}})["result"]
+            return reply["isError"], reply["content"][0]["text"]
+
+        tools = handle({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})["result"]["tools"]
+        self.assertIn("studio_publish", [t["name"] for t in tools])
+        self.assertIsNone(handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
+        self.project.status = Project.INTERVIEW
+        self.project.save()
+        slug = self.project.slug
+        self.assertIn("give it 2 or 3 examples", call("studio_save", slug=slug, spec={
+            **SPEC, "activities": [{k: v for k, v in SPEC["activities"][0].items() if k != "examples"}]})[1])
+        self.assertEqual(call("studio_save", slug=slug, spec=SPEC), (False, "saved"))
+        self.assertIn("## The activity to write", call("studio_prompt", slug=slug, step="write", activity="quote_price")[1])
+        self.assertTrue(call("studio_check", slug=slug)[0])  # no module yet
+        call("studio_write", slug=slug, activity="quote_price", code=ACTIVITY.replace("50.0", "45.0"))
+        with patch.dict(os.environ, self.env, clear=True):
+            self.assertIn("expected {'price': 50}", call("studio_check", slug=slug)[1])
+            call("studio_write", slug=slug, activity="quote_price", code=ACTIVITY)
+            error, text = call("studio_publish", slug=slug)
+        self.assertFalse(error, text)
+        self.assertIn("skipped", json.loads(text)["import_workflow"])  # no n8n here
+        self.assertTrue((PROJECTS / slug / "tasks" / "quote_price.py").exists())
+        self.assertEqual(json.loads(call("studio_project", slug=slug)[1])["status"], Project.READY)
+        self.assertEqual(json.loads(call("api", method="GET", path="/api/usertasks")[1])["status"], 200)
+
     def test_from_brief_to_a_tested_project(self):
         """The design comes back for its missing examples; the module is fixed until it imports, then until
         it does what its examples say; only that module goes back to the LLM."""

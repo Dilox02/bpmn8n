@@ -83,6 +83,19 @@ For example, describe a hospital booking workflow and ask it to research appoint
 
 To check configuration, verify the exact model tag with `ollama list`, confirm that Django can reach `/v1/chat/completions`, and check that SearXNG returns JSON for `/search?q=hospital+appointment+workflow&format=json` from the Django network. Avoid personal patient data in public searches. Web research supports workflow design. Hospital adapters must provide current availability and eligibility at booking time.
 
+## Claude as Studio's LLM (MCP)
+
+bpmn8n is also an MCP server, so an MCP client can stand in for the LLM provider: no API key, and the client reads and drives the whole state. Claude Code picks it up from [`.mcp.json`](.mcp.json) when opened in this folder with the stack running (`docker compose exec -T web python manage.py mcp`; without Docker, `python manage.py mcp`).
+
+| Tool | Does |
+|---|---|
+| `studio_projects`, `studio_project` | the projects and one project's state: interview, research, brief, spec, build cards |
+| `studio_create`, `studio_prompt`, `studio_save`, `studio_write` | the client interviews, designs and writes the code, following Studio's own instructions and live context |
+| `studio_check`, `studio_publish` | bpmn8n imports the modules, runs the examples, checks the workflow, then publishes and imports into n8n |
+| `api` | any route of the REST API: user tasks, cases, messages, metrics, process mining, workflow checks |
+
+Ask it, for example, *"design an expense approval process in bpmn8n Studio"* or *"which user tasks are open?"*.
+
 ## Python environment
 
 Install Python 3.12 (minimum 3.11), then create the local environment from the repository root:
