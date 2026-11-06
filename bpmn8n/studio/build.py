@@ -220,7 +220,9 @@ class ProjectBuilder:
                                                  f"## Who decides\n\n**LLM agent**: {a.get('llm', '')}\n\n"
                                                  f"**GDPR**: {a.get('gdpr', '')}\n{choices}\n\n"
                                                  f"## Domain research{research}\n\n## Interview\n\n{transcript}\n")
-        if self.final.exists():  # a rebuild of this project
+        if self.final.exists():  # a rebuild of this project, never a folder Studio did not write
+            if not (self.final / "INTERVIEW.md").exists():
+                raise BuildError(f"projects/{self.project.slug} exists and was not built by Studio: left as it is")
             shutil.rmtree(self.final)
         self.draft.rename(self.final)
         return f"projects/{self.project.slug}/: tasks/ ({len(self.activities)} activities), examples.json, " \

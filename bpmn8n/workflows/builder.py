@@ -166,7 +166,8 @@ class Workflow:
         self.add(name, AGENT, {"promptType": "define", "text": "={{ $json.prompt }}",
                                "options": {"systemMessage": f"{instructions}\n\n{self.AGENT_RULES}".strip()}},
                  bpmn=False, version=3.1,  # an external provider's 429/503 ("high demand") is often gone in seconds
-                 retryOnFail=True, maxTries=3, waitBetweenTries=5000)
+                 retryOnFail=True, maxTries=3, waitBetweenTries=5000,
+                 onError="continueRegularOutput")  # then the error goes on as its answer: a person sees it
         if self.chat_model:
             self.add(f"{name}: model", self.chat_model["type"], self.chat_model["parameters"], bpmn=False,
                      version=self.chat_model["typeVersion"], same_column=True,
@@ -174,7 +175,8 @@ class Workflow:
             self.connections[f"{name}: model"] = {"ai_languageModel": [[{"node": name, "type": "ai_languageModel",
                                                                          "index": 0}]]}
         self.add(last, SET, {"mode": "manual", "assignments": {"assignments": [
-            {"id": str(uuid.uuid4()), "name": output, "value": "={{ $json.output }}", "type": "string"}]},
+            {"id": str(uuid.uuid4()), "name": output, "type": "string", "value":
+             "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"}]},
             "includeOtherFields": False, "options": {}}, bpmn=False, version=3.4)
         self.flow(first, name, last)
         self.steps[name] = (first, last)  # after its own flow: other steps' flows reach its first and leave its last

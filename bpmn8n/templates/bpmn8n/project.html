@@ -82,6 +82,7 @@
       <div class="msg {{ m.role }}"><b>{% if m.role == "user" %}You{% elif forloop.last and project.brief %}Brief{% else %}Studio{% endif %}</b><div class="text">{{ m.content|prose }}</div></div>
       {% empty %}<p class="empty">No message yet.</p>{% endfor %}
     </div>
+    {% if project.unanswered %}<p class="meta" role="status">Studio has not answered (the Steps say why): send your answer again, even “go on”, to ask it.</p>{% endif %}
     {% if project.status == "research" %}<p class="meta">Researching the domain on the web: the next question comes when it is done.</p>
     {% elif not project.busy %}
     <form class="fields" method="post">

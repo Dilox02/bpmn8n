@@ -113,6 +113,9 @@ class BuilderTest(SimpleTestCase):
         self.assertEqual(nodes["Draft: model"]["credentials"], {"googlePalmApi": {"id": "7"}})
         self.assertEqual(nodes["Draft: prompt"]["parameters"]["input"]["value"], {"prompt": "Reply to {{message}}"})
         self.assertIn("never present your answer as a final decision", nodes["Draft"]["parameters"]["options"]["systemMessage"])
+        # the provider down (after 3 tries): the error goes on as its answer, for the person after it
+        self.assertEqual((nodes["Draft"]["retryOnFail"], nodes["Draft"]["onError"]), (True, "continueRegularOutput"))
+        self.assertIn("The LLM did not answer", nodes["Draft: answer"]["parameters"]["assignments"]["assignments"][0]["value"])
         self.assertEqual(nodes["Draft: model"]["position"][0], nodes["Draft"]["position"][0])  # under its agent
         self.assertGreater(nodes["Draft: model"]["position"][1], nodes["Draft"]["position"][1])
 
