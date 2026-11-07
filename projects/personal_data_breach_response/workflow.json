@@ -1,0 +1,702 @@
+{
+  "name": "Personal data breach response",
+  "nodes": [
+    {
+      "id": "8900e553-e676-4a22-a1f3-19907ee111ad",
+      "name": "Incident Reported",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "security-incident",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "a09f8764-db18-40ea-833b-404f6e2c776a"
+    },
+    {
+      "id": "75628bf9-b135-44d0-b5ec-6bae66896efd",
+      "name": "Register Incident",
+      "type": "CUSTOM.bpmn8nScriptTask",
+      "typeVersion": 1,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/register_incident",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "e641bb81-2d64-40b7-9c04-3e506e1ee503",
+      "name": "Contain Incident",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "title": "Contain incident {{incident_id}}",
+        "lane": "it-security",
+        "description": "",
+        "context": {
+          "Report": "{{description}}"
+        },
+        "form": {
+          "fields": [
+            {
+              "name": "containment_actions",
+              "label": "What you did to contain it",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "fb97c3f8-c42d-45c3-aef1-5f8187d5b807",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "917b6a5d-0796-4496-bcbb-7e5f2a66a2b8",
+      "name": "Personal Data Involved?",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        840,
+        0
+      ],
+      "parameters": {
+        "decider": "laya",
+        "question": "Does this security incident involve personal data of people?",
+        "state": "{{description}}",
+        "minConfidence": 0.7,
+        "branches": {
+          "values": [
+            {
+              "name": "no",
+              "description": "only systems, availability or non-personal company data are affected"
+            },
+            {
+              "name": "yes",
+              "description": "personal data of customers, employees or other people was exposed, lost, altered or made unavailable"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "fad4f212-7cff-4e1a-9684-ca8a78620eb9",
+      "name": "Confirm No Personal Data",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "title": "Confirm: no personal data in {{incident_id}}",
+        "lane": "dpo",
+        "description": "",
+        "context": {
+          "Report": "{{description}}",
+          "Containment": "{{containment_actions}}"
+        },
+        "form": {
+          "fields": [
+            {
+              "name": "personal_data",
+              "label": "Personal data is involved after all",
+              "type": "boolean"
+            },
+            {
+              "name": "assessment_notes",
+              "label": "Reasons",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "eda55136-2452-43ca-9215-97f55834547c",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "bae89d8d-7da3-4463-a8c7-a0c3d64f4149",
+      "name": "Overruled?",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "no",
+              "condition": "not {{personal_data}}"
+            },
+            {
+              "name": "yes",
+              "condition": "{{personal_data}}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "b0e8e2d5-f63c-4381-bc9d-27c52ba6f2a2",
+      "name": "DPO Risk Assessment",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "title": "Assess the risk of {{incident_id}} (deadline {{authority_deadline}})",
+        "lane": "dpo",
+        "description": "",
+        "context": {
+          "Report": "{{description}}",
+          "Containment": "{{containment_actions}}"
+        },
+        "form": {
+          "fields": [
+            {
+              "name": "personal_data",
+              "label": "Personal data is involved",
+              "type": "boolean"
+            },
+            {
+              "name": "risk_to_people",
+              "label": "Likely risk to people's rights",
+              "type": "boolean"
+            },
+            {
+              "name": "high_risk",
+              "label": "High risk: inform the people concerned",
+              "type": "boolean"
+            },
+            {
+              "name": "assessment_notes",
+              "label": "Notes for the notification (no needless identifiers)",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "a9437626-9378-42e9-be10-ab4ad8379beb",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "0cb79d84-984a-469c-ab0a-b46d7156fffc",
+      "name": "Notify Authority?",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "no",
+              "condition": "not {{risk_to_people}}"
+            },
+            {
+              "name": "yes",
+              "condition": "{{risk_to_people}}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "085f8552-cda3-42b7-8e6b-edd13974b0ed",
+      "name": "Draft Authority Notification: prompt",
+      "type": "CUSTOM.bpmn8nScriptTask",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/compose_prompt",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prompt": "Draft the notification of personal data breach {{incident_id}} to the Italian supervisory authority (GDPR art. 33): nature of the breach, likely consequences, measures taken. Use only the DPO's notes: {{assessment_notes}}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "ec1eb32d-3560-4c37-aa6a-00715a5113b7",
+      "name": "Draft Authority Notification",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2520,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You draft for the Data Protection Officer, who reviews, corrects and sends it. Plain, factual, no invented facts.\n\nYou prepare work for a person, who reviews it and takes the decision: never present your answer as a final decision. Use only the data you are given. Explain briefly how you reached your answer, so the person can check it, and say plainly when the data is not enough."
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "52dda985-9b55-45ae-a5d4-ad2cde7f4314",
+      "name": "Draft Authority Notification: model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        2520,
+        400
+      ],
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash",
+        "options": {}
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "AeptuJCeaa84NDFt",
+          "name": "bpmn8n LLM: Gemini"
+        }
+      }
+    },
+    {
+      "id": "466abe6b-9e35-456f-a69a-390faf2e8f9d",
+      "name": "Draft Authority Notification: answer",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2800,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1493f51e-4973-4e83-9fa3-70b962d956d5",
+              "name": "draft_notification",
+              "type": "string",
+              "value": "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "f45c817d-0b55-4ee7-926e-4f0b970d8d33",
+      "name": "Review and Send to Garante",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        0
+      ],
+      "parameters": {
+        "title": "Send the notification of {{incident_id}} before {{authority_deadline}}",
+        "lane": "dpo",
+        "description": "",
+        "context": {
+          "Draft (written by an AI model)": "{{draft_notification}}"
+        },
+        "form": {
+          "fields": [
+            {
+              "name": "authority_sent",
+              "label": "Sent to the Garante",
+              "type": "boolean"
+            },
+            {
+              "name": "final_text",
+              "label": "Text as sent",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "509f9f5e-1c66-4c51-8e68-08b5b2f7fbcb",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "36e171b3-6e11-4976-84c6-806ce721a834",
+      "name": "Inform People?",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "no",
+              "condition": "not {{high_risk}}"
+            },
+            {
+              "name": "yes",
+              "condition": "{{high_risk}}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "5ce4b051-135f-4a99-9dc4-51e935ce2382",
+      "name": "Inform Data Subjects",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        3640,
+        0
+      ],
+      "parameters": {
+        "title": "Inform the people concerned by {{incident_id}}",
+        "lane": "dpo",
+        "description": "",
+        "context": {
+          "Assessment": "{{assessment_notes}}"
+        },
+        "form": {
+          "fields": [
+            {
+              "name": "people_informed",
+              "label": "Informed, in plain language",
+              "type": "boolean"
+            },
+            {
+              "name": "channel",
+              "label": "How",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "7454f826-8f31-4230-8549-13671c374450",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "c7c1fa46-50f9-4ce5-89ba-050f06e9b406",
+      "name": "Record in Breach Register",
+      "type": "CUSTOM.bpmn8nBusinessRuleTask",
+      "typeVersion": 1,
+      "position": [
+        3920,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/record_breach",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Draft Authority Notification: model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Draft Authority Notification",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Authority Notification: prompt": {
+      "main": [
+        [
+          {
+            "node": "Draft Authority Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Authority Notification": {
+      "main": [
+        [
+          {
+            "node": "Draft Authority Notification: answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident Reported": {
+      "main": [
+        [
+          {
+            "node": "Register Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Incident": {
+      "main": [
+        [
+          {
+            "node": "Contain Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contain Incident": {
+      "main": [
+        [
+          {
+            "node": "Personal Data Involved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Personal Data Involved?": {
+      "main": [
+        [
+          {
+            "node": "Confirm No Personal Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DPO Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DPO Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DPO Risk Assessment": {
+      "main": [
+        [
+          {
+            "node": "Notify Authority?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm No Personal Data": {
+      "main": [
+        [
+          {
+            "node": "Overruled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Overruled?": {
+      "main": [
+        [
+          {
+            "node": "Record in Breach Register",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DPO Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Authority?": {
+      "main": [
+        [
+          {
+            "node": "Record in Breach Register",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Authority Notification: prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Authority Notification: answer": {
+      "main": [
+        [
+          {
+            "node": "Review and Send to Garante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review and Send to Garante": {
+      "main": [
+        [
+          {
+            "node": "Inform People?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inform People?": {
+      "main": [
+        [
+          {
+            "node": "Record in Breach Register",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Inform Data Subjects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inform Data Subjects": {
+      "main": [
+        [
+          {
+            "node": "Record in Breach Register",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

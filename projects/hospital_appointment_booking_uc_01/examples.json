@@ -1,0 +1,190 @@
+{
+  "pseudonymise_patient_data": [
+    {
+      "input": {
+        "email": "mario.rossi@example.com",
+        "phone": "+39 333 123 4567",
+        "message": "Hello, I am Mario Rossi (RSSMRA80A01H501U), write to mario.rossi@example.com or call +39 333 123 4567. I need a cardiology appointment next week in the morning.",
+        "patient_id": "PAT-001",
+        "fiscal_code": "RSSMRA80A01H501U",
+        "patient_name": "Mario Rossi"
+      },
+      "output": {
+        "redactions": 4,
+        "redacted_conversation": "Patient: Hello, I am [NAME] ([FISCAL_CODE]), write to [EMAIL] or call [PHONE]. I need a cardiology appointment next week in the morning."
+      }
+    },
+    {
+      "input": {
+        "message": "Cardiology please, I was born on 1980-01-01.",
+        "patient_id": "PAT-002",
+        "date_of_birth": "1980-01-01",
+        "patient_reply": "Between 2026-11-09 and 2026-11-13, mornings. My other number is 06 1234 5678.",
+        "agent_question": "Which dates suit you?",
+        "redacted_conversation": "Patient: Cardiology please, I was born on [DATE_OF_BIRTH]."
+      },
+      "output": {
+        "redactions": 1,
+        "redacted_conversation": "Patient: Cardiology please, I was born on [DATE_OF_BIRTH].\nAgent: Which dates suit you?\nPatient: Between 2026-11-09 and 2026-11-13, mornings. My other number is [PHONE]."
+      }
+    },
+    {
+      "input": {
+        "message": "I need a dermatology visit in December.",
+        "patient_id": "PAT-003"
+      },
+      "output": {
+        "redactions": 0,
+        "redacted_conversation": "Patient: I need a dermatology visit in December."
+      }
+    }
+  ],
+  "read_booking_preferences": [
+    {
+      "input": {
+        "agent_reply": "SERVICE: Cardiology\nEARLIEST: 2026-11-09\nLATEST: 2026-11-13\nTIME: morning\nDOCTOR: any\nQUESTION: none\nREASONS: the patient asked for cardiology next week in the morning."
+      },
+      "output": {
+        "doctor": "",
+        "latest": "2026-11-13",
+        "service": "Cardiology",
+        "earliest": "2026-11-09",
+        "time_of_day": "morning",
+        "missing_information": "",
+        "information_complete": true
+      }
+    },
+    {
+      "input": {
+        "agent_reply": "SERVICE: cardiology\nEARLIEST:\nLATEST:\nTIME: any\nDOCTOR: any\nQUESTION: Which days would suit you?\nREASONS: no dates were given."
+      },
+      "output": {
+        "service": "Cardiology",
+        "agent_question": "Which days would suit you?",
+        "missing_information": "preferred dates",
+        "information_complete": false
+      }
+    },
+    {
+      "input": {
+        "agent_reply": "SERVICE: none\nEARLIEST: 2026-11-13\nLATEST: 2026-11-09\nTIME:\nDOCTOR: Dr Example\nQUESTION: none"
+      },
+      "output": {
+        "doctor": "Dr Example",
+        "service": "",
+        "missing_information": "medical specialty, preferred dates, time of day",
+        "information_complete": false
+      }
+    }
+  ],
+  "validate_booking_request": [
+    {
+      "input": {
+        "service": "Astrology",
+        "earliest": "2099-11-09",
+        "latest": "2099-11-13",
+        "registered": true,
+        "referral_required": true,
+        "referral_present": false
+      },
+      "output": {
+        "failed_check": "referral",
+        "validation_report": "Registered patient: yes. Referral: required, missing. Service Astrology: not in the service directory. Dates 2099-11-09 to 2099-11-13: valid. Result: 2 checks failed (referral, service)."
+      }
+    },
+    {
+      "input": {
+        "latest": "2026-11-09",
+        "service": "Astrology",
+        "earliest": "2026-11-13",
+        "registered": false
+      },
+      "output": {
+        "failed_check": "registration",
+        "validation_report": "Registered patient: no. Referral: not required. Service Astrology: not in the service directory. Dates 2026-11-13 to 2026-11-09: invalid. Result: 3 checks failed (registration, service, dates)."
+      }
+    }
+  ],
+  "search_appointment_slots": [
+    {
+      "input": {
+        "latest": "2026-11-20",
+        "service": "Cardiology",
+        "earliest": "2026-11-16",
+        "time_of_day": "morning"
+      },
+      "output": {
+        "morning": true,
+        "slot_ids": "",
+        "slots_available": false
+      }
+    },
+    {
+      "input": {
+        "latest": "2026-11-13",
+        "service": "Dermatology",
+        "earliest": "2026-11-09",
+        "time_of_day": "any"
+      },
+      "output": {
+        "slot_ids": "",
+        "slots_available": false,
+        "alternatives_available": false
+      }
+    }
+  ],
+  "present_appointment_options": [
+    {
+      "input": {
+        "slot_ids": ""
+      },
+      "output": {
+        "option_count": 0,
+        "options_text": "No appointment options."
+      }
+    },
+    {
+      "input": {
+        "slot_ids": "999999"
+      },
+      "output": {
+        "option_count": 0
+      }
+    }
+  ],
+  "assign_staff_escalation": [
+    {
+      "input": {
+        "patient_ref": "PT-0123456789ab",
+        "failed_check": "referral",
+        "validation_report": "Registered patient: yes. Referral: required, missing. Result: 1 check failed (referral)."
+      },
+      "output": {
+        "priority": "normal",
+        "staff_team": "admissions-desk"
+      }
+    },
+    {
+      "input": {
+        "patient_ref": "PT-0123456789ab",
+        "failed_check": "service",
+        "validation_report": "Service Astrology: not in the service directory."
+      },
+      "output": {
+        "priority": "normal",
+        "staff_team": "booking-desk"
+      }
+    },
+    {
+      "input": {
+        "patient_ref": "PT-0123456789ab",
+        "failed_check": "none",
+        "validation_report": "Result: all checks passed."
+      },
+      "output": {
+        "priority": "high",
+        "staff_team": "booking-desk"
+      }
+    }
+  ]
+}

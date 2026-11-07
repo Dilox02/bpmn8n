@@ -1,0 +1,48 @@
+{
+  "register_incident": [
+    {
+      "input": {
+        "description": "x",
+        "detected_at": "2026-11-06T10:00:00+01:00"
+      },
+      "output": {
+        "aware_at": "2026-11-06T09:00:00+00:00",
+        "incident_id": "INC-20261106T0900",
+        "detected_at_valid": true,
+        "authority_deadline": "2026-11-09T09:00:00+00:00"
+      }
+    },
+    {
+      "input": {
+        "description": "x",
+        "detected_at": "this morning"
+      },
+      "output": {
+        "detected_at_valid": false
+      }
+    }
+  ],
+  "record_breach": [
+    {
+      "input": {
+        "high_risk": false,
+        "incident_id": "INC-1",
+        "personal_data": true,
+        "risk_to_people": true,
+        "assessment_notes": "names exposed"
+      },
+      "output": {
+        "authority_notified": true
+      }
+    },
+    {
+      "input": {
+        "incident_id": "INC-2",
+        "personal_data": false
+      },
+      "output": {
+        "authority_notified": false
+      }
+    }
+  ]
+}

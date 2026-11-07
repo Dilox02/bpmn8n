@@ -1,0 +1,927 @@
+{
+  "name": "Motor insurance claim",
+  "nodes": [
+    {
+      "id": "a519c37a-369b-4bd7-b427-fa9d9b33e4af",
+      "name": "Claim Submitted",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "motor-claim",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "e9a90caa-ed39-4fa5-a2e8-c3feba906b1e"
+    },
+    {
+      "id": "ef1670e6-c01d-4f5f-b3a4-cc5b5e7789ba",
+      "name": "Has Joint Report Photo",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "yes",
+              "condition": "{{report_photo}} != '' and {{report_photo}} != None"
+            },
+            {
+              "name": "no",
+              "condition": "{{report_photo}} == '' or {{report_photo}} == None"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "d98dc82f-600f-4804-8cb4-093e2c250458",
+      "name": "Read Joint Report Photo",
+      "type": "CUSTOM.bpmn8nServiceTask",
+      "typeVersion": 1,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/read_document_text",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "image": "{{report_photo}}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "c18597d7-3cf9-4f55-b890-79333b3c7bca",
+      "name": "Merge Photo Branch",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        840,
+        0
+      ],
+      "parameters": {
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "b6383423-4233-4b01-9427-1be5efc85030",
+      "name": "Check Policy Status",
+      "type": "CUSTOM.bpmn8nServiceTask",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/check_policy_status",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "6825f587-90d0-4464-9b1b-31ee0d86f515",
+      "name": "Calculate Fraud Indicators",
+      "type": "CUSTOM.bpmn8nServiceTask",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/calculate_fraud_indicators",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "8a26cd70-b3bf-4410-a3da-1c284fa148f0",
+      "name": "Verify Policy Validity",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "valid",
+              "condition": "{{policy_valid}} == true"
+            },
+            {
+              "name": "invalid",
+              "condition": "{{policy_valid}} == false"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "da30b339-c551-48e2-90ec-774285f9500f",
+      "name": "Review Inactive Policy Claim",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        400
+      ],
+      "parameters": {
+        "title": "Review Inactive Policy Claim for {{name}} (Policy: {{policy_number}})",
+        "lane": "claims-handlers",
+        "description": "",
+        "context": "",
+        "form": {
+          "fields": [
+            {
+              "name": "approved",
+              "label": "Approve Policy Exception",
+              "type": "boolean"
+            },
+            {
+              "name": "reason",
+              "label": "Decision Reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "41506621-b7cb-454f-9570-3f7443a8185b",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "dc8e6b69-03e6-4d88-a0d5-295dedf3d77b",
+      "name": "Check Theft Event",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "theft",
+              "condition": "{{event_type}} == 'theft'"
+            },
+            {
+              "name": "accident",
+              "condition": "{{event_type}} != 'theft'"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "7f57d033-829a-4a6f-9e02-306d3021aa7c",
+      "name": "Wait for Police Report",
+      "type": "CUSTOM.bpmn8nEventBasedGateway",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        0
+      ],
+      "parameters": {
+        "branches": {
+          "values": [
+            {
+              "name": "Police Report Uploaded"
+            }
+          ]
+        },
+        "correlationKey": "{{policy_number}}",
+        "mode": "for",
+        "amount": 10,
+        "unit": "days"
+      },
+      "webhookId": "c1928729-10a9-49ae-a5b8-c1880b36ec84",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "a4ad7200-f1c7-486c-94dc-d1f7aa5a954e",
+      "name": "Review Missing Police Report",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        2520,
+        0
+      ],
+      "parameters": {
+        "title": "Review Unsubmitted Theft Police Report for {{name}}",
+        "lane": "claims-handlers",
+        "description": "",
+        "context": "",
+        "form": {
+          "fields": [
+            {
+              "name": "approved",
+              "label": "Approve Claim Without Police Report",
+              "type": "boolean"
+            },
+            {
+              "name": "reason",
+              "label": "Decision Reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "c9a51955-c5a3-4c7b-99ff-068803789c7e",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "f4bdf649-70cc-4503-ae0b-a252fd1c3b37",
+      "name": "Merge Police Report",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2520,
+        600
+      ],
+      "parameters": {
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "5261be4a-8fb2-4377-a8e7-2ef6be30f591",
+      "name": "Route Claim Decision",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        600
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "fraud_investigation",
+              "condition": "{{fraud_signal}} == true or {{days_since_event}} > 30 or {{claims_past_12m}} >= 3"
+            },
+            {
+              "name": "senior_review",
+              "condition": "{{amount_claimed}} > 15000 or {{injured}} == true"
+            },
+            {
+              "name": "fast_track",
+              "condition": "{{amount_claimed}} < 1500 and {{injured}} == false"
+            },
+            {
+              "name": "standard_review",
+              "condition": "{{amount_claimed}} >= 1500 and {{amount_claimed}} <= 15000 and {{injured}} == false"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "43c9fd6e-357a-4662-aae3-59697612c951",
+      "name": "Investigate Fraud Claim",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        600
+      ],
+      "parameters": {
+        "title": "Fraud Signal Investigation for Policy {{policy_number}} (Claimant: {{name}})",
+        "lane": "anti-fraud",
+        "description": "",
+        "context": "",
+        "form": {
+          "fields": [
+            {
+              "name": "approved",
+              "label": "Approve Claim",
+              "type": "boolean"
+            },
+            {
+              "name": "reason",
+              "label": "Investigation Findings and Reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "608e36f2-58d9-4623-ac47-c965411e0d45",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "e414ce25-7e08-43d6-8ebb-e870863b92ec",
+      "name": "Review High Value/Injury Claim",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        1000
+      ],
+      "parameters": {
+        "title": "Senior Review: Claim {{amount_claimed}} EUR (Injured: {{injured}}) - Policy {{policy_number}}",
+        "lane": "senior-adjusters",
+        "description": "",
+        "context": "",
+        "form": {
+          "fields": [
+            {
+              "name": "approved",
+              "label": "Approve Claim",
+              "type": "boolean"
+            },
+            {
+              "name": "reason",
+              "label": "Adjuster Decision Reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "e9173831-23ef-467e-9660-5b5cae255960",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "4f22aeb0-9a5d-4ae5-8753-58ffd7198660",
+      "name": "Fast-Track Claim Review",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        1200
+      ],
+      "parameters": {
+        "title": "Fast-Track Review: {{amount_claimed}} EUR for {{name}}",
+        "lane": "claims-handlers",
+        "description": "",
+        "context": "",
+        "form": {
+          "fields": [
+            {
+              "name": "approved",
+              "label": "Approve Claim",
+              "type": "boolean"
+            },
+            {
+              "name": "reason",
+              "label": "Approval/Rejection Reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "e4867d60-4882-45ec-bace-9b1330db28e7",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "39019d44-8174-445d-a6df-a849a9e97ed5",
+      "name": "Standard Claim Review",
+      "type": "CUSTOM.bpmn8nUserTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        1400
+      ],
+      "parameters": {
+        "title": "Standard Review: {{amount_claimed}} EUR for {{name}}",
+        "lane": "claims-handlers",
+        "description": "",
+        "context": "",
+        "form": {
+          "fields": [
+            {
+              "name": "approved",
+              "label": "Approve Claim",
+              "type": "boolean"
+            },
+            {
+              "name": "reason",
+              "label": "Evaluation Reason",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "webhookId": "b27538f8-d20a-4cfc-a64d-b107dc4568b0",
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "0e017f14-c73b-4291-914e-ff1fdca92faf",
+      "name": "Merge Decision Outcome",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3360,
+        0
+      ],
+      "parameters": {
+        "numberInputs": 6
+      }
+    },
+    {
+      "id": "eff5af62-fd07-4914-bbfb-023608b4c4a2",
+      "name": "Is Claim Approved",
+      "type": "CUSTOM.bpmn8nExclusiveGateway",
+      "typeVersion": 1,
+      "position": [
+        3640,
+        0
+      ],
+      "parameters": {
+        "decider": "conditions",
+        "branches": {
+          "values": [
+            {
+              "name": "approved",
+              "condition": "{{approved}} == true"
+            },
+            {
+              "name": "rejected",
+              "condition": "{{approved}} == false"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "20003959-d8c6-426d-8d09-3834f94766ef",
+      "name": "Issue Payout",
+      "type": "CUSTOM.bpmn8nServiceTask",
+      "typeVersion": 1,
+      "position": [
+        3920,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/issue_payout",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "iban": "{{iban}}",
+            "amount": "{{amount_claimed}}",
+            "recipient_name": "{{name}}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "f9e28f4f-0c03-46db-a171-f4411ee38403",
+      "name": "Send Approval Notification",
+      "type": "CUSTOM.bpmn8nSendTask",
+      "typeVersion": 1,
+      "position": [
+        4200,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/send_notification",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "to": "{{email}}",
+            "subject": "Motor Insurance Claim Approved",
+            "body": "Dear {{name}},\n\nYour motor insurance claim for policy {{policy_number}} has been approved for the amount of {{amount_claimed}} EUR.\n\nDecision details: {{reason}}\n\nThe payout transfer has been initiated to your IBAN."
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "d02656f1-94fa-443e-b3f1-de6994beb528",
+      "name": "Send Rejection Notification",
+      "type": "CUSTOM.bpmn8nSendTask",
+      "typeVersion": 1,
+      "position": [
+        3920,
+        1600
+      ],
+      "parameters": {
+        "task": "/api/tasks/send_notification",
+        "output": "result",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "to": "{{email}}",
+            "subject": "Motor Insurance Claim Outcome",
+            "body": "Dear {{name}},\n\nYour motor insurance claim for policy {{policy_number}} has been reviewed.\n\nDecision outcome: Claim Rejected.\nReason: {{reason}}\n\nIf you have questions, please contact customer support."
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Claim Submitted": {
+      "main": [
+        [
+          {
+            "node": "Has Joint Report Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Joint Report Photo": {
+      "main": [
+        [
+          {
+            "node": "Read Joint Report Photo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Photo Branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Joint Report Photo": {
+      "main": [
+        [
+          {
+            "node": "Merge Photo Branch",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Photo Branch": {
+      "main": [
+        [
+          {
+            "node": "Check Policy Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Policy Status": {
+      "main": [
+        [
+          {
+            "node": "Calculate Fraud Indicators",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Fraud Indicators": {
+      "main": [
+        [
+          {
+            "node": "Verify Policy Validity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Policy Validity": {
+      "main": [
+        [
+          {
+            "node": "Check Theft Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Review Inactive Policy Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Inactive Policy Claim": {
+      "main": [
+        [
+          {
+            "node": "Merge Decision Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Theft Event": {
+      "main": [
+        [
+          {
+            "node": "Wait for Police Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Police Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Police Report": {
+      "main": [
+        [
+          {
+            "node": "Review Missing Police Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Police Report",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Review Missing Police Report": {
+      "main": [
+        [
+          {
+            "node": "Merge Decision Outcome",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Police Report": {
+      "main": [
+        [
+          {
+            "node": "Route Claim Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Claim Decision": {
+      "main": [
+        [
+          {
+            "node": "Investigate Fraud Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Review High Value/Injury Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fast-Track Claim Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Standard Claim Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Investigate Fraud Claim": {
+      "main": [
+        [
+          {
+            "node": "Merge Decision Outcome",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Review High Value/Injury Claim": {
+      "main": [
+        [
+          {
+            "node": "Merge Decision Outcome",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Fast-Track Claim Review": {
+      "main": [
+        [
+          {
+            "node": "Merge Decision Outcome",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Standard Claim Review": {
+      "main": [
+        [
+          {
+            "node": "Merge Decision Outcome",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Merge Decision Outcome": {
+      "main": [
+        [
+          {
+            "node": "Is Claim Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Claim Approved": {
+      "main": [
+        [
+          {
+            "node": "Issue Payout",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Rejection Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue Payout": {
+      "main": [
+        [
+          {
+            "node": "Send Approval Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

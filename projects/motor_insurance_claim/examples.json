@@ -1,0 +1,72 @@
+{
+  "check_policy_status": [
+    {
+      "input": {
+        "policy_number": "POL-9921",
+        "event_date": "2024-03-10"
+      },
+      "output": {
+        "policy_active": true,
+        "covers_event_date": true,
+        "policy_valid": true
+      }
+    },
+    {
+      "input": {
+        "policy_number": "POL-1002",
+        "event_date": "2023-01-01"
+      },
+      "output": {
+        "policy_active": false,
+        "covers_event_date": false,
+        "policy_valid": false
+      }
+    }
+  ],
+  "calculate_fraud_indicators": [
+    {
+      "input": {
+        "policy_number": "POL-8812",
+        "event_date": "2024-02-01"
+      },
+      "output": {
+        "days_since_event": 45,
+        "claims_past_12m": 1,
+        "fraud_signal": true
+      }
+    },
+    {
+      "input": {
+        "policy_number": "POL-3311",
+        "event_date": "2024-03-20"
+      },
+      "output": {
+        "days_since_event": 5,
+        "claims_past_12m": 0,
+        "fraud_signal": false
+      }
+    }
+  ],
+  "issue_payout": [
+    {
+      "input": {
+        "iban": "DE89370400440532013000",
+        "amount": 1200.0,
+        "recipient_name": "Maria Rossi"
+      },
+      "output": {
+        "payout_status": "submitted"
+      }
+    },
+    {
+      "input": {
+        "iban": "IT60X0542811101000000123456",
+        "amount": 18500.5,
+        "recipient_name": "John Doe"
+      },
+      "output": {
+        "payout_status": "submitted"
+      }
+    }
+  ]
+}

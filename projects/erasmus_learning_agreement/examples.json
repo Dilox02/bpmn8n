@@ -1,0 +1,57 @@
+{
+  "check_learning_agreement": [
+    {
+      "input": {
+        "courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 6 | Basi di dati\nThesis preparation | 12 | Tirocinio\nSpanish B1 | 6 | Lingua straniera"
+      },
+      "output": {
+        "ects_ok": true,
+        "submission": 1,
+        "total_ects": 30,
+        "attempts_left": true,
+        "needs_opinions": true,
+        "unmatched_count": 1
+      }
+    },
+    {
+      "input": {
+        "courses": "Machine Learning | 6 | Machine Learning\nSpanish B1 | 6 | Lingua straniera",
+        "submission": 2
+      },
+      "output": {
+        "ects_ok": false,
+        "submission": 3,
+        "total_ects": 12,
+        "attempts_left": false
+      }
+    },
+    {
+      "input": {
+        "courses": "Machine Learning | six | Machine Learning"
+      },
+      "output": {
+        "ects_ok": false,
+        "submission": 1
+      }
+    }
+  ],
+  "compute_signature_deadline": [
+    {
+      "input": {
+        "departure_date": "2027-02-01"
+      },
+      "output": {
+        "alert_date": "2027-01-17T09:00:00+00:00",
+        "deadline_valid": true
+      }
+    },
+    {
+      "input": {
+        "departure_date": "next spring"
+      },
+      "output": {
+        "deadline_valid": false
+      }
+    }
+  ]
+}
