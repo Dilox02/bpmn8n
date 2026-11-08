@@ -21,6 +21,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import uuid
 from functools import cached_property
 from pathlib import Path
 
@@ -128,6 +129,11 @@ class ProjectBuilder:
             elif not a.get("examples") or not all(isinstance(e, dict) and isinstance(e.get("input"), dict)
                                                   and isinstance(e.get("output"), dict) for e in a["examples"]):
                 problems.append(f"activity {name}: give it 2 or 3 examples, each {{\"input\": {{...}}, \"output\": {{...}}}}")
+            elif isinstance(a.get("outputs"), list) and a["outputs"]:
+                outputs = {f["name"] for f in a["outputs"]
+                           if isinstance(f, dict) and isinstance(f.get("name"), str)}
+                if not any(outputs.intersection(e["output"]) for e in a["examples"]):
+                    problems.append(f"activity {name}: its examples must assert at least one declared output field")
             seen.add(name)
         return problems
 
@@ -220,11 +226,24 @@ class ProjectBuilder:
                                                  f"## Who decides\n\n**LLM agent**: {a.get('llm', '')}\n\n"
                                                  f"**GDPR**: {a.get('gdpr', '')}\n{choices}\n\n"
                                                  f"## Domain research{research}\n\n## Interview\n\n{transcript}\n")
+        backup = None
         if self.final.exists():  # a rebuild of this project, never a folder Studio did not write
             if not (self.final / "INTERVIEW.md").exists():
                 raise BuildError(f"projects/{self.project.slug} exists and was not built by Studio: left as it is")
-            shutil.rmtree(self.final)
-        self.draft.rename(self.final)
+            backup = self.final.with_name(f"_{self.project.slug}_backup_{uuid.uuid4().hex}")
+            self.final.rename(backup)
+        try:
+            self.draft.rename(self.final)
+        except OSError as e:
+            if backup:
+                try:
+                    backup.rename(self.final)
+                except OSError as restore:
+                    raise BuildError(f"publication failed: {e}; the previous project is kept at {backup}, "
+                                     f"but restoring it failed: {restore}") from e
+            raise
+        if backup:
+            shutil.rmtree(backup)
         return f"projects/{self.project.slug}/: tasks/ ({len(self.activities)} activities), examples.json, " \
                "process.py, workflow.json, INTERVIEW.md"
 

@@ -66,8 +66,10 @@ export abstract class WaitingNode implements INodeType {
 				});
 			}
 			const until = spec.until?.(this) ?? WAIT_INDEFINITELY;
-			const resumeUrl = this.evaluateExpression('{{ $execution.resumeUrl }}', 0) as string;
-			await spec.register(this, new Bpmn8nClient(this), resumeUrl, until, items.length ? items : [{}]);
+			const resumeUrl = new URL(this.evaluateExpression('{{ $execution.resumeUrl }}', 0) as string);
+			// n8n reuses its URL across waits; each node run needs its own retry identity.
+			resumeUrl.searchParams.set('bpmn8n_wait', `${this.getNode().id}:${this.evaluateExpression('{{ $runIndex }}', 0)}`);
+			await spec.register(this, new Bpmn8nClient(this), resumeUrl.toString(), until, items.length ? items : [{}]);
 			await this.putExecutionToWait(until);
 			// When `until` passes, n8n re-runs this node *disabled*, which passes the items through its
 			// first output (workflow-execute handleWaitingState): so "timed out" is always output 0.

@@ -185,7 +185,7 @@ def as_data(result):
 
 def same(actual, expected):
     numbers = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (actual, expected))
-    return math.isclose(actual, expected, abs_tol=0.005) if numbers else actual == expected
+    return math.isclose(actual, expected, rel_tol=0, abs_tol=0.005) if numbers else actual == expected
 
 
 def task(kind="serviceTask", **options):

@@ -176,18 +176,20 @@ open ──claim──▶ claimed ──complete──▶ completed
 - **claim**: a person takes the task; the others see it read-only until it is released or completed;
 - **complete**: in a single transaction the task closes, the form goes into the case's variables and the event log, and n8n resumes. If n8n does not answer, nothing changes and you can retry; if the execution no longer exists (n8n answers 404, or 409 "finished"), the task becomes **cancelled** instead of staying open forever;
 - with several items (multi-instance) the process resumes when all the tasks of the group are completed, with one item per task in the order of the items;
-- if n8n runs the node again (a retry, a restart) it gets the same tasks, with no duplicates;
+- if n8n retries the same node run, it gets the entire original batch, including completed tasks, with no duplicates; a new loop iteration creates a new wait;
 - an administrator can cancel tasks left hanging from the admin (the *Cancel* action).
 
 The same states apply to messages: the losers of an Event-Based Gateway become *cancelled*; a message for an execution that no longer exists goes to the next one waiting.
 
 ## Workflow check
 
-`POST /api/workflows/check[?start_data=a,b]` (the n8n workflow as JSON) or `python manage.py check_workflow file.json [--start-data a,b] [--json]` (exits with 1 if there are errors). For a whole project folder, `python manage.py check_project projects/<name> [--json]`: every module imports, every activity passes its examples, `workflow.json` passes the check with the start data of `process.py`. The start data are the fields of the webhook body: Studio knows them from the interview and declares them, so every variable is checked. The checks use the outputs the `@task`s declare (`-> Schema`): after a step with an unknown output (no schema, a message) those checks stop.
+`POST /api/workflows/check[?start_data=a,b]` (the n8n workflow as JSON) or `python manage.py check_workflow file.json [--start-data a,b] [--json]` (exits with 1 if there are errors). For a whole project folder, `python manage.py check_project projects/<name> [--json]`: every module imports, every activity passes its examples, `workflow.json` passes the check with the start data of `process.py`. The start data are the fields of the webhook body: Studio knows them from the interview and declares them, so every variable is checked.
+
+The checker follows paths from triggers. Required fields must exist on every alternative path, including the first entry into a loop; a guaranteed parallel join combines its branches' fields. Unknown output schemas remain conservative, but do not hide missing data on a known alternative. Event gateway message outputs have unknown payloads; timeout preserves the incoming data. Disabled nodes pass data through output 0. Missing lone-template entries in a human task's optional context are warnings because rendering omits those entries; missing title variables and required task inputs remain errors. A condition counts as a person's decision only while its fields retain human provenance on every path, without a later automated overwrite.
 
 | Level | What it finds |
 |---|---|
-| error | a workflow with no step after its trigger; a `@task` that does not exist or is of another kind than the node; a node nothing leads to that is not a trigger; an invalid condition; a Call Activity whose sub-process waits (people, messages). With the start data declared (`start_data`): a required input or a `{{variable}}` that no earlier step produces |
+| error | a workflow with no step after its trigger; a connection to a missing node; a `@task` that does not exist or is of another kind than the node; a node unreachable from a trigger, including detached cycles; an invalid condition; a Call Activity whose sub-process waits (people, messages). With the start data declared (`start_data`): a required input or a required `{{variable}}` not supplied on every alternative path |
 | error | after an LLM agent, a path that reaches an end without passing through a person (User or Manual Task) |
 | warning | a gateway output that leads nowhere (for Laya also `default`: a person decides there); a lane without a group; no trigger; a sub-process that cannot be read; after a gateway (Laya or conditions), a path that reaches an end without a person (not for a conditions gateway that reads only fields of forms filled in before it: it applies a person's decision) |
 | info | without declared start data: the fields the webhook body must carry (the required inputs that no earlier step produces) |

@@ -22,7 +22,8 @@ from .builder import AGENT, BRANCHING, MERGE, SET, TASK_KINDS, node_type, output
 TASK_NODES = {node_type(kind): kind for kind in TASK_KINDS}  # node type -> @task kind
 HUMAN = (node_type("userTask"), node_type("manualTask"))
 WAITING = (*HUMAN, node_type("receiveTask"), node_type("eventBasedGateway"))
-TRANSPARENT = (*BRANCHING, node_type("timerEvent"), MERGE)  # pass data on, produce none
+NOOP = "n8n-nodes-base.noOp"
+TRANSPARENT = (*BRANCHING, node_type("timerEvent"), MERGE, NOOP)  # pass data on, produce none
 STICKY = "n8n-nodes-base.stickyNote"
 DECIDING = (node_type("exclusiveGateway"), node_type("inclusiveGateway"), AGENT)  # a model or a rule chooses
 
@@ -50,20 +51,24 @@ class WorkflowCheck:
 
     def __init__(self, workflow, fetch=n8n.workflow, start_data=None):
         self.fetch, self.start_data = fetch, None if start_data is None else set(start_data)
-        self.nodes = {n["name"]: n for n in workflow.get("nodes", []) if not n.get("disabled") and n["type"] != STICKY}
+        self.connections = workflow.get("connections", {})
+        self.node_names = {n["name"] for n in workflow.get("nodes", [])}
+        # n8n executes a disabled node as a pass-through on output 0, not a missing step.
+        self.nodes = {n["name"]: {**n, "type": NOOP, "parameters": {}} if n.get("disabled") else n
+                      for n in workflow.get("nodes", []) if n["type"] != STICKY}
         self.outs = {name: [[c["node"] for c in port or [] if c["node"] in self.nodes]
-                            for port in workflow.get("connections", {}).get(name, {}).get("main", [])]
-                     for name in self.nodes}
+                            for port in self.connections.get(name, {}).get("main", [])[:1 if node.get("disabled") else None]]
+                     for name, node in self.nodes.items()}
         self.into = {name: {src for src, ports in self.outs.items() for port in ports if name in port}
                      for name in self.nodes}
         # sub-nodes (an agent's chat model) connect to their node, not in the flow
-        self.subnodes = {name for name, outs in workflow.get("connections", {}).items() if "main" not in outs}
+        self.subnodes = {name for name, outs in self.connections.items() if "main" not in outs}
 
     @cached_property
     def problems(self):
-        rules = (self.has_trigger, self.reachable, self.tasks_exist, self.outputs_connected, self.conditions_valid,
-                 self.lanes_exist, self.subprocesses_run_through, self.data_provided, self.people_decide,
-                 self.one_wait_at_a_time)
+        rules = (self.has_trigger, self.connections_valid, self.reachable, self.tasks_exist, self.outputs_connected,
+                 self.conditions_valid, self.lanes_exist, self.subprocesses_run_through, self.data_provided,
+                 self.people_decide, self.one_wait_at_a_time)
         return [problem for rule in rules for problem in rule()]
 
     @property
@@ -82,9 +87,21 @@ class WorkflowCheck:
             yield Problem("", "trigger", "no trigger: add a webhook (or another trigger) that starts the case", "warning")
 
     def reachable(self):
+        starts = [name for name, node in self.nodes.items() if is_trigger(node)]
+        reached = set().union(*(self.after(name) for name in starts)) if starts else None
         for name, node in self.nodes.items():
-            if not self.into[name] and not is_trigger(node) and name not in self.subnodes:
-                yield Problem(name, "reachable", "nothing leads here and it is not a trigger: it never runs")
+            if name not in self.subnodes and (name not in reached if reached is not None else not self.into[name]):
+                yield Problem(name, "reachable", "no path from a trigger leads here: it never runs")
+
+    def connections_valid(self):
+        for source, kinds in self.connections.items():
+            if source not in self.node_names:
+                yield Problem(source, "connection", "connection starts at a node that does not exist")
+            for ports in kinds.values():
+                for port in ports:
+                    for link in port or []:
+                        if link["node"] not in self.node_names:
+                            yield Problem(source, "connection", f"connection leads to missing node {link['node']!r}")
 
     def tasks_exist(self):
         for name, node in self.of_type(*TASK_NODES):
@@ -139,9 +156,9 @@ class WorkflowCheck:
 
     def data_provided(self):
         """Whether what each node reads exists by then: the required inputs of a task that its node
-        does not set, and the {{variables}} its fields use, against what earlier steps produce. Nodes
-        after a step whose output is unknown (no output Schema, a message) are left out. Without the
-        start data, the inputs it must carry are listed instead (info)."""
+        does not set, and the {{variables}} its fields use, against what earlier steps produce.
+        An unknown output (no Schema, a message) cannot disprove a field, but a known alternative
+        path can. Without the start data, the inputs it must carry are listed instead (info)."""
         needed = set()
         for name, node in self.nodes.items():
             if (produced := self.produced_before(name)) is None:
@@ -156,10 +173,24 @@ class WorkflowCheck:
                 if self.start_data is not None and missing:
                     yield Problem(name, "input", f"no earlier step nor the start data provides {', '.join(sorted(missing))}: "
                                                  "set it on the node or produce it before")
-            used = {path.split(".")[0] for path in TEMPLATE.findall(json.dumps(params))}
+            used, optional = self.references(params), set()
+            if node["type"] in HUMAN:
+                context = params.get("context")
+                if isinstance(context, str):  # HumanTaskNode accepts an object or JSON text.
+                    try:
+                        context = json.loads(context or "{}")
+                    except ValueError:
+                        pass
+                if isinstance(context, dict):
+                    context_used, optional = self.context_references(context)
+                    used = self.references({k: v for k, v in params.items() if k != "context"}) | context_used
             if self.start_data is not None and (unknown := used - available):
                 yield Problem(name, "variable", f"{', '.join('{{%s}}' % v for v in sorted(unknown))}: no earlier step "
                                                 "nor the start data provides it, so it would be empty")
+            if self.start_data is not None and (unknown := optional - used - available):
+                yield Problem(name, "variable", f"{', '.join('{{%s}}' % v for v in sorted(unknown))}: optional human "
+                                                "context entries may be omitted because no earlier step nor the "
+                                                "start data provides them", "warning")
         if self.start_data is None and needed:
             yield Problem("", "start-data", f"the data that starts a case must carry: {', '.join(sorted(needed))}",
                           "info")
@@ -197,11 +228,14 @@ class WorkflowCheck:
                               "time, so the case would stall until the last wait ends. Keep the waits in one branch "
                               "(a deadline: an event-based gateway's timeout) or start the other wait as its own process")
 
-    def after(self, start):
+    def after(self, start, stop=None):
         """`start` and every step it leads to."""
         seen, queue = {start}, deque([start])
         while queue:
-            for n in {n for port in self.outs[queue.popleft()] for n in port} - seen:
+            current = queue.popleft()
+            if current == stop:
+                continue
+            for n in {n for port in self.outs[current] for n in port} - seen:
                 seen.add(n)
                 queue.append(n)
         return seen
@@ -232,39 +266,120 @@ class WorkflowCheck:
         return None
 
     def reads_only_forms(self, name, node):
-        """Whether a condition gateway reads only fields of the forms people filled in before it."""
-        used = {path.split(".")[0] for path in TEMPLATE.findall(json.dumps(node["parameters"]))}
-        forms, seen, queue = set(), {name}, deque(self.into[name])
-        while queue:
-            current = queue.popleft()
-            if current not in seen:
-                seen.add(current)
-                queue.extend(self.into[current])
-                if self.nodes[current]["type"] in HUMAN:
-                    forms |= {f["name"] for f in self.nodes[current]["parameters"].get("form", {}).get("fields", [])}
-        return bool(used) and used <= forms
+        """Whether every path supplies a human answer that no later automated step overwrites."""
+        used = self.references(node["parameters"])
+        return bool(used) and used <= (self.form_data[name] or set())
+
+    @staticmethod
+    def references(value):
+        return {path.split(".")[0] for path in TEMPLATE.findall(json.dumps(value))}
+
+    def context_references(self, value):
+        """render() omits missing lone-template entries; embedded text still needs its variables."""
+        if isinstance(value, (dict, list)):
+            children = value.values() if isinstance(value, dict) else value
+            references = [self.context_references(child) for child in children]
+            return (set().union(*(required for required, _ in references)),
+                    set().union(*(optional for _, optional in references)))
+        used = self.references(value)
+        return (set(), used) if isinstance(value, str) and TEMPLATE.fullmatch(value.strip()) else (used, set())
 
     def produced_before(self, name):
-        """The variables the steps before `name` produce; None when one of them is unknown."""
-        produced, seen, queue = set(), {name}, deque(self.into[name])
-        while queue:
-            node = self.nodes[current := queue.popleft()]
-            if current in seen:
-                continue
-            seen.add(current)
-            queue.extend(self.into[current])
-            task = TASKS.get(str(node["parameters"].get("task", "")).rsplit("/", 1)[-1])
-            if node["type"] in TASK_NODES and task and task.output:
-                produced |= {f.name for f in task.outputs}
-            elif node["type"] in HUMAN:
-                produced |= {f["name"] for f in node["parameters"].get("form", {}).get("fields", [])}
-            elif node["type"] == SET:  # an LLM agent's answer, as its variable
-                produced |= {a["name"] for a in node["parameters"].get("assignments", {}).get("assignments", [])}
-            elif node["type"] == AGENT:
-                produced.add("output")
-            elif not (is_trigger(node) or node["type"] in TRANSPARENT):
-                return None
-        return produced
+        """Fields available on every path to this node; None means an unknown output schema."""
+        return self.available_data[name]
+
+    def produced_by(self, node):
+        task = TASKS.get(str(node["parameters"].get("task", "")).rsplit("/", 1)[-1])
+        if node["type"] in TASK_NODES and task and task.output:
+            return {f.name for f in task.outputs}
+        if node["type"] in HUMAN:
+            return {f["name"] for f in node["parameters"].get("form", {}).get("fields", [])}
+        if node["type"] == SET:
+            return {a["name"] for a in node["parameters"].get("assignments", {}).get("assignments", [])}
+        if node["type"] == AGENT:
+            return {"output"}
+        return set() if is_trigger(node) or node["type"] in TRANSPARENT else None
+
+    @staticmethod
+    def common_data(values):
+        """An unknown schema cannot disprove a field, but a known alternative can."""
+        known = [value for value in values if value is not None]
+        return set.intersection(*known) if known else None
+
+    @cached_property
+    def dominators(self):
+        """Steps that every path to a node passes: only a guaranteed fork can justify a join's union."""
+        starts = {name for name, node in self.nodes.items() if is_trigger(node) or not self.into[name]}
+        reached = set().union(*(self.after(name) for name in starts)) if starts else set()
+        dom = {name: {name} if name in starts or name not in reached else set(reached) for name in self.nodes}
+        changed = True
+        while changed:
+            changed = False
+            for name in reached - starts:
+                parents = self.into[name] & reached
+                value = {name} | set.intersection(*(dom[parent] for parent in parents))
+                if value != dom[name]:
+                    dom[name], changed = value, True
+        return dom
+
+    def joined_data(self, name, inputs, used=frozenset()):
+        """Merge waits for parallel branches, but their internal alternatives remain alternatives."""
+        common = set.intersection(*(self.dominators[source] for source, _, _ in inputs)) - used
+        for fork in sorted(common, key=lambda n: len(self.dominators[n]), reverse=True):
+            ports = self.outs[fork]
+            branches = [[(i, n) for n in port] for i, port in enumerate(ports)]
+            if self.nodes[fork]["type"] == node_type("parallelGateway"):
+                branches = [[start for branch in branches for start in branch]]
+            for starts in branches:
+                if len(starts) < 2:
+                    continue
+                reach = [self.after(start, stop=name) for _, start in starts]
+                membership = [[i for i, ((port, start), branch) in enumerate(zip(starts, reach))
+                               if source in branch or source == fork and source_port == port and start == name]
+                              for source, source_port, _ in inputs]
+                active = {i for i, branch in enumerate(reach) if name in branch}
+                if len(active) < 2 or any(len(b) != 1 for b in membership) or {b[0] for b in membership} != active:
+                    continue
+                groups = [[entry for entry, b in zip(inputs, membership) if b == [i]] for i in sorted(active)]
+                values = [self.joined_data(name, group, used | {fork}) for group in groups]
+                return None if any(value is None for value in values) else set().union(*values)
+        return self.common_data([value for _, _, value in inputs])
+
+    @cached_property
+    def available_data(self):
+        return self.data_before()
+
+    @cached_property
+    def form_data(self):
+        return self.data_before(forms_only=True)
+
+    def data_before(self, forms_only=False):
+        # Start at the unknown top value, then intersect until loops no longer change it. This never
+        # lets a later loop iteration provide data that is missing on the first entry.
+        before = dict.fromkeys(self.nodes)
+        after = dict.fromkeys(self.nodes)
+        incoming = {name: [(source, i) for source, ports in self.outs.items() for i, port in enumerate(ports)
+                           if name in port] for name in self.nodes}
+        produced = {name: self.produced_by(node) for name, node in self.nodes.items()}
+        changed = True
+        while changed:
+            changed = False
+            for name, node in self.nodes.items():
+                inputs = [(source, port, (set() if forms_only else None)
+                           if port and self.nodes[source]["type"] == node_type("eventBasedGateway")
+                           else after[source]) for source, port in incoming[name]]
+                value = set() if is_trigger(node) or not inputs else self.joined_data(name, inputs) \
+                    if node["type"] == MERGE and not forms_only else self.common_data([value for _, _, value in inputs])
+                if forms_only:
+                    # At a join, require trusted provenance on every input. A field answered in only
+                    # one parallel branch may be overwritten by its sibling; review after the join.
+                    output = set() if produced[name] is None else None if value is None else \
+                        value - produced[name] | (produced[name] if node["type"] in HUMAN else set())
+                else:
+                    output = None if value is None or produced[name] is None else value | produced[name]
+                if value != before[name] or output != after[name]:
+                    before[name], after[name], changed = value, output, True
+        return before
 
 
 class ProjectCheck:

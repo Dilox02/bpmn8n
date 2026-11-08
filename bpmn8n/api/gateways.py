@@ -68,11 +68,16 @@ def conditions_gateway(request, data: ConditionsIn):
     the first one). No branch -> the BPMN default flow."""
     case = CaseData(request, data.item)
     try:
-        taken = [branch for branch, condition in data.conditions.items() if case.holds(condition)]
+        taken = []
+        for branch, condition in data.conditions.items():
+            if case.holds(condition):
+                taken.append(branch)
+                if data.kind == "exclusive":
+                    break
     except ConditionError as e:
         return 422, {"detail": str(e)}
     return 200, decided("conditions", {"state": case.variables, "options": data.conditions},
-                        taken[:1] if data.kind == "exclusive" else taken, {})
+                        taken, {})
 
 
 def decided(decider, seen, branches, scores):
