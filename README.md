@@ -28,18 +28,6 @@ n8n runs workflows well, but it does not speak the language of business processe
 | 🤖 **Small models where they shine** | [GLiNER2.5](https://github.com/fastino-ai/GLiNER2) fills task inputs from free text, [Laya](https://github.com/NandhaKishorM/laya) decides gateways in about 20 ms, Vision reads scanned documents. |
 | 📈 **Process mining** | Every step lands in an event log, ready for PM4Py. |
 
-## Screenshots
-
-[![The hospital appointment booking workflow in n8n, laid out in levels: the main path along the top row, the exceptions below, the loops back underneath](docs/screenshots/hospital-workflow.png)](docs/screenshots/hospital-workflow.png)
-
-*Hospital appointment booking (UC-01), with its four agents and the patient's data pseudonymised before the external LLM, as bpmn8n lays it out in n8n: the main path along the top row, the exceptions below it, the loops back underneath. Click to see it full size.*
-
-| Studio: the build and the interview | A task's panel: the Python function behind it |
-|---|---|
-| ![A Studio project: its build steps and the interview](docs/screenshots/studio-project.png) | ![A task's panel: its function with path and line, inputs and outputs](docs/screenshots/n8n-panel-task.png) |
-| **An LLM agent: the only variables it is sent** | **A person's task: the form, the case data, how it got here** |
-| ![An LLM agent's panel: provider and data sent](docs/screenshots/n8n-panel-llm-agent.png) | ![A user task's page](docs/screenshots/task.png) |
-
 ## How it fits together
 
 ```
@@ -150,8 +138,6 @@ python manage.py test projects.hospital
 ## Learn more
 
 The complete guide lives in [`docs/GUIDE.md`](docs/GUIDE.md): the nodes, the workflow check, Studio, people and states, extraction, OCR, process mining, BPMN coverage, tests and known limits.
-
-The [hospital appointment project presentation](docs/presentations/hospital-appointment-management.pptx) covers the booking use case, four agent roles and their proposed course-pattern taxonomy, the complete editable workflow and its connection to bpmn8n. It contains 10 slides in English with speaker notes timed for a five-minute presentation.
 
 ## Contributors
 
