@@ -49,10 +49,17 @@ def bind(schema, given, variables, extracted=None):
     return by_name | (extracted or {}) | filled
 
 
+WEBHOOK_ENVELOPE = ("headers", "params", "query", "body", "webhookUrl", "executionMode")
+
+
 def from_item(item):
-    """The variables an n8n item brings: a webhook item's body, else the item itself. Keys
-    starting with "_" are bpmn8n's bookkeeping, not process data."""
-    data = item["body"] if isinstance(item.get("body"), dict) and "headers" in item else item
+    """The variables an n8n item brings: a webhook item's body plus what later steps set next to it
+    (a task's merged output, a sub-process's results), which wins over the body; else the item itself.
+    Keys starting with "_" are bpmn8n's bookkeeping, not process data."""
+    if isinstance(item.get("body"), dict) and "headers" in item:
+        data = {**item["body"], **{k: v for k, v in item.items() if k not in WEBHOOK_ENVELOPE}}
+    else:
+        data = item
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
