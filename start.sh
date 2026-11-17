@@ -22,7 +22,7 @@ LOGS=.logs
 MODELS_PID=$LOGS/models.pid
 MODELS=http://127.0.0.1:8001
 VENV=.venv-models
-MODEL_PACKAGES=("sentence-transformers==6.1.0" "gliner2[local]" protobuf sentencepiece tiktoken pyobjc-framework-Vision)
+MODEL_PACKAGES=("sentence-transformers==6.1.0" "gliner2[local]" protobuf sentencepiece tiktoken pyobjc-framework-Vision pillow torchvision)  # pillow+torchvision: EmbeddingGemma 2
 mkdir -p "$LOGS"
 
 apple_silicon() { [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]; }

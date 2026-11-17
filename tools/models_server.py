@@ -3,6 +3,7 @@
     POST /v1/systemone   Bekko decisions, compatible with the existing typed-decision API
     POST /v1/extract     GLiNER2.5: items with text + fields, or native entities/relations schemas
     POST /v1/ocr         text in a photo or scan, with macOS's Vision: {"image": base64 or data URL}
+    POST /v1/embed       sentence embeddings: {"texts": [...], "dim": 256} -> {"vectors": [[...]]}
     GET  /health         {"status": "ok", "backends": [...]}
 
 Concurrent extraction requests are micro-batched into one GLiNER forward pass (2.3x the
@@ -25,7 +26,8 @@ from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 GLINER_MODEL = os.environ.get("GLINER_MODEL", "fastino/gliner2.5-small-v1")
-MAX_BODY = 1_000_000
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "google/embeddinggemma-2")
+MAX_BODY = 2_000_000
 MAX_IMAGE = 20_000_000  # a phone photo, base64-encoded
 
 
@@ -125,6 +127,38 @@ class Gliner:
                                     "native": bool(entities or relations), "threshold": threshold})
 
 
+class Embedder:
+    """Sentence embeddings for dataset deduplication: EmbeddingGemma 2 (multilingual, good on Italian),
+    Matryoshka-truncated and L2-normalised. Concurrent requests share one forward pass."""
+
+    def __init__(self):
+        from sentence_transformers import SentenceTransformer  # lazy: heavy import
+        import torch
+
+        device = os.environ.get("EMBED_DEVICE") or ("mps" if torch.backends.mps.is_available() else "cpu")
+        self.model = SentenceTransformer(EMBED_MODEL, device=device)
+        self.batcher = MicroBatcher(self._run, max_batch=8, max_wait=0.01)
+
+    def _run(self, items):
+        texts = [t for item in items for t in item["texts"]]
+        vectors = self.model.encode(texts, batch_size=64, normalize_embeddings=True,
+                                    truncate_dim=items[0]["dim"]).round(5).tolist()
+        out, start = [], 0
+        for item in items:
+            out.append(vectors[start:start + len(item["texts"])])
+            start += len(item["texts"])
+        return out
+
+    def embed(self, texts, dim=256):
+        if not isinstance(texts, list) or not 1 <= len(texts) <= 256 or \
+                any(not isinstance(t, str) or len(t) > 4000 for t in texts):
+            raise ValueError("texts must be a list of 1-256 strings of at most 4000 characters")
+        if dim not in (128, 256, 512, 768):
+            raise ValueError("dim must be 128, 256, 512 or 768")
+        # ponytail: one dim per micro-batch (the first caller's); every client of this server uses one dim
+        return self.batcher.submit({"texts": texts, "dim": dim})
+
+
 class DecisionModel:
     def __init__(self):
         from decision_runtime import DecisionRuntime
@@ -194,7 +228,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         limit = MAX_IMAGE if self.path == "/v1/ocr" else MAX_BODY
         body = self.rfile.read(length) if 0 < length <= limit else None  # always drain: keep-alive
-        route = {"/v1/systemone": "decision", "/v1/extract": "gliner", "/v1/ocr": "ocr"}.get(self.path)
+        route = {"/v1/systemone": "decision", "/v1/extract": "gliner", "/v1/ocr": "ocr",
+                 "/v1/embed": "embed"}.get(self.path)
         if route not in self.backends:
             return self._reply(404, {"detail": f"no backend for {self.path}"})
         if self.api_key and self.headers.get("Authorization") != f"Bearer {self.api_key}":
@@ -209,6 +244,9 @@ class Handler(BaseHTTPRequestHandler):
             if route == "ocr":
                 image = base64.b64decode(request["image"].split("base64,")[-1])  # base64 or a data URL
                 return self._reply(200, self.backends["ocr"].read(image))
+            if route == "embed":
+                return self._reply(200, {"model": EMBED_MODEL, "vectors": self.backends["embed"].embed(
+                    request["texts"], int(request.get("dim", 256)))})
             gliner, threshold = self.backends["gliner"], float(request.get("threshold", 0.5))
             return self._reply(200, {"model": GLINER_MODEL,
                                      "results": [gliner.extract(i["text"], i.get("fields"), threshold,
@@ -236,6 +274,10 @@ def main():
     Handler.backends["gliner"] = Gliner()
     if not args.no_decision:
         Handler.backends["decision"] = DecisionModel()
+    try:
+        Handler.backends["embed"] = Embedder()
+    except (ImportError, OSError) as e:  # sentence-transformers or the cached model missing
+        print(f"no embeddings: {e}", flush=True)
     try:
         Handler.backends["ocr"] = Ocr()
     except ImportError:  # not a Mac: no OCR
