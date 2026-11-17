@@ -114,7 +114,7 @@ A message adds variables to its case, but it never changes the ones the case alr
 ## Good to know
 
 - **It has a staff member's power.** Studio writes code that the server imports and runs. Connect only clients you trust, on your own machine: the server speaks stdio and opens no port.
-- **One request at a time.** `studio_check` can take up to 5 minutes, and other calls wait until it ends.
+- **One request at a time.** `studio_check` can take up to 5 minutes, and other calls wait until it ends. Each tool runs in a fresh Django process, so routes and Studio's catalog reflect publications by other clients without reconnecting. This adds process startup time to each tool call.
 - **The web Studio comes first.** While a research or a build runs from the web page, the tools refuse to change that project.
 - **The API token is used for you** when `BPMN8N_API_TOKEN` is set.
 - **The check enforces bpmn8n's rules.** A person must take every final decision (GDPR art. 22). Every `{{variable}}` must come from an earlier step. Branches that run at once may not both wait: n8n parks an execution on one wait at a time, so a person's answer would sit until the other branch's timer ends.

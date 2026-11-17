@@ -176,18 +176,22 @@ open ──claim──▶ claimed ──complete──▶ completed
 - **claim**: a person takes the task; the others see it read-only until it is released or completed;
 - **complete**: in a single transaction the task closes, the form goes into the case's variables and the event log, and n8n resumes. If n8n does not answer, nothing changes and you can retry; if the execution no longer exists (n8n answers 404, or 409 "finished"), the task becomes **cancelled** instead of staying open forever;
 - with several items (multi-instance) the process resumes when all the tasks of the group are completed, with one item per task in the order of the items;
-- if n8n runs the node again (a retry, a restart) it gets the same tasks, with no duplicates;
+- if n8n retries the same node run, it gets the entire original batch, including completed tasks, with no duplicates; a new loop iteration creates a new wait;
 - an administrator can cancel tasks left hanging from the admin (the *Cancel* action).
 
 The same states apply to messages: the losers of an Event-Based Gateway become *cancelled*; a message for an execution that no longer exists goes to the next one waiting.
 
 ## Workflow check
 
-`POST /api/workflows/check[?start_data=a,b]` (the n8n workflow as JSON) or `python manage.py check_workflow file.json [--start-data a,b] [--json]` (exits with 1 if there are errors). For a whole project folder, `python manage.py check_project projects/<name> [--json]`: every module imports, every activity passes its examples, `workflow.json` passes the check with the start data of `process.py`. The start data are the fields of the webhook body: Studio knows them from the interview and declares them, so every variable is checked. The checks use the outputs the `@task`s declare (`-> Schema`): after a step with an unknown output (no schema, a message) those checks stop.
+`POST /api/workflows/check[?start_data=a,b]` (the n8n workflow as JSON) or `python manage.py check_workflow file.json [--start-data a,b] [--json]` (exits with 1 if there are errors). For a whole project folder, `python manage.py check_project projects/<name> [--json]`: every module imports, every activity passes its examples, `workflow.json` passes the check with the start data of `process.py`. The start data are the fields of the webhook body: Studio knows them from the interview and declares them, so every variable is checked.
+
+The checker follows paths from triggers. Required fields must exist on every alternative path, including the first entry into a loop; a guaranteed parallel join combines its branches' fields. Unknown output schemas remain conservative, but do not hide missing data on a known alternative. Event gateway message outputs have unknown payloads; timeout preserves the incoming data. Disabled nodes pass data through output 0. Missing lone-template entries in a human task's optional context are warnings because rendering omits those entries; missing title variables and required task inputs remain errors. A condition counts as a person's decision only while its fields retain human provenance on every path, without a later automated overwrite.
+
+For technical housekeeping such as looping over a file queue until `pending == 0`, a `condition_gateway` may declare `decision_scope="technical"` in its Python/spec definition. This exempts only that deterministic gateway from the human-review rule. It does not exempt Laya gateways or LLM agents, and must not be used for decisions about people.
 
 | Level | What it finds |
 |---|---|
-| error | a workflow with no step after its trigger; a `@task` that does not exist or is of another kind than the node; a node nothing leads to that is not a trigger; an invalid condition; a Call Activity whose sub-process waits (people, messages). With the start data declared (`start_data`): a required input or a `{{variable}}` that no earlier step produces |
+| error | a workflow with no step after its trigger; a connection to a missing node; a `@task` that does not exist or is of another kind than the node; a node unreachable from a trigger, including detached cycles; an invalid condition; a Call Activity whose sub-process waits (people, messages). With the start data declared (`start_data`): a required input or a required `{{variable}}` not supplied on every alternative path |
 | error | after an LLM agent, a path that reaches an end without passing through a person (User or Manual Task) |
 | warning | a gateway output that leads nowhere (for Laya also `default`: a person decides there); a lane without a group; no trigger; a sub-process that cannot be read; after a gateway (Laya or conditions), a path that reaches an end without a person (not for a conditions gateway that reads only fields of forms filled in before it: it applies a person's decision) |
 | info | without declared start data: the fields the webhook body must carry (the required inputs that no earlier step produces) |
@@ -297,6 +301,49 @@ It runs on the Mac with Apple's Vision framework (`POST /v1/ocr` of the models s
    - for everything else, `INodeType` + `bpmnDescription()`;
 2. add the icon: the bpmn-font glyph in `GLYPHS` in `tools/build_icons.py`;
 3. add the node to `package.json` → `n8n.nodes` and re-run `./start.sh`.
+
+## Local evaluations in n8n
+
+The **Evaluations** tab now runs bpmn8n's local implementation. Add a **Metrics** node after the step
+to measure, choose the folder under `projects/` containing `workflow.json`, and add named numeric
+values (including n8n expressions), units and optional inclusive thresholds. Higher/lower specifies
+the comparison direction. The node preserves JSON, binary attachments and item pairing. An optional
+run label distinguishes datasets and test fixtures. No subscription or cloud service is required.
+
+Samples are atomic JSON files in `projects/<project>/run/<workflow ID>/<execution ID>/metrics/`.
+The sample identity includes node ID, loop iteration and item index: retries replace the same sample;
+iterations and concurrent nodes have distinct files. Only configured measurements and run identity
+are written, not the input item or credentials. Back up `run/` with the project. No retention cleanup
+runs automatically. The browser shows the latest 50 measured executions, each metric's last/mean/min/max,
+threshold pass counts, a comparison of means with another run, raw samples and JSON export. Threshold
+results describe collected samples; n8n's **Executions** tab remains the source of execution status.
+
+Put a Metrics node where a decision is taken, not after every step. A metric is worth recording when
+it answers a question whose answer changes what happens next: whether a loop iteration is healthy enough
+to continue, whether the result may be used. Give it the threshold that decides, and follow the node
+with a technical condition gateway that acts on the same values (the node itself never stops a run).
+Counts and progress are already in n8n's execution data. A value that a step did not measure this time
+(`null`) is left out of the sample rather than recorded as 0. The workflow check warns about a Metrics
+node with no threshold or placed before anything was produced, and notes thresholds no gateway acts on.
+
+Agents can add a `metrics` step through the workflow builder/Studio/MCP:
+
+```python
+workflow.metrics("Quality", "my_project", [
+    {"name": "Accuracy", "value": "={{ $json.accuracy }}", "unit": "ratio", "threshold": .9},
+    {"name": "Latency", "value": "={{ $json.latency_ms }}", "unit": "ms", "direction": "lower", "threshold": 500},
+], label="experiment-1")
+```
+
+`POST /api/evaluations/samples` uses the existing BPMN API credential. Reads at
+`GET /api/evaluations/<workflow ID>/runs` and `.../runs/<project>/<execution ID>` accept the backend
+API token or the n8n session cookie, verified against that workflow's n8n access permissions. Evaluation
+reads follow the same open-API policy as other endpoints when no API token is configured for development.
+Browser reads need the same hostname as the n8n cookie (the supplied Compose setup uses `localhost` on both
+ports); cross-host deployments need a same-host reverse proxy. CORS permits only `N8N_PUBLIC_URL`.
+The editor hook replaces the Evaluation route component; it does not change n8n's licence flags or
+enable its commercial evaluation backend. As with the other editor hooks, verify router integration
+when upgrading n8n. If assets remain cached after editing a hook, restart the n8n editor container.
 
 ## Observability and process mining
 
@@ -456,3 +503,48 @@ The datasets in `e2e/datasets/` and some E2E tickets are in several languages on
 | Source control, workflow diffs, named versions | `./start.sh export` writes `workflows/*.json` to version with git; `./start.sh import` imports them again |
 
 Free and legal: registering the *Community Edition* (n8n → Settings → Usage and plan) unlocks folders, debugging in the editor, search in execution data and 24 hours of workflow history in n8n.
+
+### Live evaluations and execution tokens
+
+The local Evaluations view uses **SSE** (`/api/evaluations/<workflow>/stream`): events carry only
+change notifications, then the client fetches conditional JSON responses. `ETag`/`If-None-Match`
+return 304 for unchanged blocks. SSE reconnects with `Last-Event-ID`, sends heartbeat comments,
+closes while the page is hidden and is disposed on navigation. Streams rotate after 55 seconds;
+the server checks small indexed revision queries once per second. No browser polling timer or
+refresh checkbox is used by this view. n8n's incumbent execution sidebar retains its own controls.
+
+`EvaluationStore` maintains `projects/.evaluations.sqlite3` in WAL mode. Existing JSON samples are
+imported once; normal reads use the index. Run lists contain at most 50 summaries. Sample pages are
+bounded to 200 records and chart series to 200 averaged time buckets (default 150). Exports stream
+all samples. Source sample JSON files remain in each project's `run/` directory. Editing those files
+by hand does not update a live index; remove the rebuildable index only with the services stopped
+if a full import is needed. Back up both the index and the run folders.
+
+A project's optional `evaluations.json` provides its title, purpose, process stages, metric descriptions
+and progress labels. Thresholds and measurements still come from Metrics nodes: the text does not
+replace their configuration. The contrastive project explains accepted groups, rejected anchors and
+remaining work, and shows failed final thresholds above the charts.
+
+The execution preview keeps its canvas mounted while state changes arrive. It reads n8n's saved
+execution stack and join buffers, alongside live framework function invocations. Every input item,
+input port and loop iteration remains distinct. The shared node HTTP client sends node/run/item
+identity, allowing calls on the same node to be correlated without merging parallel tokens. Older
+executions without that identity retain their invocation history, but cannot promise exact item-level
+correlation. Completed executions show their final snapshot; previous intermediate states cannot be
+reconstructed if n8n did not persist them.
+
+Framework spans persist a `running` Event before invoking a function, save its input, then update the
+same Event at completion or failure. Active spans are excluded from aggregate timing and mining logs.
+Invocation bodies are loaded only when expanded, with bounded previews. The canvas distinguishes
+confirmed active calls from engine stack entries and inputs waiting at a join. **Vista n8n / debug**
+keeps the original execution inspector available.
+
+Local preview iframes use `credentialless` isolation and `localhost` to prevent the anonymous preview
+instance from clearing the main editor's cookies (cookies are shared across ports). The supplied
+Chrome/Chromium setup is verified; other browsers need credentialless support or a separate HTTPS
+preview origin. The preview CSP explicitly allows the two local editor origins.
+
+Checks: `python manage.py test bpmn8n.tests`, `npm --prefix n8n-nodes-bpmn8n test`, and
+`node --test n8n-editor/test/*.test.mjs`. Browser checks exercise live SSE updates, retained focus,
+selection/open details/SVG identity, both local session hostnames, the real execution canvas, and a
+controlled fork fixture with two active branches followed by one waiting join input.

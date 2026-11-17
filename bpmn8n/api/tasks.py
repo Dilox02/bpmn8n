@@ -119,8 +119,9 @@ class Task:
         """fn, with its result checked and, with its input, kept in the event log."""
         @wraps(fn)
         def call(request, data):
+            record(input=data.model_dump(mode="json"))
             result = self.validated(fn(request, data))
-            record(input=data.model_dump(mode="json"), output=as_data(result))
+            record(output=as_data(result))
             return result
         return call
 
@@ -185,7 +186,7 @@ def as_data(result):
 
 def same(actual, expected):
     numbers = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (actual, expected))
-    return math.isclose(actual, expected, abs_tol=0.005) if numbers else actual == expected
+    return math.isclose(actual, expected, rel_tol=0, abs_tol=0.005) if numbers else actual == expected
 
 
 def task(kind="serviceTask", **options):

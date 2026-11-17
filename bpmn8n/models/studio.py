@@ -40,11 +40,14 @@ class Project(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             base = re.sub(r"^(?=\d)", "p_", slugify(self.name).replace("-", "_")) or "process"
+            limit = self._meta.get_field("slug").max_length
+            base = base[:limit]
             self.slug, n = base, 1
             folders = Path(django_settings.BASE_DIR) / "projects"  # not a project Studio did not build
             while Project.objects.filter(slug=self.slug).exists() or (folders / self.slug).exists():
                 n += 1
-                self.slug = f"{base}_{n}"
+                suffix = f"_{n}"
+                self.slug = f"{base[:limit - len(suffix)]}{suffix}"
         super().save(*args, **kwargs)
 
     @property

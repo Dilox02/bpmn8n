@@ -40,7 +40,7 @@ class Workflow:
     (time runs left to right); `row` moves alternative branches up or down, layout() computes it all."""
 
     STEPS = ("start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
-             "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent")  # a spec's steps
+             "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics")  # a spec's steps
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -94,6 +94,16 @@ class Workflow:
         return self.add(name, node_type(kind), parameters, row, same_column=same_column,
                         at=at, **(extra or {}))
 
+    def metrics(self, name, project, metrics, label=""):
+        """Record local evaluations without changing the input. project: folder under projects/;
+        metrics: [{name, value (number or n8n expression), unit?, direction: higher|lower?, threshold?}].
+        An optional threshold is inclusive. Saved under the project's run/<workflow>/<execution>/metrics/.
+        Use n8n expressions (= followed by {{ $json.field }}) for computed values, never Python code."""
+        if not metrics or len({m["name"] for m in metrics}) != len(metrics):
+            raise SpecError("metrics must contain at least one metric with unique names")
+        return self.add(name, node_type("metrics"), {"project": project, "label": label, "metrics": {"values": [
+            {**m, "checkThreshold": m.get("threshold") is not None} for m in metrics]}})
+
     def gateway(self, name, kind, question, branches, state="", min_confidence=0.7):
         """Laya decides. kind: exclusive | inclusive. branches: {name: description}; outputs
         follow their order, then `default`."""
@@ -102,11 +112,15 @@ class Workflow:
             "branches": {"values": [{"name": n, "description": d} for n, d in branches.items()]},
         })
 
-    def condition_gateway(self, name, kind, conditions):
+    def condition_gateway(self, name, kind, conditions, decision_scope=None):
         """Data decides. conditions: {branch name: condition on the process variables}, e.g.
-        "{{amount}} > 1000" (an n8n expression evaluating to a boolean also works)."""
+        "{{amount}} > 1000" (an n8n expression evaluating to a boolean also works).
+        decision_scope="technical" is only for machine/data housekeeping, never decisions about people."""
+        if decision_scope not in (None, "technical"):
+            raise SpecError("a condition gateway's decision_scope must be 'technical' or omitted")
         return self.add(name, node_type(f"{kind}Gateway"), {
             "decider": "conditions",
+            **({"decisionScope": decision_scope} if decision_scope else {}),
             "branches": {"values": [{"name": n, "condition": c} for n, c in conditions.items()]},
         })
 

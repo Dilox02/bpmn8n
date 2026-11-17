@@ -29,7 +29,7 @@
   const MERGE = `${onBpmn} ${type('n8n-nodes-base.merge')}`;
   const TASKS = any([
     ...bpmn('ServiceTask', 'ScriptTask', 'BusinessRuleTask', 'SendTask', 'ReceiveTask', 'UserTask', 'ManualTask',
-            'CallActivity'),
+            'CallActivity', 'Metrics'),
     // n8n's own nodes, but not its AI nodes' shapes (an agent with its sub-nodes, the sub-nodes' circles)
     `${onBpmn} [data-test-id=canvas-node]:not([data-node-type^="CUSTOM.bpmn8n"], [data-node-type="n8n-nodes-base.merge"], ` +
     `[data-node-type="n8n-nodes-base.stickyNote"])${':not(' + trigger + ')'}:not(:has([class*=_configurable_], [class*=_configuration_]))`,

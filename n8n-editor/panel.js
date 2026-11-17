@@ -34,6 +34,7 @@
   const vars = text => [...new Set(String(text ?? '').match(/\{\{\s*[\w.]+\s*\}\}/g) || [])].map(v => v.replace(/\s/g, ''));
   const rows = list => `<table>${list.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>`;
   const KINDS = {
+    Metrics: ['Metrics', 'Records configured measurements in the project run folder. Open Evaluations to compare runs and inspect thresholds.'],
     ServiceTask: ['Service task', 'Software calls a service: a Python function on bpmn8n.'],
     ScriptTask: ['Script task', 'Software transforms data: a Python function on bpmn8n.'],
     BusinessRuleTask: ['Business rule task', 'Software applies a policy: a Python function on bpmn8n.'],

@@ -8,11 +8,14 @@ The client does what Studio's LLM would: the interview (in its own chat), the de
 bpmn8n keeps doing the rest (checks, examples, publishing, import into n8n), as in the web build.
 """
 import json
+from pathlib import Path
+import subprocess
 import sys
+from typing import Any, Literal
 
 from django.core.management.base import BaseCommand
-from django.db import close_old_connections
 from django.test import Client
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from bpmn8n.api import discover
 from bpmn8n.conf import settings
@@ -20,11 +23,47 @@ from bpmn8n.models import Project
 from bpmn8n.studio.build import ProjectBuilder, Skip, defines
 from bpmn8n.studio.prompts import Prompts
 
-S, OBJ = {"type": "string"}, {"type": "object"}
+PROTOCOL_VERSION = "2025-06-18"
 
 
-def schema(required=(), **props):
-    return {"type": "object", "properties": props, "required": list(required)}
+class Arguments(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+
+class ApiArguments(Arguments):
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+    path: str
+    body: dict[str, Any] | None = None
+
+
+class ProjectArguments(Arguments):
+    slug: str
+
+
+class CreateArguments(Arguments):
+    name: str = Field(min_length=1, max_length=Project._meta.get_field("name").max_length)
+    description: str
+
+
+class PromptArguments(ProjectArguments):
+    step: Literal["interview", "design", "write"]
+    activity: str | None = None
+
+
+class Message(Arguments):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class SaveArguments(ProjectArguments):
+    messages: list[Message] | None = None
+    brief: str | None = None
+    spec: dict[str, Any] | None = None
+
+
+class WriteArguments(ProjectArguments):
+    activity: str
+    code: str
 
 
 TOOLS = {
@@ -32,35 +71,40 @@ TOOLS = {
             "GET /api/usertasks?status=open, POST /api/usertasks/{id}/complete {result}, GET /api/cases/{case_id}, "
             "GET /api/eventlog.csv?since=..., GET /api/metrics, GET /api/processmining?process=..., "
             "GET /api/messages/subscriptions, POST /api/messages/{name} {...}, "
+            "GET /api/evaluations/{workflow_id}/runs, GET /api/evaluations/{workflow_id}/runs/{project}/{execution_id}, "
             "POST /api/workflows/check {n8n workflow json}, POST /api/tasks/{name} {input}, GET /api/openapi.json.",
-            schema(("method", "path"), method={"enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]}, path=S, body=OBJ)),
+            ApiArguments),
     "studio_projects": ("Studio's projects: slug, name, status (interview, research, building, ready, failed).",
-                        schema()),
+                        Arguments),
     "studio_project": ("One Studio project's whole state: interview messages, research, brief, spec, the cards "
-                       "of its last build, its n8n workflow.", schema(("slug",), slug=S)),
+                       "of its last build, its n8n workflow.", ProjectArguments),
     "studio_create": ("A new Studio project from its name and description (the interview's first answer). "
                       "Then: interview the person yourself, studio_save the brief, get studio_prompt 'design'.",
-                      schema(("name", "description"), name=S, description=S)),
+                      CreateArguments),
     "studio_prompt": ("The instructions Studio gives its LLM for a step, with the live context (existing tasks, "
                       "lanes, the builder's steps, code conventions, the project so far). Follow them: "
                       "'interview' (questions to ask, the brief to write), 'design' (the spec's JSON shape), "
                       "'write' (one activity's module: pass activity).",
-                      schema(("slug", "step"), slug=S, step={"enum": ["interview", "design", "write"]}, activity=S)),
+                      PromptArguments),
     "studio_save": ("Saves the interview (messages: [{role: user|assistant, content}], the whole transcript), the "
                     "brief and/or the spec (the design JSON, as studio_prompt 'design' describes it); a spec the "
                     "build cannot use is refused with what is wrong.",
-                    schema(("slug",), slug=S, messages={"type": "array", "items": OBJ}, brief=S, spec=OBJ)),
+                    SaveArguments),
     "studio_write": ("Writes one activity's module (the whole Python file) into the project's draft.",
-                     schema(("slug", "activity", "code"), slug=S, activity=S, code=S)),
+                     WriteArguments),
     "studio_check": ("Imports the draft's modules, runs each activity's examples and checks the workflow: "
                      "{imports, examples, problems}. Fix with studio_write / studio_save until it is clean.",
-                     schema(("slug",), slug=S)),
+                     ProjectArguments),
     "studio_publish": ("Once studio_check is clean: publishes projects/<slug>, imports the workflow into n8n and "
-                       "reloads the server's tasks. The project becomes ready.", schema(("slug",), slug=S)),
+                       "reloads the server's tasks. The project becomes ready.", ProjectArguments),
 }
 
 
 class ToolError(Exception):
+    pass
+
+
+class InvalidArguments(ValueError):
     pass
 
 
@@ -119,9 +163,6 @@ def studio_prompt(slug, step, activity=None):
 def studio_save(slug, messages=None, brief=None, spec=None):
     p = idle(slug)
     if messages is not None:
-        if not all(isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
-                   for m in messages):
-            raise ToolError("messages: [{\"role\": \"user\" | \"assistant\", \"content\": \"...\"}]")
         p.messages = messages
     if brief is not None:
         p.brief = brief
@@ -171,44 +212,98 @@ def studio_publish(slug):
     return done
 
 
-def call(name, args):
-    if name not in TOOLS:
-        raise ToolError(f"unknown tool {name}")
-    result = globals()[name](**args)
+def call(name, args, handler=None):
+    if not isinstance(name, str) or name not in TOOLS:
+        raise InvalidArguments(f"unknown tool {name!r}")
+    try:
+        values = TOOLS[name][1].model_validate(args).model_dump(exclude_unset=True)
+    except ValidationError as e:
+        raise InvalidArguments("; ".join(f"{'.'.join(map(str, p['loc']))}: {p['msg']}"
+                                         for p in e.errors(include_input=False, include_url=False))) from None
+    if handler:
+        return handler(name, values)
+    result = globals()[name](**values)
     return result if isinstance(result, str) else json.dumps(result, indent=1, ensure_ascii=False, default=str)
 
 
-def handle(message):
+def error_reply(id_, code, message):
+    return {"jsonrpc": "2.0", "id": id_, "error": {"code": code, "message": message}}
+
+
+def handle(message, tool_handler=None):
     """One JSON-RPC message -> its reply, None for a notification."""
-    method, params = message.get("method"), message.get("params") or {}
+    if not isinstance(message, dict) or message.get("jsonrpc") != "2.0" or \
+            not isinstance(message.get("method"), str):
+        return error_reply(None, -32600, "invalid JSON-RPC request")
     if "id" not in message:
         return None
+    id_ = message["id"]
+    if not isinstance(id_, (int, str)) or isinstance(id_, bool):
+        return error_reply(None, -32600, "request id must be an integer or string")
+    method, params = message["method"], message.get("params", {})
+    if not isinstance(params, dict):
+        return error_reply(id_, -32602, "params must be an object")
     if method == "initialize":
-        result = {"protocolVersion": params.get("protocolVersion", "2025-06-18"), "capabilities": {"tools": {}},
+        if not isinstance(params.get("protocolVersion", PROTOCOL_VERSION), str):
+            return error_reply(id_, -32602, "protocolVersion must be a string")
+        result = {"protocolVersion": PROTOCOL_VERSION, "capabilities": {"tools": {}},
                   "serverInfo": {"name": "bpmn8n", "version": "1"}}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": [{"name": n, "description": d, "inputSchema": s} for n, (d, s) in TOOLS.items()]}
+        result = {"tools": [{"name": n, "description": d, "inputSchema": s.model_json_schema()}
+                            for n, (d, s) in TOOLS.items()]}
     elif method == "tools/call":
-        close_old_connections()  # a long-lived process: Postgres may have dropped the connection
         try:
-            text, error = call(params["name"], params.get("arguments") or {}), False
+            result = call(params.get("name"), params.get("arguments", {}), tool_handler)
+            if tool_handler:
+                return {"jsonrpc": "2.0", "id": id_, "result": result}
+            text, error = result, False
+        except InvalidArguments as e:
+            return error_reply(id_, -32602, str(e))
         except Exception as e:  # the client shows it and can fix its call
             text, error = f"{type(e).__name__}: {e}", True
         result = {"content": [{"type": "text", "text": text}], "isError": error}
     else:
-        return {"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": f"no method {method}"}}
-    return {"jsonrpc": "2.0", "id": message["id"], "result": result}
+        return error_reply(id_, -32601, f"no method {method}")
+    return {"jsonrpc": "2.0", "id": id_, "result": result}
 
 
 class Command(BaseCommand):
     help = __doc__
 
+    def add_arguments(self, parser):
+        parser.add_argument("--tool-request", action="store_true", help="Serve one internal tool request on stdin")
+
+    def fresh_tool(self, name, values):
+        """A session can outlive publications: reload task routes and Studio's catalog per tool."""
+        result = subprocess.run([sys.executable, str(Path(settings.BASE_DIR) / "manage.py"), "mcp", "--tool-request"],
+                                input=json.dumps({"name": name, "arguments": values}), text=True,
+                                capture_output=True, timeout=600)  # check allows 300s; publishing also imports into n8n
+        if result.returncode:
+            raise ToolError(f"the tool request did not run:\n{result.stderr[-3000:]}")
+        try:
+            return json.loads(result.stdout)
+        except ValueError:
+            raise ToolError("the tool request returned an invalid response") from None
+
     def handle(self, **options):
         out, sys.stdout = sys.stdout, sys.stderr  # stdout is the protocol's: anything else printed goes to stderr
-        discover()
+        if options.get("tool_request"):
+            discover()
+            reply = handle({"jsonrpc": "2.0", "id": 0, "method": "tools/call", "params": json.load(sys.stdin)})
+            out.write(json.dumps(reply["result"], default=str) + "\n")
+            out.flush()
+            return
         for line in sys.stdin:  # ponytail: one request at a time; a long studio_check blocks the others
-            if line.strip() and (reply := handle(json.loads(line))):
+            if not line.strip():
+                continue
+            try:
+                message = json.loads(line)
+            except (ValueError, RecursionError):
+                reply = error_reply(None, -32700, "invalid JSON")
+            else:
+                reply = handle(message, tool_handler=self.fresh_tool)
+            if reply is not None:
                 out.write(json.dumps(reply, default=str) + "\n")
                 out.flush()

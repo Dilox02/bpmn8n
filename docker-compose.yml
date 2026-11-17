@@ -4,11 +4,12 @@ services:
     image: python:3.12-slim
     working_dir: /app
     volumes: [".:/app"]
-    command: sh -c "pip install -q --root-user-action=ignore -r requirements.txt && python manage.py migrate --noinput && gunicorn bpmn8n.wsgi -b 0.0.0.0:8000 --workers $${WEB_WORKERS:-4} --threads 16 --backlog 2048 --keep-alive 0 --graceful-timeout 360 --reload --pid /tmp/gunicorn.pid --access-logfile -"
+    command: sh -c "pip install -q --root-user-action=ignore -r requirements.txt && { [ ! -f requirements.local.txt ] || pip install -q --root-user-action=ignore -r requirements.local.txt; } && python manage.py migrate --noinput && gunicorn bpmn8n.wsgi -b 0.0.0.0:8000 --workers $${WEB_WORKERS:-4} --threads 16 --backlog 2048 --keep-alive 0 --graceful-timeout 900 --reload --pid /tmp/gunicorn.pid --access-logfile -"
     # several processes: tasks, event log and metrics live in Postgres (runserver dropped
     # connections when n8n ran 30 cases at once); no keep-alive: clients reusing a connection
     # the server was closing got "socket hang up"; the pid file lets Studio reload it with new tasks, and
-    # the graceful timeout lets a reload (Studio's, or --reload's) wait for LLM calls in flight (3 x 120 s)
+    # the graceful timeout covers bounded local generation + critic calls, including JSON repair (up to 720 s);
+    # requirements.local.txt (git-ignored) holds the packages of local projects that are not in the repository
     ports: ["127.0.0.1:8000:8000"]
     environment:
       # ./start.sh sets them: the models server on the Mac (host.docker.internal:8001) or containers
@@ -65,13 +66,18 @@ services:
       N8N_RUNNERS_ENABLED: "true"
       # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
       # ?bpmn8n=); n8n caches /static for a day: bump v on edits
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=4;/static/bpmn8n-panel.js?v=3&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=5;/static/bpmn8n-panel.js?v=4&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-evaluations.js?v=7&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-executions.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679}
       N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro
       - ./n8n-editor/panel.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-panel.js:ro
+      - ./n8n-editor/evaluations.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-evaluations.js:ro
+      - ./n8n-editor/evaluations.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-evaluations.css:ro
+      - ./n8n-editor/live.mjs:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-live.mjs:ro
+      - ./n8n-editor/executions.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-executions.js:ro
+      - ./n8n-editor/executions.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-executions.css:ro
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -92,8 +98,8 @@ services:
       N8N_CUSTOM_EXTENSIONS: /bpmn8n-nodes
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
-      N8N_CONTENT_SECURITY_POLICY: '{"frame-ancestors": ["''self''", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8080", "http://127.0.0.1:8080"]}'
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=4;/static/bpmn8n-theme.js?v=7  # bump v on edits
+      N8N_CONTENT_SECURITY_POLICY: '{"frame-ancestors": ["''self''", "http://localhost:5678", "http://127.0.0.1:5678", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8080", "http://127.0.0.1:8080"]}'
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=4;/static/bpmn8n-theme.js?v=10  # bump v on edits
     volumes:
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro

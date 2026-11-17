@@ -47,9 +47,7 @@ def subscribe(request, data: SubscriptionIn):
     """Idempotent: n8n running the node again gets the subscription it already has."""
     case = CaseData(request, data.item)
     activity = case.trace.activity or data.name
-    sub = MessageSubscription.objects.waiting().filter(resume_url=data.resume_url, name=data.name,
-                                                       activity=activity).first()
-    return 201, sub or MessageSubscription.objects.create(
+    return 201, MessageSubscription.register(
         name=data.name, correlation_key=str(case.text(data.correlation_key)), resume_url=data.resume_url,
         expires=data.expires, case_id=case.trace.case_id, process=case.trace.process, activity=activity)
 

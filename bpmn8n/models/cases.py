@@ -31,7 +31,7 @@ class Case(models.Model):
 class EventQuerySet(models.QuerySet):
     def cases(self, since=None):
         """Events that belong to a case (an n8n execution), of cases that started at/after `since`."""
-        events = self.exclude(case_id="")
+        events = self.exclude(case_id="").exclude(status="running")
         if since:
             recent = events.values("case_id").annotate(first=models.Min("started")).filter(first__gte=since)
             events = events.filter(case_id__in=recent.values("case_id"))

@@ -7,6 +7,7 @@ two messages can never both win):
       ▲  ◀─release──┘    │
       └──────────────────┴─────────────▶ cancelled   (n8n no longer waits: stopped, deleted, ended)
 """
+import json
 import math
 import uuid
 from urllib.parse import urlsplit, urlunsplit
@@ -55,6 +56,7 @@ class WaitingActivity(models.Model):
     case_id = models.CharField(max_length=100, blank=True)
     process = models.CharField(max_length=200, blank=True, help_text="n8n workflow waiting on it")
     resume_url = models.CharField(max_length=1000)
+    registration_key = models.CharField(max_length=64, null=True, blank=True, unique=True, editable=False)
     status = models.CharField(max_length=10, default=OPEN,
                               choices=[(s, s) for s in (OPEN, CLAIMED, COMPLETED, CANCELLED)])
     reason = models.CharField(max_length=500, blank=True, help_text="why it was cancelled")
@@ -81,6 +83,10 @@ class WaitingActivity(models.Model):
     def cancel(self, reason):
         self.transition("cancel", completed=timezone.now(), reason=reason[:500])
 
+    @staticmethod
+    def registration_id(*parts):
+        return uuid.uuid5(uuid.NAMESPACE_URL, json.dumps(parts)).hex
+
     def finish(self, resource, **fields):
         """Completes it and, once nothing else of the same wait is pending, resumes n8n. All in one
         transaction: if n8n does not take the resume nothing changes and it can be finished again;
@@ -89,6 +95,8 @@ class WaitingActivity(models.Model):
         try:
             with transaction.atomic():
                 list(self.group().select_for_update().order_by("pk"))  # one finisher at a time per wait
+                self.refresh_from_db()
+                fields = self.completion_fields(fields)
                 self.transition("complete", completed=now, **fields)
                 self.close_rivals(now)
                 if self.case_id:  # what the person or the message brought becomes process data
@@ -114,6 +122,10 @@ class WaitingActivity(models.Model):
 
     def close_rivals(self, now):
         """Closes what lost to this one (an event-based gateway's race); nothing by default."""
+
+    def completion_fields(self, fields):
+        """Validate and prepare the result while the wait's rows are locked."""
+        return fields
 
     def resume_payload(self):
         """What resumes n8n (the waiting node's output), None while the wait goes on."""
@@ -171,11 +183,14 @@ class UserTask(WaitingActivity):
     def register(cls, resume_url, activity, instances):
         """The tasks of one node execution, one per item: `instances` are their fields. Idempotent:
         n8n running the node again (a retry, a restart) gets the tasks it already has."""
-        if existing := list(cls.objects.waiting().filter(resume_url=resume_url, activity=activity)):
-            return sorted(existing, key=lambda t: t.instance)
-        batch = uuid.uuid4().hex
-        return [cls.objects.create(resume_url=resume_url, activity=activity, batch=batch, instance=i, **fields)
-                for i, fields in enumerate(instances)]
+        batch = cls.registration_id(resume_url, activity)
+        with transaction.atomic():
+            if existing := list(cls.objects.filter(resume_url=resume_url, activity=activity).order_by("instance")):
+                return existing
+            return [cls.objects.get_or_create(
+                registration_key=f"{batch}:{i}", defaults=dict(
+                    resume_url=resume_url, activity=activity, batch=batch, instance=i, **fields))[0]
+                    for i, fields in enumerate(instances)]
 
     def group(self):
         return UserTask.objects.filter(batch=self.batch) if self.batch else super().group()
@@ -189,15 +204,28 @@ class UserTask(WaitingActivity):
         self.transition("claim", assignee=user)
 
     def release(self, user):
-        if self.status == self.CLAIMED and self.assignee_id != user.pk and not user.is_superuser:
-            raise TransitionError(f"“{self}” is claimed by {self.assignee}")
-        self.transition("release", assignee=None)
+        with transaction.atomic():
+            type(self).objects.select_for_update().get(pk=self.pk)
+            self.refresh_from_db()
+            self.check_worker(user)
+            self.transition("release", assignee=None)
 
     def complete(self, user, result):
         """`user` None: a system completes it through the API."""
-        if user and self.status == self.CLAIMED and self.assignee_id != user.pk and not user.is_superuser:
+        self.finish(getattr(user, "username", None) or "api", result=result, assignee=user)
+
+    def check_worker(self, user):
+        if not self.can_work(user):
+            raise TransitionError(f"“{self}” is for the {self.lane} lane")
+        if self.status == self.CLAIMED and self.assignee_id != user.pk and not user.is_superuser:
             raise TransitionError(f"“{self}” is claimed by {self.assignee}")
-        self.finish(getattr(user, "username", None) or "api", result=result, assignee=user or self.assignee)
+
+    def completion_fields(self, fields):
+        if user := fields.get("assignee"):
+            self.check_worker(user)
+        else:
+            fields["assignee"] = self.assignee
+        return fields
 
     def clean_result(self, data):
         """Coerces submitted values to the form's field types; raises ValidationError."""
@@ -205,11 +233,18 @@ class UserTask(WaitingActivity):
         for field in self.form:
             name, kind, raw = field["name"], field.get("type", "string"), data.get(field["name"])
             if kind == "boolean":
-                result[name] = raw in (True, "true", "on", "1", 1)
+                if raw in (True, "true", "on", "1", 1):
+                    result[name] = True
+                elif raw in (None, False, "false", "off", "0", 0, ""):
+                    result[name] = False  # an unchecked HTML checkbox is absent
+                else:
+                    errors[name] = "must be a boolean"
             elif raw in (None, ""):
                 errors[name] = "required"
             elif kind == "number":
                 try:
+                    if isinstance(raw, bool):
+                        raise ValueError
                     result[name] = float(raw)
                 except (TypeError, ValueError):
                     errors[name] = "must be a number"
@@ -269,14 +304,30 @@ class MessageSubscription(WaitingActivity):
         self.group().waiting().exclude(pk=self.pk).update(status=self.CANCELLED, completed=now,
                                                           reason=f"“{self.name}” came first")
 
+    @classmethod
+    def register(cls, resume_url, activity, name, **fields):
+        key = cls.registration_id(resume_url, activity, name)
+        if existing := cls.objects.filter(resume_url=resume_url, activity=activity, name=name).first():
+            return existing
+        return cls.objects.get_or_create(registration_key=key, defaults=dict(
+            resume_url=resume_url, activity=activity, name=name, **fields))[0]
+
     def deliver(self, payload):
         """A message comes from outside (a bank, a customer's reply): it adds process variables, it
         never changes the ones the case has (an IBAN, an amount, a decision). Those are left out and
         named in `reason`."""
-        known = Case.objects.filter(case_id=self.case_id).values_list("variables", flat=True).first() or {}
+        self.finish(f"message:{self.name}", payload=payload)
+
+    def completion_fields(self, fields):
+        known = {}
+        if self.case_id:
+            case, _ = Case.objects.select_for_update().get_or_create(
+                case_id=self.case_id, defaults={"process": self.process})
+            known = case.variables
+        payload = fields["payload"]
         kept = sorted(k for k in payload if k in known)
-        self.finish(f"message:{self.name}", payload={k: v for k, v in payload.items() if k not in known},
-                    **({"reason": f"left out, the case already has them: {', '.join(kept)}"[:500]} if kept else {}))
+        return {**fields, "payload": {k: v for k, v in payload.items() if k not in known},
+                "reason": f"left out, the case already has them: {', '.join(kept)}"[:500] if kept else ""}
 
     def output(self):
         return self.payload or {}

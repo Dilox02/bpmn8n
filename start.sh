@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts bpmn8n: builds the n8n BPMN nodes, starts the models (Laya decisions + GLiNER2.5
 # extraction: natively on a Mac, Laya on the Apple GPU; in CPU containers elsewhere), then
-# Django (web) and n8n in Docker.
+# Django (web) and n8n in Docker. The native decision backend is now pinned Bekko on CPU.
 #
 #   ./start.sh          start everything (safe to re-run: it rebuilds and reloads the nodes)
 #   ./start.sh stop     stop everything (data is kept)
@@ -22,7 +22,7 @@ LOGS=.logs
 MODELS_PID=$LOGS/models.pid
 MODELS=http://127.0.0.1:8001
 VENV=.venv-models
-MODEL_PACKAGES=(laya-mlx "gliner2[local]" protobuf sentencepiece tiktoken pyobjc-framework-Vision)
+MODEL_PACKAGES=("sentence-transformers==6.1.0" "gliner2[local]" protobuf sentencepiece tiktoken pyobjc-framework-Vision pillow torchvision)  # pillow+torchvision: EmbeddingGemma 2
 mkdir -p "$LOGS"
 
 apple_silicon() { [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]; }
@@ -45,15 +45,16 @@ build_nodes() {
 
 start_models() {
   if curl -sf -o /dev/null "$MODELS/health"; then echo "✓ models server already running"; return; fi
-  if ! "$VENV/bin/python" -c "import laya_mlx, gliner2, Vision" 2>/dev/null; then
+  if ! "$VENV/bin/python" -c "import sentence_transformers, gliner2, Vision" 2>/dev/null; then
     need uv "https://docs.astral.sh/uv/ (brew install uv)"
-    echo "… installing laya-mlx, GLiNER2.5 and Vision for OCR (first run only)"
+    echo "… installing Bekko runtime, GLiNER2.5 and Vision for OCR (first run only)"
     [ -x "$VENV/bin/python" ] || uv venv -q --python 3.12 "$VENV"
     uv pip install -q --python "$VENV/bin/python" "${MODEL_PACKAGES[@]}"
   fi
+  "$VENV/bin/python" tools/decision_runtime.py --download >/dev/null
   nohup "$VENV/bin/python" tools/models_server.py >"$LOGS/models.log" 2>&1 &
   echo $! >"$MODELS_PID"
-  wait_for "models server (Laya on the Apple GPU + GLiNER2.5; the first run downloads the weights)" "$MODELS/health" 900
+  wait_for "models server (Bekko on CPU + GLiNER2.5)" "$MODELS/health" 900
 }
 
 ensure_n8n_database() {  # n8n and bpmn8n share the Postgres server, each with its own database

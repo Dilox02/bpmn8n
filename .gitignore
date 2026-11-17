@@ -46,3 +46,19 @@ playwright-report/
 
 # n8n workflows exported from a local instance (./start.sh export): personal, never committed
 /workflows/
+
+# Local evaluation samples and experiment datasets
+/projects/*/run/
+
+# Projects: only the framework's examples are tracked. Every other folder under projects/ (the workflows
+# Studio, MCP or a person builds from now on: personal processes, experiments, datasets) stays local.
+# To publish one, add a "!/projects/<slug>/" line here. Their packages go in requirements.local.txt.
+/projects/*
+!/projects/__init__.py
+!/projects/acme/
+!/projects/erasmus_learning_agreement/
+!/projects/hospital/
+!/projects/hospital_appointment_booking_uc_01/
+!/projects/motor_insurance_claim/
+!/projects/personal_data_breach_response/
+/requirements.local.txt

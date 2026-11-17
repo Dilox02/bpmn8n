@@ -21,6 +21,7 @@
       "dist/credentials/Bpmn8nApi.credentials.js"
     ],
     "nodes": [
+      "dist/nodes/Bpmn8nMetrics.node.js",
       "dist/nodes/Bpmn8nServiceTask.node.js",
       "dist/nodes/Bpmn8nScriptTask.node.js",
       "dist/nodes/Bpmn8nBusinessRuleTask.node.js",

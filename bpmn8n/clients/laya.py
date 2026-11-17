@@ -1,5 +1,5 @@
-"""Client for Laya (github.com/NandhaKishorM/laya), the System 1 decision model: laya-serve or
-bpmn8n's models server (tools/models_server.py, laya-mlx on the Apple GPU)."""
+"""Compatible client for /v1/systemone. The class/config names remain stable for old workflows;
+the model server now supplies pinned Bekko on CPU and reports its actual model identity."""
 from ..conf import settings
 
 from .http import ModelClient, ServiceUnavailable
@@ -19,7 +19,9 @@ class LayaClient(ModelClient):
 
     def ask(self, state, questions):
         """POST /v1/systemone; returns the `answers` dict keyed like `questions`."""
-        return self.call({"state": state, "questions": questions})["answers"]
+        reply = self.call({"state": state, "questions": questions})
+        self.model = reply.get("model", "decision")
+        return reply["answers"]
 
     def choose(self, state, question, options):
         """One `choice` question. options: {label: description}. Returns (label, confidence)."""
