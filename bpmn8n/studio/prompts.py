@@ -247,12 +247,16 @@ Existing lanes: {self.lanes}
 "workflow.steps": each is {{"type": <a method below>, "name": <a unique node name>, <its arguments>}}:
 {self.steps}
 
-When evaluations are requested, add metrics steps after the outputs being measured. Set project to
-the project's published folder slug, values to n8n expressions on $json, units and inclusive thresholds
-where the brief defines a target. Metrics preserve their input and write locally under the project's
+When evaluations are requested, add a metrics step only where a decision depends on its values: right
+before a technical condition gateway that stops or reroutes the run when a target is missed (the health
+of each iteration of a loop, the quality gate before results are used). Each metric answers one question
+with an inclusive threshold the brief or the domain justifies, and its task returns the boolean the
+gateway reads, computed from the same thresholds. Do not measure counts that n8n's execution data already
+shows, progress for its own sake, or anything right after the trigger. Set project to the project's
+published folder slug, values to n8n expressions on $json (null when not measured this time: it is left
+out, never recorded as 0) and units. Metrics preserve their input and write locally under the project's
 run folder. Reuse this step instead of generating a task that writes evaluation files or calls n8n's
-commercial evaluation endpoints. A threshold result does not itself stop execution: model an explicit
-technical condition gateway and error_end if the process requires a quality gate.
+commercial evaluation endpoints.
 
 "workflow.flows": {{"from": step, "to": [the steps that follow, in sequence], "branch": the output it leaves
 from when "from" is a gateway: one of its branch names, "default" (exclusive/inclusive: taken when no

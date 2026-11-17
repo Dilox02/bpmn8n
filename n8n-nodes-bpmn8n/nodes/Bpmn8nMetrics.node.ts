@@ -34,12 +34,16 @@ export class Bpmn8nMetrics implements INodeType {
 		const runIndex = this.getWorkflowDataProxy(0).$runIndex as number;
 		const outputs = await routeItems(this, 1, 0, async (item, index) => {
 			const configured = this.getNodeParameter('metrics', index) as { values?: IDataObject[] };
+			// A value the step did not measure this time (null, empty) is left out, not recorded as 0:
+			// a 0 would fail or pass a threshold for a measurement that never happened.
+			const measured = (configured.values ?? []).filter(({ value }) => value !== null && value !== undefined && value !== '');
+			if (!measured.length) return { json: item.json, outputs: [0] };
 			await client.post('/api/evaluations/samples', {
 				project: this.getNodeParameter('project', index) as string,
 				label: this.getNodeParameter('label', index, '') as string,
 				workflow_id: this.getWorkflow().id ?? '', execution_id: this.getExecutionId(),
 				node_id: this.getNode().id, node_name: this.getNode().name, sample_id: `${runIndex}:${index}`,
-				metrics: (configured.values ?? []).map(({ name, value, unit, direction, checkThreshold, threshold }) => ({
+				metrics: measured.map(({ name, value, unit, direction, checkThreshold, threshold }) => ({
 					name, value, unit: unit ?? '', direction: direction ?? 'higher', threshold: checkThreshold ? threshold : null,
 				})),
 			});

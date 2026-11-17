@@ -223,6 +223,25 @@ class CheckTest(TestCase):
                          ("Bad Condition", "condition", "error"), ("Bad Condition", "condition", "warning"),
                          ("Bad Condition", "output", "warning"), ("Orphan", "reachable", "error")} <= rules(workflow))
 
+    def test_metrics_must_be_able_to_decide(self):
+        def measured(*metrics, gate=False):
+            w = Workflow("Measured").start("In", "in").task("Score", "businessRuleTask", "check_expense_policy")
+            w.metrics("Quality", "acme", list(metrics))
+            steps = ["In", "Score", "Quality"]
+            if gate:
+                w.condition_gateway("Good?", "exclusive", {"bad": "{{score}} < 0.8"}).error_end("Reject", "bad")
+                steps.append("Good?")
+            w.flow(*steps)
+            if gate:
+                w.flow("Good?", "Reject", output=0)
+            return {p for p in rules(w.as_json()) if p[1] == "metrics"}
+        score = {"name": "Score", "value": "={{ $json.score }}"}
+        self.assertEqual(measured(score), {("Quality", "metrics", "warning")})  # no target
+        self.assertEqual(measured({**score, "threshold": .8}), {("Quality", "metrics", "info")})  # never acts
+        self.assertEqual(measured({**score, "threshold": .8}, gate=True), set())
+        early = Workflow("Early").start("In", "in").metrics("Count", "acme", [{**score, "threshold": 1}])
+        self.assertIn(("Count", "metrics", "warning"), rules(early.flow("In", "Count").as_json()))
+
     def test_branches_at_once_may_not_both_wait(self):
         """n8n parks an execution on one wait: a person's answer would wait for the other branch's timer."""
         def both(timer):

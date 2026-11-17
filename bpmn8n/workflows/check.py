@@ -68,7 +68,7 @@ class WorkflowCheck:
     def problems(self):
         rules = (self.has_trigger, self.connections_valid, self.reachable, self.tasks_exist, self.outputs_connected,
                  self.conditions_valid, self.lanes_exist, self.subprocesses_run_through, self.data_provided,
-                 self.people_decide, self.one_wait_at_a_time)
+                 self.people_decide, self.one_wait_at_a_time, self.metrics_decide)
         return [problem for rule in rules for problem in rule()]
 
     @property
@@ -232,6 +232,30 @@ class WorkflowCheck:
                               "; ".join(", ".join(w) for w in waiting if w) + "): n8n waits on one thing at a "
                               "time, so the case would stall until the last wait ends. Keep the waits in one branch "
                               "(a deadline: an event-based gateway's timeout) or start the other wait as its own process")
+
+    def metrics_decide(self):
+        """A measurement earns its node when it can change something: it comes after a step that produced
+        what it measures, it has a target to tell good from bad, and missing the target can act on the flow."""
+        for name, node in self.of_type(node_type("metrics")):
+            values = node["parameters"].get("metrics", {}).get("values", [])
+            seen, queue, produced = {name}, deque(self.into[name]), False
+            while queue and not produced:  # back through pass-through steps to whatever made the data
+                current = queue.popleft()
+                if current in seen:
+                    continue
+                seen.add(current)
+                if not is_trigger(self.nodes[current]) and self.nodes[current]["type"] not in TRANSPARENT:
+                    produced = True
+                queue.extend(self.into[current])
+            if not produced:
+                yield Problem(name, "metrics", "nothing has been produced yet: measure after the step whose "
+                                               "result matters", "warning")
+            if not any(v.get("checkThreshold") for v in values):
+                yield Problem(name, "metrics", "no threshold: the values are recorded but nothing tells good from "
+                                               "bad; give each metric the target that decides, or drop it", "warning")
+            elif not any(self.nodes[n]["parameters"].get("decider") == "conditions" for n in self.after(name) - {name}):
+                yield Problem(name, "metrics", "missing a threshold changes nothing: add a condition gateway on the "
+                                               "same values if the run should stop or take another path", "info")
 
     def after(self, start, stop=None):
         """`start` and every step it leads to."""

@@ -318,6 +318,14 @@ runs automatically. The browser shows the latest 50 measured executions, each me
 threshold pass counts, a comparison of means with another run, raw samples and JSON export. Threshold
 results describe collected samples; n8n's **Executions** tab remains the source of execution status.
 
+Put a Metrics node where a decision is taken, not after every step. A metric is worth recording when
+it answers a question whose answer changes what happens next: whether a loop iteration is healthy enough
+to continue, whether the result may be used. Give it the threshold that decides, and follow the node
+with a technical condition gateway that acts on the same values (the node itself never stops a run).
+Counts and progress are already in n8n's execution data. A value that a step did not measure this time
+(`null`) is left out of the sample rather than recorded as 0. The workflow check warns about a Metrics
+node with no threshold or placed before anything was produced, and notes thresholds no gateway acts on.
+
 Agents can add a `metrics` step through the workflow builder/Studio/MCP:
 
 ```python
