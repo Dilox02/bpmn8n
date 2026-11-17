@@ -35,6 +35,34 @@ class BuilderTest(SimpleTestCase):
                   {"from": "Join", "to": ["Decide"]},
                   {"from": "Decide", "branch": "default", "to": ["Review"]}]}
 
+    def test_only_explicit_technical_condition_gateways_run_without_a_person(self):
+        def human_rules(workflow):
+            return {(p.node, p.rule, p.level) for p in WorkflowCheck(workflow, fetch=lambda _: None).people_decide()}
+
+        def technical(scope=None):
+            return (Workflow("Dataset batches").start("In", "dataset")
+                    .condition_gateway("Pending?", "exclusive", {"done": "{{pending}} == 0"}, decision_scope=scope)
+                    .task("Export", "scriptTask", "send_notification")
+                    .flow("In", "Pending?").flow("Pending?", "Export", output="done")
+                    .flow("Pending?", "Export", output="default").as_json())
+        self.assertIn(("Pending?", "human", "warning"), human_rules(technical()))
+        workflow = technical("technical")
+        self.assertEqual(workflow["nodes"][1]["parameters"]["decisionScope"], "technical")
+        self.assertEqual(human_rules(workflow), set())
+        with self.assertRaises(SpecError):
+            technical("people")
+        # Merely adding the scope to a model's node must not suppress its existing human check.
+        gateway = (Workflow("Routing").start("In", "route")
+                   .gateway("Choose", "exclusive", "Choose?", {"yes": "yes"})
+                   .task("Send", "sendTask", "send_notification").flow("In", "Choose", "Send").as_json())
+        gateway["nodes"][1]["parameters"]["decisionScope"] = "technical"
+        self.assertIn(("Choose", "human", "warning"), human_rules(gateway))
+        agent = (Workflow("Drafts").start("In", "draft")
+                 .llm_agent("Draft", "Draft", "draft").flow("In", "Draft").as_json())
+        model_node = next(n for n in agent["nodes"] if n["name"] == "Draft")
+        model_node["parameters"].update(decider="conditions", decisionScope="technical")
+        self.assertIn(("Draft", "human", "error"), human_rules(agent))
+
     def test_a_timer_waits_for_a_span_or_until_a_date_of_the_case(self):
         w = Workflow("Deadline").start("In", "in").timer("Two Days", 2, "days").timer("Before Departure", until="{{alert_date}}")
         params = {n["name"]: n["parameters"] for n in w.nodes}
@@ -250,7 +278,8 @@ class CheckTest(TestCase):
         out = StringIO()
         call_command("check_workflow", str(EXAMPLES / "library-lending.json"), "--json", stdout=out)
         problems = json.loads(out.getvalue())[str(EXAMPLES / "library-lending.json")]
-        self.assertEqual([(p["rule"], p["level"]) for p in problems], [("human", "warning")])  # "on loan" ends it by rule
+        # No start_data was declared: required initial variables are listed as information.
+        self.assertEqual([(p["rule"], p["level"]) for p in problems], [("start-data", "info"), ("human", "warning")])
         broken = Path(self.id().replace(".", "_") + ".json")
         broken.write_text(json.dumps(Workflow("x").start("S", "s").task("T", "serviceTask", "nope").flow("S", "T").as_json()))
         try:

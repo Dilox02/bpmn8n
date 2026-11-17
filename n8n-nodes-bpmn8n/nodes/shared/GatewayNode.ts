@@ -79,14 +79,14 @@ export abstract class GatewayNode implements INodeType {
 								kind,
 								item: item.json,
 								conditions: Object.fromEntries(branches.map((b) => [b.name, b.condition ?? ''])) as IDataObject,
-							})
+							}, i)
 						: await client.post(`/api/gateways/${kind}`, {
 								item: item.json,
 								question: this.getNodeParameter('question', i, '') as string,
 								state: this.getNodeParameter('state', i, '') as string,
 								min_confidence: this.getNodeParameter('minConfidence', i) as number,
 								branches: Object.fromEntries(branches.map((b) => [b.name, b.description || b.name])) as IDataObject,
-							});
+							}, i);
 				const taken = (reply.branches as string[]).map((b) => names.indexOf(b)).filter((o) => o >= 0);
 				return { json: item.json, outputs: taken.length ? taken : [defaultOutput] };
 			});

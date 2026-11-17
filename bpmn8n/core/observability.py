@@ -35,11 +35,18 @@ class Trace:
     case_id: str = ""
     activity: str = ""
     process: str = ""
+    node_id: str = ""
+    run_index: int | None = None
+    item_index: int | None = None
 
     @classmethod
     def of(cls, request):
         h = request.headers
-        return cls(*(unquote(h.get(name, "")) for name in (CASE_HEADER, ACTIVITY_HEADER, PROCESS_HEADER)))
+        def index(header):
+            value = h.get(header, "")
+            return int(value) if value.isascii() and value.isdigit() and len(value) < 10 else None
+        return cls(*(unquote(h.get(name, "")) for name in (CASE_HEADER, ACTIVITY_HEADER, PROCESS_HEADER)),
+                   node_id=unquote(h.get("X-Bpmn8n-Node", "")), run_index=index("X-Bpmn8n-Run"), item_index=index("X-Bpmn8n-Item"))
 
 _profiles = {}  # endpoint -> last profile report (a debugging aid: kept per worker process)
 _current = ContextVar("span", default=None)
@@ -60,6 +67,11 @@ class Span:
 def measure(name, trace=Trace(), resource="system"):
     """Times the block and stores it as an Event (endpoint `name`) of `trace`, errors included."""
     span = Span()
+    if trace.node_id or trace.run_index is not None or trace.item_index is not None:
+        span.data = {"invocation": {"node_id": trace.node_id, "run_index": trace.run_index, "item_index": trace.item_index}}
+    span.event = Event.objects.create(case_id=trace.case_id, activity=trace.activity or name, process=trace.process,
+                                     endpoint=name, started=span.started, ended=span.started, duration_ms=0,
+                                     status="running", resource=resource, data=span.data)
     token = _current.set(span)
     try:
         yield span
@@ -69,10 +81,8 @@ def measure(name, trace=Trace(), resource="system"):
     finally:
         _current.reset(token)
         span.close()
-        Event.objects.create(case_id=trace.case_id, activity=trace.activity or name, process=trace.process,
-                             endpoint=name, started=span.started,
-                             ended=span.ended, duration_ms=span.ms, status="error" if span.error else "complete",
-                             resource=resource, error=span.error or "", data=span.data)
+        Event.objects.filter(pk=span.event.pk).update(ended=span.ended, duration_ms=span.ms,
+                             status="error" if span.error else "complete", error=span.error or "", data=span.data)
         if span.profile:
             _profiles[name] = span.profile
         log.info("%s %.1fms%s", name, span.ms, f" ERROR {span.error}" if span.error else "")
@@ -82,6 +92,7 @@ def record(**data):
     """Adds `data` to the Event of the call being measured (see Event.data)."""
     if span := _current.get():
         span.data.update(data)
+        Event.objects.filter(pk=span.event.pk).update(data=span.data)
 
 
 class Profiler:
@@ -124,7 +135,7 @@ def profiled(fn):
 
 def metrics_snapshot():
     """Calls, errors and timings per endpoint, over every worker process."""
-    rows = Event.objects.values("endpoint").annotate(
+    rows = Event.objects.exclude(status="running").values("endpoint").annotate(
         calls=Count("id"), errors=Count("id", filter=Q(status="error")), avg_ms=Avg("duration_ms"),
         max_ms=Max("duration_ms"), last_at=Max("ended"))
     return {r["endpoint"]: {"calls": r["calls"], "errors": r["errors"], "avg_ms": round(r["avg_ms"], 2),

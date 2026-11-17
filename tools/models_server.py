@@ -1,20 +1,21 @@
 """bpmn8n models server: the small models bpmn8n uses, behind one HTTP/1.1 keep-alive API.
 
-    POST /v1/systemone   Laya decisions (laya-serve compatible), on the Apple GPU via laya-mlx
-    POST /v1/extract     GLiNER2.5 structured extraction: {"items": [{"text", "fields"}], "threshold"}
+    POST /v1/systemone   Bekko decisions, compatible with the existing typed-decision API
+    POST /v1/extract     GLiNER2.5: items with text + fields, or native entities/relations schemas
     POST /v1/ocr         text in a photo or scan, with macOS's Vision: {"image": base64 or data URL}
     GET  /health         {"status": "ok", "backends": [...]}
 
 Concurrent extraction requests are micro-batched into one GLiNER forward pass (2.3x the
 throughput of one-by-one on CPU, measured on an M5). GLiNER runs on CPU: for a 74M model the
-Apple GPU was ~9x slower (175 vs 20 ms). Backends load lazily, so a host without laya-mlx (Linux)
-serves extraction only, and only a Mac reads images (Vision is part of macOS).
+Apple GPU was ~9x slower (175 vs 20 ms). Bekko also runs on CPU; only a Mac reads
+images (Vision is part of macOS). Model files must already be cached for offline startup.
 
-    .venv-models/bin/python tools/models_server.py [--host 127.0.0.1] [--port 8001] [--no-laya]
+    .venv-models/bin/python tools/models_server.py [--host 127.0.0.1] [--port 8001] [--no-decision]
 """
 import argparse
 import base64
 import json
+import math
 import os
 import threading
 import time
@@ -75,19 +76,29 @@ class Gliner:
         self.batcher = MicroBatcher(self._run)
 
     @lru_cache(maxsize=256)  # one schema object per distinct field list (per task, in practice)
-    def schema(self, fields_json):
+    def schema(self, fields_json, entities_json="{}", relations_json="{}", threshold=0.5):
         schema = self.model.create_schema()
-        structure = schema.structure(self.RECORD)
-        for f in json.loads(fields_json):
-            structure.field(f["name"], dtype="str", description=f.get("description") or None,
-                            choices=f.get("choices") or None)
+        fields, entities, relations = json.loads(fields_json), json.loads(entities_json), json.loads(relations_json)
+        if fields or not (entities or relations):
+            structure = schema.structure(self.RECORD)
+            for f in fields:
+                structure.field(f["name"], dtype="str", description=f.get("description") or None,
+                                choices=f.get("choices") or None)
+        if entities:
+            schema.entities(entities, dtype="list", threshold=threshold)
+        if relations:
+            schema.relations(relations, threshold=threshold)
         return schema
 
     def _run(self, items):
         threshold = min(item["threshold"] for item in items)
-        out = self.model.batch_extract([i["text"] for i in items], [self.schema(i["fields_json"]) for i in items],
-                                       batch_size=len(items), threshold=threshold, include_confidence=True)
-        return [self._flatten(result, item["threshold"]) for result, item in zip(out, items)]
+        schemas = [self.schema(i["fields_json"], i["entities_json"], i["relations_json"], i["threshold"])
+                   for i in items]
+        out = self.model.batch_extract([i["text"] for i in items], schemas,
+                                       batch_size=len(items), threshold=threshold,
+                                       include_confidence=True, include_spans=True)
+        return [result if item["native"] else self._flatten(result, item["threshold"])
+                for result, item in zip(out, items)]
 
     def _flatten(self, result, threshold):
         records = result.get(self.RECORD) or [{}]
@@ -98,22 +109,32 @@ class Gliner:
                 fields[name] = {"value": hit["text"], "confidence": round(hit.get("confidence", 1.0), 4)}
         return fields
 
-    def extract(self, text, fields, threshold=0.5):
-        fields_json = json.dumps(fields, sort_keys=True)
-        return self.batcher.submit({"text": text, "fields_json": fields_json, "threshold": threshold})
+    def extract(self, text, fields=None, threshold=0.5, entities=None, relations=None):
+        if not math.isfinite(threshold) or not 0 <= threshold <= 1:
+            raise ValueError("threshold must be finite and between 0 and 1")
+        for labels in (entities, relations):
+            if labels is not None and (not isinstance(labels, dict) or len(labels) > 32 or
+                    any(not isinstance(k, str) or not 1 <= len(k) <= 64 or
+                        not isinstance(v, str) or len(v) > 300 for k, v in labels.items())):
+                raise ValueError("entities/relations must map at most 32 labels to descriptions")
+        if (entities or relations) and (not isinstance(text, str) or len(text) > 5000):
+            raise ValueError("native extraction text must be a string of at most 5000 characters")
+        return self.batcher.submit({"text": text, "fields_json": json.dumps(fields or [], sort_keys=True),
+                                    "entities_json": json.dumps(entities or {}, sort_keys=True),
+                                    "relations_json": json.dumps(relations or {}, sort_keys=True),
+                                    "native": bool(entities or relations), "threshold": threshold})
 
 
-class Laya:
+class DecisionModel:
     def __init__(self):
-        import laya_mlx  # lazy: Apple Silicon only
-
-        self.router = laya_mlx.Router(preload=True)
-        self.lock = threading.Lock()  # the GPU runs one forward pass at a time anyway
+        from decision_runtime import DecisionRuntime
+        self.runtime = DecisionRuntime()
+        self.metadata = self.runtime.metadata
+        self.lock = threading.Lock()
 
     def predict(self, state, questions):
         with self.lock:
-            result = self.router.predict(state, questions)
-        return {"model": result["routing"]["model"], "answers": result["answers"]}
+            return self.runtime.predict(state, questions)
 
 
 class Ocr:
@@ -164,14 +185,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self._reply(200, {"status": "ok", "backends": sorted(self.backends)})
+            return self._reply(200, {"status": "ok", "backends": sorted(self.backends),
+                                     "decision_model": getattr(self.backends.get("decision"), "metadata", None),
+                                     "capabilities": {"gliner": ["records", "entities", "relations"]}})
         self._reply(404, {"detail": "not found"})
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
         limit = MAX_IMAGE if self.path == "/v1/ocr" else MAX_BODY
         body = self.rfile.read(length) if 0 < length <= limit else None  # always drain: keep-alive
-        route = {"/v1/systemone": "laya", "/v1/extract": "gliner", "/v1/ocr": "ocr"}.get(self.path)
+        route = {"/v1/systemone": "decision", "/v1/extract": "gliner", "/v1/ocr": "ocr"}.get(self.path)
         if route not in self.backends:
             return self._reply(404, {"detail": f"no backend for {self.path}"})
         if self.api_key and self.headers.get("Authorization") != f"Bearer {self.api_key}":
@@ -181,13 +204,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(413 if length else 400, {"detail": f"body required, at most {limit // 1_000_000} MB"})
         try:
             request = json.loads(body)
-            if route == "laya":
-                return self._reply(200, self.backends["laya"].predict(request["state"], request["questions"]))
+            if route == "decision":
+                return self._reply(200, self.backends["decision"].predict(request["state"], request["questions"]))
             if route == "ocr":
                 image = base64.b64decode(request["image"].split("base64,")[-1])  # base64 or a data URL
                 return self._reply(200, self.backends["ocr"].read(image))
             gliner, threshold = self.backends["gliner"], float(request.get("threshold", 0.5))
-            return self._reply(200, {"results": [gliner.extract(i["text"], i["fields"], threshold)
+            return self._reply(200, {"model": GLINER_MODEL,
+                                     "results": [gliner.extract(i["text"], i.get("fields"), threshold,
+                                                               i.get("entities"), i.get("relations"))
                                                  for i in request["items"]]})
         except (ValueError, KeyError, TypeError) as e:
             self._reply(422, {"detail": f"{type(e).__name__}: {e}"})
@@ -202,15 +227,15 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="bpmn8n models server (Laya + GLiNER + OCR)")
+    parser = argparse.ArgumentParser(description="bpmn8n models server (Bekko + GLiNER + OCR)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8001)
-    parser.add_argument("--no-laya", action="store_true", help="extraction only (hosts without laya-mlx)")
+    parser.add_argument("--no-decision", "--no-laya", dest="no_decision", action="store_true", help="extraction only")
     args = parser.parse_args()
     Handler.api_key = os.environ.get("MODELS_API_KEY", "")
     Handler.backends["gliner"] = Gliner()
-    if not args.no_laya:
-        Handler.backends["laya"] = Laya()
+    if not args.no_decision:
+        Handler.backends["decision"] = DecisionModel()
     try:
         Handler.backends["ocr"] = Ocr()
     except ImportError:  # not a Mac: no OCR

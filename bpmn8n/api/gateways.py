@@ -39,9 +39,10 @@ def exclusive_gateway(request, data: GatewayIn):
     case = CaseData(request, data.item)
     question, seen = case.text(data.question), state(case, data)
     with upstream():
-        branch, confidence = LayaClient().choose(seen, question, data.branches)
+        client = LayaClient()
+        branch, confidence = client.choose(seen, question, data.branches)
     taken = confidence is None or confidence >= (data.min_confidence or 0)
-    return decided("laya", {"question": question, "state": seen, "options": data.branches},
+    return decided(getattr(client, "model", "decision"), {"question": question, "state": seen, "options": data.branches},
                    [branch] if taken else [], {branch: confidence})
 
 
@@ -54,9 +55,10 @@ def inclusive_gateway(request, data: GatewayIn):
     question, seen = case.text(data.question), state(case, data)
     questions = {name: f"{question} {desc}".strip() for name, desc in data.branches.items()}
     with upstream():
-        scores = LayaClient().yes_no(seen, questions)
+        client = LayaClient()
+        scores = client.yes_no(seen, questions)
     threshold = 0.5 if data.min_confidence is None else data.min_confidence
-    return decided("laya", {"question": question, "state": seen, "options": data.branches},
+    return decided(getattr(client, "model", "decision"), {"question": question, "state": seen, "options": data.branches},
                    [n for n, p in scores.items() if p >= threshold], scores)
 
 

@@ -26,7 +26,7 @@ export class Bpmn8nClient {
 	 * activity (node) the call belongs to, for the event log. The case is "<workflow id>:<execution
 	 * id>": execution ids alone repeat across workflows and after a database migration. Values
 	 * are URI-encoded, since node and workflow names need not be ASCII. */
-	async post(path: string, body: IDataObject): Promise<IDataObject> {
+	async post(path: string, body: IDataObject, itemIndex = 0): Promise<IDataObject> {
 		const ctx = this.ctx;
 		const headers =
 			'getExecutionId' in ctx
@@ -34,6 +34,9 @@ export class Bpmn8nClient {
 						'X-Bpmn8n-Case': encodeURIComponent(`${ctx.getWorkflow().id}:${ctx.getExecutionId()}`),
 						'X-Bpmn8n-Process': encodeURIComponent(ctx.getWorkflow().name ?? ''),
 						'X-Bpmn8n-Activity': encodeURIComponent(ctx.getNode().name),
+						'X-Bpmn8n-Node': encodeURIComponent(ctx.getNode().id),
+						'X-Bpmn8n-Item': String(itemIndex),
+						'X-Bpmn8n-Run': String('getWorkflowDataProxy' in ctx ? ctx.getWorkflowDataProxy(itemIndex).$runIndex ?? '' : ''),
 					}
 				: {};
 		return (await this.request('POST', path, body, headers)) as IDataObject;

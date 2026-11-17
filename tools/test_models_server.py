@@ -4,7 +4,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-from models_server import MicroBatcher
+from models_server import Gliner, MicroBatcher
 
 
 class MicroBatcherTest(unittest.TestCase):
@@ -36,6 +36,51 @@ class MicroBatcherTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             batcher.submit(1)
         self.assertEqual(batcher.submit(2), 2)
+
+
+class NativeExtractionTest(unittest.TestCase):
+    def test_native_entities_relations_keep_all_spans_and_legacy_fields_still_flatten(self):
+        native = {"entities": {"person": [{"text": "Luca", "start": 0, "end": 4, "confidence": .9},
+                                          {"text": "Anna", "start": 12, "end": 16, "confidence": .8}]},
+                  "relation_extraction": {"greets": [{"head": {"text": "Luca"}, "tail": {"text": "Anna"},
+                                                        "confidence": .9}]}}
+        schemas = []
+        class Schema:
+            native = False
+            def structure(self, name):
+                return self
+            def field(self, *args, **kwargs):
+                return self
+            def entities(self, labels, **kwargs):
+                self.native = True
+                schemas.append(("entities", labels, kwargs))
+                return self
+            def relations(self, labels, **kwargs):
+                schemas.append(("relations", labels, kwargs))
+                return self
+        class Model:
+            def create_schema(self):
+                return Schema()
+            def batch_extract(self, texts, structures, **kwargs):
+                assert kwargs["include_spans"] is True
+                return [native if structure.native else {"record": [{"name": {"text": "Luca", "confidence": .9}}]}
+                        for structure in structures]
+        gliner = Gliner.__new__(Gliner)
+        gliner.model = Model()
+        gliner.batcher = MicroBatcher(gliner._run, max_wait=.03)
+        with ThreadPoolExecutor(2) as pool:
+            a = pool.submit(gliner.extract, "Luca saluta Anna", entities={"person": "A named person"},
+                            relations={"greets": "A person greets another person"}, threshold=.7)
+            b = pool.submit(gliner.extract, "Luca", [{"name": "name"}], .5)
+            self.assertEqual(a.result(), native)
+            self.assertEqual(b.result(), {"name": {"value": "Luca", "confidence": .9}})
+        self.assertEqual(schemas[-1][2]["threshold"], .7)
+
+    def test_rejects_invalid_native_schema_without_running_a_model(self):
+        gliner = Gliner.__new__(Gliner)
+        for kwargs in ({"entities": ["person"]}, {"relations": {"a": 123}}, {"threshold": float("nan")}):
+            with self.assertRaises(ValueError):
+                gliner.extract("A sentence", **kwargs)
 
 
 if __name__ == "__main__":

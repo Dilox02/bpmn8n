@@ -23,7 +23,7 @@ TASK_NODES = {node_type(kind): kind for kind in TASK_KINDS}  # node type -> @tas
 HUMAN = (node_type("userTask"), node_type("manualTask"))
 WAITING = (*HUMAN, node_type("receiveTask"), node_type("eventBasedGateway"))
 NOOP = "n8n-nodes-base.noOp"
-TRANSPARENT = (*BRANCHING, node_type("timerEvent"), MERGE, NOOP)  # pass data on, produce none
+TRANSPARENT = (*BRANCHING, node_type("timerEvent"), node_type("metrics"), MERGE, NOOP)  # pass data on, produce none
 STICKY = "n8n-nodes-base.stickyNote"
 DECIDING = (node_type("exclusiveGateway"), node_type("inclusiveGateway"), AGENT)  # a model or a rule chooses
 
@@ -201,6 +201,11 @@ class WorkflowCheck:
         A condition gateway that reads only form fields applies a person's decision. An error for LLM
         agents, a warning for gateways (bpmn8n Studio treats both as errors)."""
         for name, node in self.of_type(*DECIDING):
+            params = node["parameters"]
+            # Technical loops route counters/files; this explicit scope never exempts a model's decision.
+            if node["type"] != AGENT and params.get("decider") == "conditions" and \
+                    params.get("decisionScope") == "technical":
+                continue
             if node["parameters"].get("decider") == "conditions" and self.reads_only_forms(name, node):
                 continue
             if end := self.end_without_person(name):

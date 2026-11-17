@@ -46,3 +46,6 @@ playwright-report/
 
 # n8n workflows exported from a local instance (./start.sh export): personal, never committed
 /workflows/
+
+# Local evaluation samples and experiment datasets
+/projects/*/run/

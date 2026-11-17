@@ -84,7 +84,7 @@ export abstract class TaskNode implements INodeType {
 				this.getNodeParameter('minConfidence', i, 0.5) as number,
 				this.getNodeParameter('verify', i, false) as boolean,
 			);
-			const { result, extraction } = unpackReply(await client.post(path, body));
+			const { result, extraction } = unpackReply(await client.post(path, body, i));
 			const json = shapeOutput(
 				this.getNodeParameter('output', i, 'result') as OutputMode,
 				item.json,

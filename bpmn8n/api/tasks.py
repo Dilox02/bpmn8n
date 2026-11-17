@@ -119,8 +119,9 @@ class Task:
         """fn, with its result checked and, with its input, kept in the event log."""
         @wraps(fn)
         def call(request, data):
+            record(input=data.model_dump(mode="json"))
             result = self.validated(fn(request, data))
-            record(input=data.model_dump(mode="json"), output=as_data(result))
+            record(output=as_data(result))
             return result
         return call
 

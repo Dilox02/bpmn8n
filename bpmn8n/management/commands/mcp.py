@@ -71,6 +71,7 @@ TOOLS = {
             "GET /api/usertasks?status=open, POST /api/usertasks/{id}/complete {result}, GET /api/cases/{case_id}, "
             "GET /api/eventlog.csv?since=..., GET /api/metrics, GET /api/processmining?process=..., "
             "GET /api/messages/subscriptions, POST /api/messages/{name} {...}, "
+            "GET /api/evaluations/{workflow_id}/runs, GET /api/evaluations/{workflow_id}/runs/{project}/{execution_id}, "
             "POST /api/workflows/check {n8n workflow json}, POST /api/tasks/{name} {input}, GET /api/openapi.json.",
             ApiArguments),
     "studio_projects": ("Studio's projects: slug, name, status (interview, research, building, ready, failed).",
