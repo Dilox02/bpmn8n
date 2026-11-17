@@ -223,6 +223,17 @@ class CheckTest(TestCase):
                          ("Bad Condition", "condition", "error"), ("Bad Condition", "condition", "warning"),
                          ("Bad Condition", "output", "warning"), ("Orphan", "reachable", "error")} <= rules(workflow))
 
+    def test_a_sub_process_starts_from_its_caller(self):
+        sub = (Workflow("Batch").subprocess_start("Called").task("Score", "businessRuleTask", "check_expense_policy")
+               .flow("Called", "Score")).as_json()
+        self.assertEqual(sub["nodes"][0]["type"], "n8n-nodes-base.executeWorkflowTrigger")
+        self.assertFalse({p for p in rules(sub) if p[1] in ("trigger", "reachable", "empty")})
+        caller = Workflow("Main").start("In", "in").call_activity("Batch", "7").flow("In", "Batch").as_json()
+        check = lambda active: {(p.node, p.rule, p.level) for p in WorkflowCheck(  # noqa: E731
+            caller, fetch=lambda _: {**sub, "active": active}).problems}
+        self.assertIn(("Batch", "subprocess", "warning"), check(False))  # n8n 2 would not run it
+        self.assertNotIn(("Batch", "subprocess", "warning"), check(True))
+
     def test_metrics_must_be_able_to_decide(self):
         def measured(*metrics, gate=False):
             w = Workflow("Measured").start("In", "in").task("Score", "businessRuleTask", "check_expense_policy")

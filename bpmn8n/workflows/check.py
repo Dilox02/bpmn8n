@@ -153,6 +153,9 @@ class WorkflowCheck:
             elif waits := [n["name"] for n in sub.get("nodes", []) if n["type"] in WAITING]:
                 yield Problem(name, "subprocess", f"the sub-process waits at {', '.join(waits)}: a Call Activity runs "
                                                   "it in one go, so put the waits in this workflow")
+            elif sub.get("active") is False:
+                yield Problem(name, "subprocess", f"sub-process {workflow_id!r} is not published: n8n 2 refuses to "
+                                                  "run it (\"Workflow is not active\"); publish it", "warning")
 
     def data_provided(self):
         """Whether what each node reads exists by then: the required inputs of a task that its node

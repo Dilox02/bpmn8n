@@ -39,7 +39,7 @@ class Workflow:
     """Builds an n8n workflow. Nodes are laid out left to right in the order they are added
     (time runs left to right); `row` moves alternative branches up or down, layout() computes it all."""
 
-    STEPS = ("start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
+    STEPS = ("start", "subprocess_start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
              "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics")  # a spec's steps
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
@@ -79,6 +79,12 @@ class Workflow:
                         {"httpMethod": "POST", "path": path, "responseMode": respond, "options": {},
                          **({"responseData": "allEntries"} if respond == "lastNode" else {})},
                         bpmn=False, version=2, webhookId=str(uuid.uuid4()))
+
+    def subprocess_start(self, name):
+        """The start of a reusable sub-process: n8n's "When Executed by Another Workflow" trigger, which
+        receives the items a Call Activity passes and hands them on unchanged."""
+        return self.add(name, "n8n-nodes-base.executeWorkflowTrigger", {"inputSource": "passthrough"},
+                        bpmn=False, version=1.1)
 
     def task(self, name, kind, endpoint, row=0, same_column=False, output="result", text=None, at=None, extra=None,
              fields=None, **inputs):
