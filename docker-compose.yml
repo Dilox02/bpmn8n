@@ -4,11 +4,12 @@ services:
     image: python:3.12-slim
     working_dir: /app
     volumes: [".:/app"]
-    command: sh -c "pip install -q --root-user-action=ignore -r requirements.txt && python manage.py migrate --noinput && gunicorn bpmn8n.wsgi -b 0.0.0.0:8000 --workers $${WEB_WORKERS:-4} --threads 16 --backlog 2048 --keep-alive 0 --graceful-timeout 900 --reload --pid /tmp/gunicorn.pid --access-logfile -"
+    command: sh -c "pip install -q --root-user-action=ignore -r requirements.txt && { [ ! -f requirements.local.txt ] || pip install -q --root-user-action=ignore -r requirements.local.txt; } && python manage.py migrate --noinput && gunicorn bpmn8n.wsgi -b 0.0.0.0:8000 --workers $${WEB_WORKERS:-4} --threads 16 --backlog 2048 --keep-alive 0 --graceful-timeout 900 --reload --pid /tmp/gunicorn.pid --access-logfile -"
     # several processes: tasks, event log and metrics live in Postgres (runserver dropped
     # connections when n8n ran 30 cases at once); no keep-alive: clients reusing a connection
     # the server was closing got "socket hang up"; the pid file lets Studio reload it with new tasks, and
-    # the graceful timeout covers bounded local generation + critic calls, including JSON repair (up to 720 s)
+    # the graceful timeout covers bounded local generation + critic calls, including JSON repair (up to 720 s);
+    # requirements.local.txt (git-ignored) holds the packages of local projects that are not in the repository
     ports: ["127.0.0.1:8000:8000"]
     environment:
       # ./start.sh sets them: the models server on the Mac (host.docker.internal:8001) or containers
