@@ -15,6 +15,10 @@ type Context = IExecuteFunctions | ILoadOptionsFunctions;
 export const CREDENTIALS = 'bpmn8nApi';
 
 /** HTTP client for a bpmn8n server, authenticated with the node's bpmn8nApi credentials. */
+/** n8n's default (300 s) aborts a task that calls a local LLM for longer, while bpmn8n finishes the work
+ * anyway; 15 minutes is gunicorn's graceful timeout (docker-compose.yml), the longest a task can run. */
+export const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
+
 export class Bpmn8nClient {
 	constructor(private readonly ctx: Context) {}
 
@@ -52,6 +56,7 @@ export class Bpmn8nClient {
 			body,
 			headers,
 			json: true,
+			timeout: REQUEST_TIMEOUT_MS,
 			returnFullResponse: true,
 			ignoreHttpStatusErrors: true,
 		})) as { statusCode: number; body: IDataObject | string };

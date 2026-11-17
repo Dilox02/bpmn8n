@@ -23,6 +23,7 @@ test('metrics keep items paired, evaluate each item, and distinguish loop iterat
 	assert.equal(calls[0].body.metrics[0].threshold, .8);
 	assert.equal(calls[1].body.metrics[0].value, .5);
 	assert.equal(calls[0].body.workflow_id, 'workflow1');
+	assert.equal(calls[0].timeout, 15 * 60 * 1000);  // a long task is not aborted at n8n's 300 s
 });
 
 test('a value not measured in this item is left out, and an item with none posts nothing', async () => {
