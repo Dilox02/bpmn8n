@@ -1,5 +1,6 @@
 """n8n workflows made of bpmn8n's BPMN nodes, as the n8n editor saves them: the JSON to import,
 publish through n8n's API or show in its canvas. Pure Python, no Django."""
+import json
 import re
 import uuid
 from collections import defaultdict
@@ -173,9 +174,18 @@ class Workflow:
 
     def user_task(self, name, title, lane, form, context="", description="", row=0, same_column=False,
                   kind="userTask"):
-        """form: [(name, label, type)] with type string | number | boolean."""
+        """form: [(name, label, type)] with type string | number | boolean. context: what the person sees,
+        {label: "{{variable}}"} (a dict, or its JSON); empty shows all the process variables."""
         if not all(isinstance(f, (list, tuple)) and len(f) == 3 for f in form):  # a dict would unpack its keys
             raise ValueError("form: a list of [name, label, type]")
+        if isinstance(context, dict):
+            context = json.dumps(context, ensure_ascii=False)
+        elif context:  # the node parses it as JSON: plain text would fail when a case reaches the step
+            try:
+                if not isinstance(json.loads(context), dict):
+                    raise ValueError
+            except ValueError:
+                raise ValueError(f"{name}: context must be an object {{label: \"{{{{variable}}}}\"}}, not {context[:60]!r}") from None
         return self.add(name, node_type(kind), {
             "title": title, "lane": lane, "description": description, "context": context,
             "form": {"fields": [{"name": n, "label": label, "type": t} for n, label, t in form]},

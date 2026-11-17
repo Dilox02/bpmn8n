@@ -223,6 +223,13 @@ class CheckTest(TestCase):
                          ("Bad Condition", "condition", "error"), ("Bad Condition", "condition", "warning"),
                          ("Bad Condition", "output", "warning"), ("Orphan", "reachable", "error")} <= rules(workflow))
 
+    def test_a_user_task_context_is_an_object(self):
+        w = Workflow("Review").start("In", "in")
+        w.user_task("Check", "Check", "managers", form=[["ok", "OK", "boolean"]], context={"Report": "{{report}}"})
+        self.assertEqual(json.loads(w.node("Check")["parameters"]["context"]), {"Report": "{{report}}"})
+        with self.assertRaises(ValueError):  # the node would fail on it at run time
+            Workflow("Review").user_task("Check", "Check", "managers", form=[], context="Report: {{report}}")
+
     def test_a_sub_process_starts_from_its_caller(self):
         sub = (Workflow("Batch").subprocess_start("Called").task("Score", "businessRuleTask", "check_expense_policy")
                .flow("Called", "Score")).as_json()
