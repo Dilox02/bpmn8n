@@ -145,6 +145,56 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
 .trail .who-when { grid-column: 2; color: var(--b8-muted); font-size: var(--b8-fs-small); line-height: 16px; }
 .trail time { grid-column: 3; grid-row: 1; color: var(--b8-muted); font-size: var(--b8-fs-small); }
 
+/* ---------- case page: its facts, the canvas's legend, the steps, the decisions, the variables ---------- */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, max-content)); gap: 8px 40px; margin: -8px 0 var(--b8-gap); }
+.facts dt { color: var(--b8-muted); font-size: var(--b8-fs-small); }
+.facts dd { font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; background: var(--b8-muted); }
+.legend [data-state=active]::before { background: var(--b8-accent); box-shadow: 0 0 0 2px var(--b8-pill-accent-bg); }
+.legend [data-state=waiting]::before { background: none; border: 1px dashed var(--b8-muted); }
+.timeline { display: grid; }
+.timeline li { position: relative; padding-left: 20px; }
+.timeline li::before { content: ""; position: absolute; left: 0; top: 17px; width: 8px; height: 8px; border-radius: 50%; background: var(--b8-control); }
+.timeline li:not(:last-child)::after { content: ""; position: absolute; left: 3.5px; top: 31px; bottom: -9px; width: 1px; background: var(--b8-border); }
+.timeline li.s-error::before { background: var(--b8-negative); }
+.timeline li.s-running::before { background: var(--b8-warning); }
+.timeline summary { display: grid; grid-template-columns: minmax(0, 1fr) auto 64px 12px; gap: 4px 16px; align-items: baseline; padding: 10px 0; border-radius: var(--b8-radius-control); cursor: pointer; list-style: none; }
+.timeline summary::-webkit-details-marker { display: none; }
+.timeline summary::after { content: ""; align-self: center; width: 12px; height: 12px; background: var(--b8-muted); -webkit-mask: var(--chevron) center / 12px no-repeat; mask: var(--chevron) center / 12px no-repeat; transition: transform var(--b8-t-ui) var(--b8-ease-out); }
+.timeline details[open] summary::after { transform: rotate(90deg); }
+.timeline .name { font-weight: 500; overflow-wrap: anywhere; }
+.timeline .what .pill { margin-left: 8px; vertical-align: 1px; }
+.timeline .sub { display: block; margin-top: 2px; color: var(--b8-muted); font-size: var(--b8-fs-small); }
+.timeline time, .timeline .dur { color: var(--b8-muted); font-size: var(--b8-fs-small); text-align: right; white-space: nowrap; }
+.step-body { display: grid; gap: 8px; padding: 0 0 16px; }
+.step-body h3 { font-size: var(--b8-fs-small); font-weight: 500; color: var(--b8-muted); }
+.step-body pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.error-text { color: var(--b8-negative); overflow-wrap: anywhere; }
+.decision { padding: 16px 0; }
+.decision + .decision { border-top: 1px solid var(--b8-rule); }
+.decision:first-of-type { padding-top: 0; }
+.decision header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.decision h3 { font-size: var(--b8-fs-body); font-weight: 600; }
+.decision .question { margin-top: 4px; color: var(--b8-muted); }
+.options { display: grid; margin-top: 10px; }
+.options li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--b8-rule); }
+.options .branch { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.options .text { grid-column: 1 / -1; color: var(--b8-muted); font-size: var(--b8-fs-small); overflow-wrap: anywhere; }
+.options .score { color: var(--b8-muted); }
+.options li.taken .score { color: var(--b8-text); font-weight: 500; }
+.rows .row .grow { flex: 1; min-width: 0; }
+.rows .row .sub { display: block; margin-top: 2px; color: var(--b8-muted); font-size: var(--b8-fs-small); overflow-wrap: anywhere; }
+.rows .row a.name { font-weight: 500; }
+.rows .row a.name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tree { display: grid; }
+.tree .tree { margin: 2px 0 2px 4px; padding-left: 12px; border-left: 1px solid var(--b8-border); }
+.tree li { padding: 3px 0; overflow-wrap: anywhere; }
+.tree summary { cursor: pointer; border-radius: 4px; }
+.tree .key { margin-right: 8px; color: var(--b8-muted); font-family: var(--b8-mono); font-size: var(--b8-fs-small); }  /* taste-skill-ignore: keys are variable names */
+.tree .size { margin-left: 8px; color: var(--b8-muted); font-size: var(--b8-fs-small); }
+.tree .pill { height: 18px; margin-right: 8px; }
+
 /* ---------- studio: the build kanban, the canvas, the interview ---------- */
 .kanban { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .kanban section { min-width: 0; padding: 12px 16px; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); }
