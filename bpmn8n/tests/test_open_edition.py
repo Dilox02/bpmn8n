@@ -487,3 +487,36 @@ class CaseSearchTest(TestCase):
     def test_bad_queries_are_422(self):
         self.assertEqual(self.client.get("/api/cases", {"status": "lost"}).status_code, 422)
         self.assertEqual(self.client.get("/api/cases", {"var.a b": "1"}).status_code, 422)
+
+
+class SnapshotCommandTest(TestCase):
+    def run_command(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command("snapshot_workflows", *args, stdout=out)
+        return out.getvalue()
+
+    @override_settings(N8N_API_KEY="key")
+    def test_seen_and_all(self):
+        Case.objects.create(case_id="wf1:1", process="Refunds")
+        with patch(N8N, return_value=V1) as n8n:
+            self.assertIn("1 workflow(s), 1 version(s) kept", self.run_command())
+        self.assertEqual(n8n.call_args.args, ("GET", "/workflows/wf1"))
+        pages = [{"data": [V2], "nextCursor": "c2"}, {"data": [{**V1, "id": "wf2"}], "nextCursor": None}]
+        with patch(N8N, side_effect=pages) as n8n:
+            self.assertIn("2 workflow(s), 3 version(s) kept", self.run_command("--all"))
+        self.assertEqual(n8n.call_args.args, ("GET", "/workflows?limit=100&cursor=c2"))
+
+    def test_needs_an_api_key(self):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            self.run_command()
+
+
+class GlobalVariableElementTest(TestCase):
+    def test_a_task_that_produces_data(self):
+        from ..workflows.elements import element
+        e = element("CUSTOM.bpmn8nGlobalVariable")
+        self.assertEqual((e.kind, e.category, e.transparent, e.symbol), ("globalVariable", "task", False, "data/data-store"))
