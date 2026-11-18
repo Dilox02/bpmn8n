@@ -73,7 +73,7 @@ def comparable(workflow):
         if "credentials" in node:
             node["credentials"] = {kind: (ref or {}).get("name") for kind, ref in node["credentials"].items()}
         nodes[node["name"]] = node
-    return {"workflow": {"name": workflow.get("name"), "settings": workflow.get("settings") or {}},
+    return {"properties": {"name": workflow.get("name"), "settings": workflow.get("settings") or {}},
             "nodes": nodes, "connections": edges(workflow)}
 
 
@@ -93,7 +93,7 @@ def diff(local, remote):
     """git (before) against n8n (after)."""
     a, b = comparable(local), comparable(remote)
     common = sorted(a["nodes"].keys() & b["nodes"].keys())
-    return {"workflow": changes(a["workflow"], b["workflow"]),
+    return {"properties": changes(a["properties"], b["properties"]),
             "nodes": {"added": sorted(b["nodes"].keys() - a["nodes"].keys()),
                       "removed": sorted(a["nodes"].keys() - b["nodes"].keys()),
                       "changed": {name: found for name in common if (found := changes(a["nodes"][name], b["nodes"][name]))}},
@@ -102,7 +102,7 @@ def diff(local, remote):
 
 
 def drifted(report):
-    return bool(report["workflow"] or any(report["nodes"].values()) or any(report["connections"].values()))
+    return bool(report["properties"] or any(report["nodes"].values()) or any(report["connections"].values()))
 
 
 def compare(folder):
