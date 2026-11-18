@@ -8,7 +8,8 @@ from django.utils.crypto import constant_time_compare
 from ninja import NinjaAPI
 
 from ..conf import settings
-from . import evaluations, executions, gateways, messages, mining, observability, tasks, usertasks, workflows
+from . import (evaluations, executions, gateways, history, messages, mining, observability, tasks, usertasks, variables,
+               workflows)
 from .tasks import TASKS, Task, TaskError, discover, task, task_modules
 
 
@@ -21,7 +22,7 @@ def token_auth(request):
 api = NinjaAPI(title="bpmn8n", version="1", auth=token_auth)
 for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks", usertasks),
                        ("/messages", messages), ("/workflows", workflows), ("/evaluations", evaluations),
-                       ("/executions", executions),
+                       ("/executions", executions), ("/variables", variables), ("/history", history),
                        ("", observability), ("", mining)):
     api.add_router(prefix, module.router)
 api.add_router("", workflows.elements)

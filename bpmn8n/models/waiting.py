@@ -19,6 +19,7 @@ from django.utils import timezone
 
 from ..clients.http import ServiceUnavailable, post_json
 from ..conf import settings
+from ..core.streaming import publish
 from .cases import Case, Event
 
 
@@ -101,10 +102,10 @@ class WaitingActivity(models.Model):
                 self.close_rivals(now)
                 if self.case_id:  # what the person or the message brought becomes process data
                     Case.merge(self.case_id, self.process, self.output())
-                Event.objects.create(case_id=self.case_id, activity=self.activity, process=self.process,
+                publish(Event.objects.create(case_id=self.case_id, activity=self.activity, process=self.process,
                                      endpoint=self.bpmn_type, started=self.created, ended=now, status="complete",
                                      resource=resource, duration_ms=(now - self.created).total_seconds() * 1000,
-                                     data={"output": self.output()})
+                                     data={"output": self.output()}))  # + log streaming
                 if (payload := self.resume_payload()) is not None:
                     post_json(self.n8n_resume_url(), payload)
         except ServiceUnavailable as e:

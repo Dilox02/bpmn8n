@@ -21,6 +21,10 @@ DEFAULTS = {
     "N8N_CREDENTIAL": os.environ.get("N8N_CREDENTIAL", ""),  # id of the n8n credential for bpmn8n's nodes
     "GUNICORN_PID": os.environ.get("GUNICORN_PID", "/tmp/gunicorn.pid"),  # Studio reloads it with new tasks
     "SEARCH_URL": os.environ.get("SEARCH_URL", ""),  # SearXNG, for Studio's domain research; empty: none
+    # global variables and the event stream (core/shared.py, core/streaming.py); empty: the database
+    "REDIS_URL": os.environ.get("REDIS_URL", ""),
+    "EVENT_STREAM_MAXLEN": int(os.environ.get("EVENT_STREAM_MAXLEN", "100000")),  # Redis stream bpmn8n:events
+    "EVENT_WEBHOOKS": [u for u in os.environ.get("EVENT_WEBHOOKS", "").split(",") if u.strip()],  # get every event
 }
 
 

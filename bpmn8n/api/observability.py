@@ -5,9 +5,11 @@ from typing import Any, Literal
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from ninja import Router, Schema
+from ninja.errors import HttpError
 
-from ..core.cases import CaseData
+from ..core.cases import CaseData, CaseSearch, SearchError
 from ..core.observability import CASE_HEADER, metrics_snapshot
+from ..core.streaming import EventStream, publish
 from ..models import Case, Event
 
 router = Router(tags=["observability"])
@@ -54,10 +56,53 @@ def record_event(request, data: EventIn):
         return 400, {"detail": f"{CASE_HEADER} header required"}
     at = timezone.now()
     message = case.text(data.message)
-    Event.objects.create(case_id=case.trace.case_id, activity=case.trace.activity or "event",
-                         process=case.trace.process, endpoint="event", started=at, ended=at, duration_ms=0,
-                         status=data.status, resource="system", data={"output": {"message": message}})
+    publish(Event.objects.create(case_id=case.trace.case_id, activity=case.trace.activity or "event",
+                                 process=case.trace.process, endpoint="event", started=at, ended=at, duration_ms=0,
+                                 status=data.status, resource="system", data={"output": {"message": message}}))
     return 200, {"message": message}
+
+
+@router.get("/events/stream")
+def stream_events(request):
+    """Every finished step as a server-sent event (log streaming): `id` is the cursor to send back as
+    Last-Event-ID, `data` the event (process, case, activity, status, times, resource, error). The response
+    ends after 55 seconds; reconnect with Last-Event-ID to go on where it stopped."""
+    return EventStream().response(request)
+
+
+class CaseRow(Schema):
+    case_id: str
+    process: str
+    process_version: str
+    status: str
+    created: datetime
+    last_event: datetime | None
+    matched: dict[str, Any]
+
+
+class CasePage(Schema):
+    count: int
+    results: list[CaseRow]
+
+
+@router.get("/cases", response=CasePage)
+def search_cases(request, process: str = "", version: str = "", since: datetime | None = None,
+                 until: datetime | None = None, status: str = "", limit: int = 50, offset: int = 0):
+    """Cases, newest first, by process (workflow name), version (n8n versionId), start time (since, until),
+    status (waiting, error, active, closed) and the values of their variables: `var.<path>=<value>`, with
+    `__gt`, `__gte`, `__lt`, `__lte` or `__contains` (text, ignoring case) after the path, e.g.
+    `var.amount__gt=1000&var.customer.email__contains=@acme`. A value is JSON when it parses (1000, true,
+    "123" quoted), else text. `matched`: the values of the variables the query names."""
+    try:
+        search = CaseSearch(process, version, since, until, status, CaseSearch.criteria(request.GET))
+        cases = search.cases()
+        page = list(cases[max(offset, 0):max(offset, 0) + min(max(limit, 1), 200)])
+        count = cases.count()
+    except SearchError as e:
+        raise HttpError(422, str(e)) from None
+    return {"count": count, "results": [{**{f: getattr(c, f) for f in ("case_id", "process", "process_version", "status",
+                                                                        "created", "last_event")},
+                                         "matched": search.matched(c)} for c in page]}
 
 
 @router.get("/cases/{case_id}", response={200: dict, 404: dict})
