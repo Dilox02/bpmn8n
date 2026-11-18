@@ -73,7 +73,10 @@ class Element:
         return self.chooses or self.splits
 
     def outputs(self, parameters):
-        """The node's outputs in order: a gateway's branches (with "default" or "timeout"), else ["main"]."""
+        """The node's outputs in order: a gateway's branches (with "default" or "timeout"); a human task with
+        an interrupting deadline (a boundary timer) "timeout" then "done"; else ["main"]."""
+        if self.human and (parameters or {}).get("deadline") and parameters.get("due", "none") != "none":
+            return ["timeout", "done"]  # "timeout" first: n8n times a wait out through output 0 (WaitingNode.ts)
         if not self.branching:
             return ["main"]
         branches = [b["name"] for b in (parameters or {}).get("branches", {}).get("values", [])]

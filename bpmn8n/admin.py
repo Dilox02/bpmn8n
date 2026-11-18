@@ -19,8 +19,8 @@ def cancel(modeladmin, request, queryset):
 
 @admin.register(UserTask)
 class UserTaskAdmin(admin.ModelAdmin):
-    list_display = ("title", "kind", "lane", "case_id", "status", "assignee", "created", "completed")
-    list_filter = ("status", "kind", "lane")
+    list_display = ("title", "kind", "lane", "case_id", "status", "priority", "due", "assignee", "created", "completed")
+    list_filter = ("status", "priority", "kind", "lane")
     search_fields = ("title", "case_id")
     actions = [cancel]
 
