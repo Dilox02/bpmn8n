@@ -573,3 +573,22 @@ class GlobalVariableElementTest(TestCase):
         from ..workflows.elements import element
         e = element("CUSTOM.bpmn8nGlobalVariable")
         self.assertEqual((e.kind, e.category, e.transparent, e.symbol), ("globalVariable", "task", False, "data/data-store"))
+
+    def test_the_builder_writes_it_and_the_check_accepts_it(self):
+        from ..workflows import Workflow
+        from ..workflows.builder import SpecError
+        from ..workflows.check import WorkflowCheck
+        spec = {"name": "Count refunds", "steps": [
+            {"type": "start", "name": "Refund requested", "path": "refund"},
+            {"type": "global_variable", "name": "Count refunds", "key": "refunds.today", "operation": "increment",
+             "ttl": 86400},
+            {"type": "condition_gateway", "name": "Too many?", "kind": "exclusive",
+             "conditions": {"yes": "{{refunds.today}} > {{vars.max_refunds}}"}, "decision_scope": "technical"}],
+            "flows": [{"from": "Refund requested", "to": ["Count refunds"]}, {"from": "Count refunds", "to": ["Too many?"]}]}
+        built = Workflow.from_spec(spec).as_json()
+        node = next(n for n in built["nodes"] if n["name"] == "Count refunds")
+        self.assertEqual((node["type"], node["parameters"]["by"], node["parameters"]["ttl"]),
+                         ("CUSTOM.bpmn8nGlobalVariable", 1, 86400))
+        self.assertEqual([p.message for p in WorkflowCheck(built, fetch=lambda _: None).errors], [])
+        with self.assertRaises(SpecError):
+            Workflow("x").global_variable("Bad", "k", operation="rename")

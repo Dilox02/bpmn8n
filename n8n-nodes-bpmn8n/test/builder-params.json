@@ -26,6 +26,14 @@
     "question",
     "state"
   ],
+  "CUSTOM.bpmn8nGlobalVariable": [
+    "by",
+    "key",
+    "operation",
+    "output",
+    "ttl",
+    "value"
+  ],
   "CUSTOM.bpmn8nInclusiveGateway": [
     "branches",
     "decider",
