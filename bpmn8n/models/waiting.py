@@ -25,6 +25,7 @@ from django.utils import timezone
 
 from ..clients.http import ServiceUnavailable, post_json
 from ..conf import settings
+from ..workflows import builder
 from .cases import Case, Event
 
 
@@ -196,8 +197,7 @@ class UserTask(WaitingActivity):
     of those activities in the case may not work this one."""
 
     KINDS = ("userTask", "manualTask")
-    FIELD_TYPES = ("string", "text", "number", "boolean", "choice", "date", "email")
-    PRIORITIES = ("low", "normal", "high", "urgent")
+    FIELD_TYPES, PRIORITIES = builder.FIELD_TYPES, builder.PRIORITIES
     SUSPENDED, EXPIRED = "suspended", "expired"
     WORKABLE = (WaitingActivity.OPEN, WaitingActivity.CLAIMED)
     WAITING = (*WORKABLE, SUSPENDED)  # n8n still waits on these

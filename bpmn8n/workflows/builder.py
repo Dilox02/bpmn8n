@@ -4,6 +4,7 @@ import json
 import re
 import uuid
 from collections import defaultdict
+from datetime import date, datetime
 
 from .elements import AGENT, MERGE, NODE, SET, TASK_KINDS, element, node_type, types
 from .graph import ProcessGraph
@@ -17,12 +18,84 @@ BRANCHING = types(chooses=True) | types(splits=True)  # their outputs are the co
 
 
 def output_names(node):
-    """A node's outputs in order: a gateway's branches (with "default" or "timeout"), else ["main"]."""
+    """A node's outputs in order: a gateway's branches (with "default" or "timeout"), a human task's
+    "timeout" and "done" when it has a deadline, else ["main"] (the element registry says which)."""
     return element(node).outputs(node.get("parameters"))
 
 
 class SpecError(ValueError):
     """A workflow spec the builder cannot build."""
+
+
+FIELD_TYPES = ("string", "text", "number", "boolean", "choice", "date", "email")  # a human task's form fields
+PRIORITIES = ("low", "normal", "high", "urgent")
+UNITS = ("seconds", "minutes", "hours", "days", "weeks")  # duration.ts UNIT_MS
+
+
+def form_field(field):
+    """A form field as the User Task node saves it: [name, label, type], or a dict with also required
+    (default true), help and a choice's options (the node keeps them as comma-separated text)."""
+    if not isinstance(field, dict):
+        name, label, kind = field
+        field = {"name": name, "label": label, "type": kind}
+    if (kind := field.get("type", "string")) not in FIELD_TYPES:
+        raise SpecError(f"form field {field['name']!r}: type {kind!r} is not one of {', '.join(FIELD_TYPES)}")
+    options = field.get("options") or []
+    if kind == "choice" and not options:
+        raise SpecError(f"form field {field['name']!r}: a choice needs its options")
+    return {"name": field["name"], "label": field.get("label", ""), "type": kind,
+            **({"options": ", ".join(options) if isinstance(options, (list, tuple)) else options} if options else {}),
+            **({"required": False} if field.get("required", True) is False else {}),
+            **({"help": field["help"]} if field.get("help") else {})}
+
+
+def people_parameters(step, due_in, due_at, deadline, priority, assignee, not_same_as, completion):
+    """A human task node's SLA, priority, actor rules and completion, as n8n saves them (defaults left out)."""
+    parameters = {}
+    if due_in is not None and due_at is not None:
+        raise SpecError(f"{step}: due_in or due_at, not both")
+    if due_in is not None:
+        amount, unit = due_in
+        if unit not in UNITS or isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
+            raise SpecError(f"{step}: due_in is (amount > 0, unit), unit one of {', '.join(UNITS)}; not {due_in!r}")
+        parameters |= {"due": "for", "dueAmount": amount, "dueUnit": unit}
+    elif due_at is not None:
+        text = str(due_at).strip()
+        if not (re.fullmatch(r"\{\{\s*[\w.]+\s*\}\}", text) or iso_moment(text)):
+            raise SpecError(f"{step}: due_at is one {{{{variable}}}} or an ISO date, not {due_at!r}")
+        parameters |= {"due": "until", "dueUntil": text}  # bpmn8n fills the variable in from the case
+    if deadline:
+        if "due" not in parameters:
+            raise SpecError(f"{step}: a deadline needs its time: due_in or due_at")
+        parameters["deadline"] = True
+    if priority not in PRIORITIES:
+        raise SpecError(f"{step}: priority is one of {', '.join(PRIORITIES)}, not {priority!r}")
+    if priority != "normal":
+        parameters["priority"] = priority
+    if assignee:
+        parameters["assignee"] = assignee
+    if not_same_as:
+        if isinstance(not_same_as, str) or not all(isinstance(a, str) and a for a in not_same_as):
+            raise SpecError(f"{step}: not_same_as is a list of activity (step) names")
+        parameters["notSameAs"] = list(not_same_as)
+    if completion == "any":
+        parameters["completion"] = "any"
+    elif isinstance(completion, int) and not isinstance(completion, bool) and completion >= 1:
+        parameters |= {"completion": "atLeast", "quorum": completion}
+    elif completion != "all":
+        raise SpecError(f"{step}: completion is all, any or a number of tasks (at least 1), not {completion!r}")
+    return parameters
+
+
+def iso_moment(text):
+    """Whether `text` is an ISO date or date-time."""
+    for parse in (date.fromisoformat, datetime.fromisoformat):
+        try:
+            parse(text)
+            return True
+        except ValueError:
+            pass
+    return False
 
 
 class Workflow:
@@ -157,16 +230,27 @@ class Workflow:
             parameters = {"mode": "for", "amount": amount, "unit": unit}
         return self.add(name, node_type("timerEvent"), parameters, row, bpmn=False, same_column=same_column)
 
-    def manual_task(self, name, title, lane, context="", row=0, same_column=False):
+    def manual_task(self, name, title, lane, context="", row=0, same_column=False, **people):
+        """A person does it and confirms it; `people`: as user_task's (due_in, deadline, priority...)."""
         return self.user_task(name, title, lane, form=[], context=context, row=row, same_column=same_column,
-                              kind="manualTask")
+                              kind="manualTask", **people)
 
     def user_task(self, name, title, lane, form, context="", description="", row=0, same_column=False,
-                  kind="userTask"):
-        """form: [(name, label, type)] with type string | number | boolean. context: what the person sees,
-        {label: "{{variable}}"} (a dict, or its JSON); empty shows all the process variables."""
-        if not all(isinstance(f, (list, tuple)) and len(f) == 3 for f in form):  # a dict would unpack its keys
-            raise ValueError("form: a list of [name, label, type]")
+                  kind="userTask", due_in=None, due_at=None, deadline=False, priority="normal", assignee="",
+                  not_same_as=(), completion="all"):
+        """form: [name, label, type] with type string | number | boolean, or {"name", "label", "type", "required",
+        "help", "options"} with type also text | choice (its options) | date | email; fields are required
+        unless "required": false. context: what the person sees, {label: "{{variable}}"} (a dict, or its JSON);
+        empty shows all the process variables.
+        The SLA: due_in=(amount, unit) or due_at="{{variable}}" (or an ISO date) orders the inbox and marks the
+        task overdue; with deadline=True it interrupts the wait: the node gets two outputs, "timeout" (taken
+        when the due time passes, the tasks expire) and "done". priority: low | normal | high | urgent.
+        assignee: a username or "{{variable}}" (created claimed by that person); not_same_as: activities whose
+        completer may not work this one (four-eyes); completion: all | any | N, how many of the tasks of a
+        multi-instance batch resume the case (the others are cancelled)."""
+        if not all(isinstance(f, (list, tuple)) and len(f) == 3 or isinstance(f, dict) and f.get("name")
+                   for f in form):  # a dict as the whole form would unpack its keys
+            raise ValueError("form: a list of [name, label, type] or {name, label, type, ...}")
         if isinstance(context, dict):
             context = json.dumps(context, ensure_ascii=False)
         elif context:  # the node parses it as JSON: plain text would fail when a case reaches the step
@@ -177,7 +261,8 @@ class Workflow:
                 raise ValueError(f"{name}: context must be an object {{label: \"{{{{variable}}}}\"}}, not {context[:60]!r}") from None
         return self.add(name, node_type(kind), {
             "title": title, "lane": lane, "description": description, "context": context,
-            "form": {"fields": [{"name": n, "label": label, "type": t} for n, label, t in form]},
+            "form": {"fields": [form_field(f) for f in form]},
+            **people_parameters(name, due_in, due_at, deadline, priority, assignee, not_same_as, completion),
         }, row, same_column=same_column, webhookId=str(uuid.uuid4()))
 
     def merge(self, name, inputs=2, row=0):

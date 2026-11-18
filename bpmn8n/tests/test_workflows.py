@@ -149,7 +149,7 @@ class BuilderTest(SimpleTestCase):
                 ([start, {"type": "gateway", "name": "G", "kind": "exclusive", "question": "q", "branches": ["a"]}],
                  "AttributeError"),
                 ([start, {"type": "user_task", "name": "U", "title": "t", "lane": "l",
-                          "form": [{"name": "ok", "label": "OK", "type": "boolean"}]}], r"\[name, label, type\]"),
+                          "form": {"ok": "boolean"}}], r"\[name, label, type\]"),
                 ([start, {"type": "event_gateway", "name": "E", "messages": ["m"], "correlation_key": "k",
                           "timeout": {"amount": 1}}], "KeyError")):
             with self.subTest(error), self.assertRaisesRegex(SpecError, error):

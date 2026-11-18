@@ -21,7 +21,7 @@ router = Router(tags=["userTask"])
 class FormField(Schema):
     name: str
     label: str = ""
-    type: Literal["string", "text", "number", "boolean", "choice", "date", "email"] = "string"
+    type: Literal[UserTask.FIELD_TYPES] = "string"
     required: bool = True  # a boolean never is: unchecked is false
     help: str = ""  # shown under the field
     options: list[str] = []  # a choice's options; comma-separated text also works (the n8n node's)
@@ -47,7 +47,7 @@ class UserTaskIn(Schema):
     context: dict = {}  # shown to the person; empty: all the process variables
     resume_url: str
     items: list[dict[str, Any]] = [{}]  # the n8n items that reached the node: one task each
-    priority: Literal["low", "normal", "high", "urgent"] = "normal"
+    priority: Literal[UserTask.PRIORITIES] = "normal"
     due: str = ""  # the SLA: an ISO date-time or date (the end of that day), or a {{variable}} holding one
     deadline: bool = False  # the due time interrupts the wait: n8n goes on through "timeout"
     assignee: str = ""  # a username or a {{variable}}: created claimed by that person, if they may work it

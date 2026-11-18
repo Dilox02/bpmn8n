@@ -33,6 +33,9 @@ export interface WaitingSpec {
 	hints?: INodeTypeDescription['hints'];
 	/** When to stop waiting (then the items leave on the first output); default never. */
 	until?: (ctx: IExecuteFunctions) => Date;
+	/** Or the moment bpmn8n answered the registration with (a due date it filled in from the case);
+	 * undefined keeps `until`. */
+	untilRegistered?: (ctx: IExecuteFunctions, registered: unknown) => Date | undefined;
 	outputs?: INodeTypeDescription['outputs'];
 	outputCount?: (ctx: IExecuteFunctions | IWebhookFunctions) => number;
 	/** The output a resume (the posted payload) leaves on; default the first. */
@@ -69,8 +72,8 @@ export abstract class WaitingNode implements INodeType {
 			const resumeUrl = new URL(this.evaluateExpression('{{ $execution.resumeUrl }}', 0) as string);
 			// n8n reuses its URL across waits; each node run needs its own retry identity.
 			resumeUrl.searchParams.set('bpmn8n_wait', `${this.getNode().id}:${this.evaluateExpression('{{ $runIndex }}', 0)}`);
-			await spec.register(this, new Bpmn8nClient(this), resumeUrl.toString(), until, items.length ? items : [{}]);
-			await this.putExecutionToWait(until);
+			const registered = await spec.register(this, new Bpmn8nClient(this), resumeUrl.toString(), until, items.length ? items : [{}]);
+			await this.putExecutionToWait(spec.untilRegistered?.(this, registered) ?? until);
 			// When `until` passes, n8n re-runs this node *disabled*, which passes the items through its
 			// first output (workflow-execute handleWaitingState): so "timed out" is always output 0.
 			const outputs = Array.from({ length: count(this) }, () => [] as ReturnType<IExecuteFunctions['getInputData']>);
