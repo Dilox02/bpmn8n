@@ -9,6 +9,7 @@ from ninja import NinjaAPI
 
 from ..conf import settings
 from . import (
+    analytics,
     evaluations,
     executions,
     gateways,
@@ -35,7 +36,7 @@ def token_auth(request):
 api = NinjaAPI(title="bpmn8n", version="1", auth=token_auth)
 for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks", usertasks),
                        ("/messages", messages), ("/workflows", workflows), ("/evaluations", evaluations),
-                       ("/executions", executions), ("/variables", variables), ("/history", history),
+                       ("/executions", executions), ("/analytics", analytics), ("/variables", variables), ("/history", history),
                        ("/simulation", simulation),
                        ("", observability), ("", mining), ("", ops)):
     api.add_router(prefix, module.router)
@@ -45,7 +46,7 @@ api.add_router("", workflows.elements)
 def openapi_cors(get_response):
     """Middleware: n8n's editor (n8n-editor/node-panel.js) reads the tasks' OpenAPI from its own origin."""
     def middleware(request):
-        read_path = request.path.startswith(("/api/evaluations/", "/api/executions/"))
+        read_path = request.path.startswith(("/api/evaluations/", "/api/executions/", "/api/analytics/"))
         preflight = read_path and request.method == "OPTIONS"
         response = HttpResponse(status=204) if preflight else get_response(request)
         evaluations_read = read_path and request.method in ("GET", "OPTIONS")
@@ -65,7 +66,7 @@ def openapi_cors(get_response):
             response["Cache-Control"] = "no-store"
             patch_vary_headers(response, ["Cookie"])
             response["Access-Control-Expose-Headers"] = "ETag, Content-Disposition"
-        if request.method == "OPTIONS" and request.path.startswith(("/api/evaluations/", "/api/executions/")):
+        if request.method == "OPTIONS" and request.path.startswith(("/api/evaluations/", "/api/executions/", "/api/analytics/")):
             response["Access-Control-Allow-Headers"] = "If-None-Match, Last-Event-ID, browser-id"
             response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         return response

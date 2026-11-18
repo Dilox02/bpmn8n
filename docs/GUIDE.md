@@ -526,6 +526,30 @@ Endpoints:
 - The splits are **temporal**: the oldest cases go to train, the most recent to test. A train case still open when validation starts is dropped, because a random split shows the model the future (Weytjens & De Weerdt, BPM 2021).
 - The **card** says for each target how many examples there are per label and split. It warns about labels that are rare in train, labels that appear only in validation or test, and process changes, saying from which date it is worth training.
 
+### Insights
+
+**http://localhost:8000/insights/** (signed-in users) is the workbench on the event log, after Disco: pick a process and a window, narrow the cases with filters, and read what happened. `bpmn8n/analytics/` computes it with numpy, without PM4Py; the same figures are at `/api/analytics/*`.
+
+- **Filters** (shown as chips, each with the cases it kept; applied left to right; the whole view is the URL, so a link shares it):
+
+  | Filter | Keeps the cases that |
+  |---|---|
+  | timeframe | started, ended, ran (intersecting) or ran only (contained) in a window |
+  | variants | follow the top N sequences of activities, or the most frequent ones covering X % |
+  | performance | took between two durations, or whose time from activity A's end to B's start is in bounds |
+  | endpoints | start and/or end with given activities |
+  | attribute | have (or have not) an event with an activity, resource, status or process |
+  | follower | have A followed by B, directly or eventually, optionally within a time (or not) |
+
+  In the API a stack is JSON in the query string, e.g. `filters=[{"type":"attribute","key":"resource","values":["anna"]},{"type":"variants","top":3}]`; a stack that cannot be read is a 422 saying why.
+- **Statistics**: cases (open and closed), events, durations (mean, median, p90, max of the closed cases), events and cases in progress over time, the case-duration histogram; per activity its executions, cases, durations, the mean wait before it (its start minus the end of the step before, in the same case) and errors; per resource its busy time and utilisation; variants with coverage; **handoffs**, where a case changes hands and how long it waits there; per gateway the share of each branch and Laya's confidence.
+- **Compare**: add filters to *cohort B* and the page sets the same figures, activities and branch shares side by side with the filtered cases (A), with B − A: specialists against residents, this month against last.
+- **Bottlenecks: queueing on what really happened.** Each lane is a station: its people (the active members of the lane's Django group, else the people seen) serve its tasks first come, first served. From the log: arrivals per hour λ and their variability ca², mean work E[S] and its cs², utilisation ρ = λE[S]/c, the observed wait against the G/G/c prediction (`bpmn8n.simulation.queueing`), the wait with one person less and one more, the people a **target wait** needs, and Little's law (the time-average work in progress from the events against λW: a large gap means work still open at the window's edges, or a log that is not steady). Activities are ranked by utilisation and share of the cycle time.
+  - What the log cannot separate, it says: a User Task's event spans its creation to its completion. With a claim time on the task, waiting and work separate exactly; without one, work is estimated from each person's previous completion (exact when people take the next task as soon as they finish one, otherwise an upper bound on work); a task completed through the API names no person, so only its response time is known and utilisation is an upper bound. System steps are delays (software scales with its workers). Rates are per calendar hour: there are no working hours yet.
+- **Heatmap on the canvas**: on a workflow with bpmn8n nodes the editor shows a *Heat* switch (Off · Frequency · Duration). It reads `/api/analytics/overlay?workflow_id=<id>` with the browser's n8n session (bpmn8n checks that session may open the workflow, as for evaluations) and rings each node from cold to hot with a badge, how many times it ran or its mean duration, and a legend; nodes no case reached are dimmed.
+- **A demo without n8n**: `python manage.py seed_events [--process "Claim Handling"] [--cases 300] [--seed 0] [--workflow <id>] [--replace]` writes a synthetic log: Poisson arrivals, a Laya gateway whose unsure decisions go to a person, a loop, errors, two lanes of people with real queues (the lanes become groups of users who cannot sign in), and the last cases still open. With `--workflow` set to a real workflow id whose node names match, the heatmap shows on its canvas.
+- Limits: the cases in scope are read in one pass (about 1 GB per 5 million events, as mining): narrow by process and window beyond that. The window counts the cases that *started* in it.
+
 ## bpmn8n inside another Django project
 
 bpmn8n is also a library (`pyproject.toml`). An existing project installs it, adds it to `INSTALLED_APPS` and mounts its API:
