@@ -81,12 +81,12 @@
   <div class="stack">
     <section class="panel" aria-labelledby="waits">
       <header><h2 id="waits">People and messages</h2><span class="meta">what the case waited for</span></header>
-      {% if tasks or messages %}
+      {% if tasks or subscriptions %}
       <ul class="rows">
         {% for t in tasks %}
         <li class="row"><span class="grow"><a class="name" href="{% url 'task' t.pk %}">{{ t.title }}</a><span class="sub">{{ t.activity }} · {% if t.lane %}lane {{ t.lane }}{% else %}any lane{% endif %}{% if t.assignee %} · {{ t.assignee }}{% endif %}</span></span>{{ t.status|status_pill }}</li>
         {% endfor %}
-        {% for m in messages %}
+        {% for m in subscriptions %}
         <li class="row"><span class="grow"><span class="name">Message <code>{{ m.name }}</code></span><span class="sub">{{ m.activity }} · key <code>{{ m.correlation_key }}</code>{% if m.expires %} · until {{ m.expires|date:"j M, H:i" }}{% endif %}{% if user.is_staff %} · <a class="inline-link" href="{% url 'admin:bpmn8n_messagesubscription_change' m.pk %}">in the admin</a>{% endif %}</span></span>{{ m.status|status_pill }}</li>
         {% endfor %}
       </ul>

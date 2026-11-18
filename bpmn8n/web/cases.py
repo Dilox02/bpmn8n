@@ -167,7 +167,7 @@ def case(request, case_id):
                    (workflow or {}).get("name") or next((w.process for w in waits if w.process), ""),
         "steps": [step(e, graph, llm) for e in events], "more_steps": total - len(events),
         "decisions": [decision(e) for e in events if isinstance(e.data, dict) and e.data.get("decider")],
-        "tasks": tasks, "messages": messages, "now": timezone.now(),
+        "tasks": tasks, "subscriptions": messages,  # not "messages": the base template shows those
         "variables": tree(record.variables if record else {}, llm), "llm": sorted(llm),
         "workflow": workflow, "states": states, "preview_url": settings.N8N_PREVIEW_URL,
         "n8n_url": f"{settings.N8N_PUBLIC_URL}/workflow/{workflow_id}/executions/{execution_id}" if workflow_id else "",
