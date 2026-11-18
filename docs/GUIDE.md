@@ -252,9 +252,18 @@ The constraints, which the check enforces:
 
 An `llm_agent` becomes four nodes: `<name>: prompt` (the prompt filled in with the case's variables), `<name>` (the AI Agent) with `<name>: model` (the chat model) under it, and `<name>: answer` (the answer, saved in the step's `output` variable). The **bpmn8n LLM: <provider>** credential is created in n8n, or updated if the key has changed, when a workflow with an agent is built: google → *Google Gemini Chat Model*, anthropic → *Anthropic Chat Model*, the other presets → *OpenAI Chat Model* with the provider's URL.
 
-The pages follow taste-skill v2's *framed-sheet* style (coloured L-shaped frame, white sheet, colour only on data, IBM Plex Sans; Plex Mono only for IDs, keys and code), checked with its inspector at 1440, 768 and 390 px.
-
 Studio writes code that the server then runs: it is for staff only and the code must be reviewed before production. *Build again* rewrites the project's activities (it does not reuse them) and replaces the folder only if the new version passes. gunicorn's reload waits for the LLM calls in progress (`--graceful-timeout 360`).
+
+### One look on both servers
+
+Django (`:8000`) and n8n (`:5678`, its preview on `:5679`) are one product with one definition of each visual concept:
+
+- **Tokens**: `bpmn8n/static/bpmn8n/tokens.css` is the only place that defines colours (light and dark), status colours, type sizes, spacing, radii and the canvas palette, all named `--b8-*`. `app.css` uses only those. n8n gets the same file as `/static/bpmn8n-tokens.css` (mounted read-only in `docker-compose.yml`), linked once by `bpmn.js`; every hook writes `var(--b8-…, <its old colour>)`, so a missing file only brings back the hooks' own colours. The pages follow taste-skill v2's *framed-sheet* style (coloured L-shaped frame, white sheet, colour only on data, IBM Plex Sans; Plex Mono only for IDs, keys and code), checked at 1440, 768 and 390 px with text at 4.5:1 or more in both themes.
+- **Theme**: the sidebar's *System / Light / Dark* switch is kept in the `b8-theme` cookie and sets `data-theme` on the page; embedded canvases are drawn in it. n8n keeps its own theme setting (`bpmn.js` no longer overrides it): in dark mode its canvas is flat and each node a tint from its name, in light mode n8n's own colours.
+- **Navigation**: the sidebar is the `NAV` list in `bpmn8n/web/views.py` (URL name, label, icon, staff only). An entry shows once its URL name resolves, so a new page appears by adding its route; *Editor* (staff) opens n8n.
+- **Vocabulary**: `bpmn8n/web/vocab.py` names every status once, with its colour family; templates write `{{ status|status_pill }}`. Everything is in English.
+- **The case page**, `/cases/<workflow id>:<execution id>/`: its status (running, waiting for a person or a message, completed, failed: inferred from its events and waits), every step with its input and output (bounded), what an LLM was sent or wrote, each decision (the question, the options, the branch taken, Laya's scores or the conditions), its tasks and messages, its variables, and the workflow read from n8n, drawn by the preview with the steps passed, the ones the case is at and the ones not reached (the page posts `{"command": "bpmn8nStates", "states": {"<node>": "waiting" | "active" | "done"}}`). Without n8n the page says so and shows the event log. Staff see every case; a person sees the cases that have a task in their lanes.
+- **Deep links**: the case page opens its execution in n8n and Studio's project opens its workflow; in n8n, the node card links **Open the case** while an execution is open, and a User Task's node links its task page.
 
 ### Settings and LLM providers
 
@@ -536,7 +545,7 @@ reconstructed if n8n did not persist them.
 Framework spans persist a `running` Event before invoking a function, save its input, then update the
 same Event at completion or failure. Active spans are excluded from aggregate timing and mining logs.
 Invocation bodies are loaded only when expanded, with bounded previews. The canvas distinguishes
-confirmed active calls from engine stack entries and inputs waiting at a join. **Vista n8n / debug**
+confirmed active calls from engine stack entries and inputs waiting at a join. **n8n view / debug**
 keeps the original execution inspector available.
 
 Local preview iframes use `credentialless` isolation and `localhost` to prevent the anonymous preview

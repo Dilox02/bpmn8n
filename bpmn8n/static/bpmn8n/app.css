@@ -167,6 +167,10 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
 .timeline .what .pill { margin-left: 8px; vertical-align: 1px; }
 .timeline .sub { display: block; margin-top: 2px; color: var(--b8-muted); font-size: var(--b8-fs-small); }
 .timeline time, .timeline .dur { color: var(--b8-muted); font-size: var(--b8-fs-small); text-align: right; white-space: nowrap; }
+@media (max-width: 600px) {  /* the step's name keeps the width; its time goes under it */
+  .timeline summary { grid-template-columns: minmax(0, 1fr) auto 12px; }
+  .timeline time { grid-column: 1; grid-row: 2; text-align: left; }
+}
 .step-body { display: grid; gap: 8px; padding: 0 0 16px; }
 .step-body h3 { font-size: var(--b8-fs-small); font-weight: 500; color: var(--b8-muted); }
 .step-body pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
