@@ -1,0 +1,226 @@
+{% extends "bpmn8n/base.html" %}
+{% load static insights %}
+{% block title %}Insights{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'bpmn8n/insights.css' %}">{% endblock %}
+{% block crumbs %}<span>Insights</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Insights</h1>
+    <p class="sub">{% if overview %}{{ overview.cases }} case{{ overview.cases|pluralize }} of {{ process|default:"every process" }}{% if chips %} kept by {{ chips|length }} filter{{ chips|length|pluralize }}, of {{ base_cases }}{% endif %} · {{ overview.start|slice:":10" }} to {{ overview.end|slice:":10" }}{% elif processes %}No case of {{ process|default:"this process" }} in this window{% if chips %} passes the filters{% endif %}.{% else %}What the event log says about your processes: volumes, durations, waits, people, decisions and bottlenecks.{% endif %}</p>
+  </div>
+</div>
+
+{% if processes %}
+<form class="scope" method="get" aria-label="Process and window">
+  <label class="field"><span>Process</span>
+    <select class="input" name="process">{% for p in processes %}<option value="{{ p.process }}" {% if p.process == process %}selected{% endif %}>{{ p.process }} · {{ p.cases }} case{{ p.cases|pluralize }}</option>{% endfor %}</select>
+  </label>
+  <label class="field"><span>Started from</span><input class="input" type="date" name="since" value="{{ state.since }}"></label>
+  <label class="field"><span>to</span><input class="input" type="date" name="until" value="{{ state.until }}"></label>
+  {% for key, value in state.items %}{% if value and key != "process" and key != "since" and key != "until" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+  <button class="btn" type="submit">Show</button>
+</form>
+
+<section class="filters" aria-label="Filters">
+  {% if chips %}<ul class="chips">{% for c in chips %}<li class="chip"><span>{{ c.label }}</span><span class="num muted" title="cases kept of those before">{{ c.kept }}/{{ c.before }}</span><a href="{{ c.remove }}" aria-label="Remove the filter {{ c.label }}">×</a></li>{% endfor %}</ul>{% endif %}
+  <details class="add-filter">
+    <summary class="btn">Add filter</summary>
+    <p class="meta">Each filter keeps whole cases; they apply in order, left to right. Add one to the comparison cohort to compare two groups of cases below.</p>
+    <div class="filter-forms">
+      <form method="get">{% include "bpmn8n/insights_state.html" %}<input type="hidden" name="add" value="timeframe">
+        <fieldset><legend>Timeframe</legend>
+          <label>Cases that <select name="mode"><option value="started">started</option><option value="ended">ended</option><option value="intersecting">ran</option><option value="contained">ran only</option></select></label>
+          <label>from <input type="date" name="start"></label><label>to <input type="date" name="end"></label>
+          {% include "bpmn8n/insights_into.html" %}</fieldset></form>
+      <form method="get">{% include "bpmn8n/insights_state.html" %}<input type="hidden" name="add" value="variants">
+        <fieldset><legend>Variants</legend>
+          <label>Keep the <select name="by"><option value="top">top</option><option value="coverage">variants covering %</option></select></label>
+          <label><span class="sr-only">How many, or which share</span><input type="number" name="n" min="1" max="100" step="any" value="5" required></label>
+          {% include "bpmn8n/insights_into.html" %}</fieldset></form>
+      <form method="get">{% include "bpmn8n/insights_state.html" %}<input type="hidden" name="add" value="performance">
+        <fieldset><legend>Performance</legend>
+          <label><select name="measure"><option value="duration">Case duration</option><option value="between">Time between</option></select></label>
+          <label>from <input name="from" list="activities" placeholder="activity"></label><label>to <input name="to" list="activities" placeholder="activity"></label>
+          <label>at least <input type="number" name="min" min="0" step="any"></label>{% include "bpmn8n/insights_unit.html" with name="min_unit" %}
+          <label>at most <input type="number" name="max" min="0" step="any"></label>{% include "bpmn8n/insights_unit.html" with name="max_unit" %}
+          {% include "bpmn8n/insights_into.html" %}</fieldset></form>
+      <form method="get">{% include "bpmn8n/insights_state.html" %}<input type="hidden" name="add" value="endpoints">
+        <fieldset><legend>Endpoints</legend>
+          <label>Starts at <input name="start" list="activities" placeholder="any"></label><label>ends at <input name="end" list="activities" placeholder="any"></label>
+          {% include "bpmn8n/insights_into.html" %}</fieldset></form>
+      <form method="get">{% include "bpmn8n/insights_state.html" %}<input type="hidden" name="add" value="attribute">
+        <fieldset><legend>Attribute</legend>
+          <label><select name="mode"><option value="include">With</option><option value="exclude">Without</option></select></label>
+          <label><select name="key"><option value="activity">activity</option><option value="resource">resource</option><option value="status">status</option><option value="process">process</option></select></label>
+          <label><span class="sr-only">Value</span><input name="value" list="values" placeholder="value" required></label>
+          {% include "bpmn8n/insights_into.html" %}</fieldset></form>
+      <form method="get">{% include "bpmn8n/insights_state.html" %}<input type="hidden" name="add" value="follower">
+        <fieldset><legend>Follower</legend>
+          <label><select name="mode"><option value="include">Cases where</option><option value="exclude">Cases where not</option></select></label>
+          <label><input name="from" list="activities" placeholder="activity" required></label>
+          <label>is followed <select name="relation"><option value="eventually">eventually</option><option value="directly">directly</option></select> by</label>
+          <label><input name="to" list="activities" placeholder="activity" required></label>
+          <label>within <input type="number" name="within" min="0" step="any" placeholder="any time"></label>{% include "bpmn8n/insights_unit.html" with name="within_unit" %}
+          {% include "bpmn8n/insights_into.html" %}</fieldset></form>
+    </div>
+    <datalist id="activities">{% for n in names.activity %}<option value="{{ n }}">{% endfor %}</datalist>
+    <datalist id="values">{% for key, values in names.items %}{% for n in values %}<option value="{{ n }}" label="{{ key }}">{% endfor %}{% endfor %}</datalist>
+  </details>
+</section>
+{% endif %}
+
+{% if not processes %}
+<p class="empty">No case in the event log yet. Run a process in n8n (every bpmn8n step is logged), import a log with <code>manage.py import_eventlog file.csv</code>, or see a demo with <code>manage.py seed_events</code>.</p>
+{% elif not overview %}
+<p class="empty">No case to show. {% if chips %}Remove a filter above, or widen the window.{% else %}Widen the window, or pick another process.{% endif %}</p>
+{% else %}
+
+<section class="tiles" aria-label="Overview">
+  <div class="tile"><span class="label">Cases</span><span class="value num">{{ overview.cases }}</span><span class="meta">{{ overview.open }} open · {{ overview.closed }} closed</span></div>
+  <div class="tile"><span class="label">Median case duration</span><span class="value num">{{ overview.case_duration.median|seconds }}</span><span class="meta">mean {{ overview.case_duration.mean|seconds }} · p90 {{ overview.case_duration.p90|seconds }} · max {{ overview.case_duration.max|seconds }}</span></div>
+  <div class="tile"><span class="label">Events</span><span class="value num">{{ overview.events }}</span><span class="meta">{{ overview.activities }} activit{{ overview.activities|pluralize:"y,ies" }}</span></div>
+  <div class="tile"><span class="label">Errors</span><span class="value num">{{ overview.errors }}</span><span class="meta">failed steps</span></div>
+  <div class="tile"><span class="label">Arrivals</span><span class="value num">{{ queues.process.arrival_rate|number }} /h</span><span class="meta">{{ queues.process.little.in_progress|number }} cases in progress on average</span></div>
+</section>
+
+<section class="block" aria-labelledby="time">
+  <div class="section-head"><h2 id="time">Over time</h2><span class="meta">one point per {{ bucket }}</span></div>
+  <div class="pair">{{ events_chart }}{{ active_chart }}</div>
+  {{ histogram_chart }}
+</section>
+
+<section class="block" aria-labelledby="bottlenecks">
+  <div class="section-head"><h2 id="bottlenecks">Bottlenecks</h2>
+    <form method="get" class="inline-form">{% for key, value in state.items %}{% if value and key != "target" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+      <label>Target wait <input class="input" type="number" name="target" min="0" step="any" value="{{ target }}" placeholder="—"> min</label><button class="btn" type="submit">Size</button></form>
+  </div>
+  {% if queues.lanes %}
+  <p class="lead meta">Each lane is a queue: its people serve the tasks first come, first served. Utilisation ρ = arrivals × work ÷ people; the prediction is the G/G/c formula on these figures.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Lane</th><th scope="col" class="n">People</th><th scope="col" class="n">Arrivals</th><th scope="col" class="n">Work</th><th scope="col">Utilisation</th><th scope="col" class="n">Waited</th><th scope="col" class="n">Predicted</th><th scope="col" class="n">One less</th><th scope="col" class="n">One more</th><th scope="col" class="n">{% if target %}For {{ target }} min{% else %}Needed{% endif %}</th></tr></thead>
+      <tbody>{% for lane in queues.lanes %}
+        <tr>
+          <td>{{ lane.name }}<span class="sub">{{ lane.arrivals }} tasks{% if lane.open %} · {{ lane.open }} open{% endif %}</span></td>
+          <td class="n num">{{ lane.servers }}<span class="sub">{{ lane.servers_from }}</span></td>
+          <td class="n num">{{ lane.arrival_rate|number }} /h</td>
+          <td class="n num">{{ lane.work|seconds }}{% if lane.work_includes_waiting %}<span class="sub">with waiting</span>{% elif lane.measured == "estimated" %}<span class="sub">estimated</span>{% endif %}</td>
+          <td class="meter-cell">{% if lane.utilisation is not None %}<span class="meter{% if lane.utilisation >= 0.85 %} hot{% endif %}"><span style="width: {{ lane.utilisation|width }}"></span></span><span class="num">{{ lane.utilisation|percent }}</span>{% if lane.utilisation >= 1 %} <span class="pill s-failed">cannot keep up</span>{% elif lane.utilisation >= 0.85 %} <span class="pill s-claimed">near capacity</span>{% endif %}{% else %}—{% endif %}</td>
+          <td class="n num">{{ lane.wait|seconds }}</td>
+          <td class="n num">{% if lane.predicted %}{% if lane.predicted.stable %}{{ lane.predicted.wait|seconds }}{% else %}unbounded{% endif %}{% else %}—{% endif %}</td>
+          <td class="n num">{% if lane.what_if %}{% if lane.servers > 1 %}{% if lane.what_if.minus_one is None %}unbounded{% else %}{{ lane.what_if.minus_one|seconds }}{% endif %}{% else %}—{% endif %}{% else %}—{% endif %}</td>
+          <td class="n num">{% if lane.what_if %}{{ lane.what_if.plus_one|seconds }}{% else %}—{% endif %}</td>
+          <td class="n num">{{ lane.staff|default:"—" }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <h3 class="subhead">Where the cycle time goes</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Activity</th><th scope="col">Share of cycle time</th><th scope="col" class="n">Utilisation</th><th scope="col" class="n">Waited</th><th scope="col" class="n">Predicted</th><th scope="col" class="n">Response</th></tr></thead>
+      <tbody>{% for a in queues.activities|slice:":8" %}
+        <tr>
+          <td>{{ a.name }}<span class="sub">{% if a.lane %}{{ a.lane }}{% elif a.kind == "delay" %}waits for a message{% else %}system{% endif %}</span></td>
+          <td class="meter-cell"><span class="meter"><span style="width: {{ a.share|width }}"></span></span><span class="num">{{ a.share|percent }}</span></td>
+          <td class="n num">{{ a.utilisation|percent }}</td>
+          <td class="n num">{{ a.wait|seconds }}</td>
+          <td class="n num">{% if a.predicted.stable %}{{ a.predicted.wait|seconds }}{% else %}—{% endif %}</td>
+          <td class="n num">{{ a.response|seconds }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if queues.notes %}<ul class="notes">{% for n in queues.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  {% with little=queues.process.little %}{% if little %}<p class="meta">Little's law on the cases: {{ little.in_progress|number:2 }} in progress on average, against arrivals × mean cycle time = {{ little.expected|number:2 }} ({{ little.residual|signed:"percent" }}: work still open at the window's edges).</p>{% endif %}{% endwith %}
+</section>
+
+<section class="block" aria-labelledby="activities">
+  <div class="section-head"><h2 id="activities">Activities</h2><span class="meta">{{ activities|length }} activit{{ activities|length|pluralize:"y,ies" }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Activity</th><th scope="col">Executions</th><th scope="col" class="n">Cases</th><th scope="col" class="n">Mean</th><th scope="col" class="n">Median</th><th scope="col" class="n">p90</th><th scope="col">Waited before</th><th scope="col" class="n">Errors</th></tr></thead>
+      <tbody>{% for a in activities %}
+        <tr>
+          <td>{{ a.activity }}</td>
+          <td class="meter-cell"><span class="meter"><span style="width: {{ a.executions|width:most_executions }}"></span></span><span class="num">{{ a.executions }}</span></td>
+          <td class="n num">{{ a.cases }}</td>
+          <td class="n num">{{ a.duration.mean|seconds }}</td>
+          <td class="n num">{{ a.duration.median|seconds }}</td>
+          <td class="n num">{{ a.duration.p90|seconds }}</td>
+          <td class="meter-cell">{% if a.wait is not None %}<span class="meter"><span style="width: {{ a.wait|width:longest_wait }}"></span></span><span class="num">{{ a.wait|seconds }}</span>{% else %}<span class="muted">first step</span>{% endif %}</td>
+          <td class="n num">{% if a.errors %}{{ a.errors }}<span class="sub">{{ a.error_rate|percent:1 }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block" aria-labelledby="variants">
+  <div class="section-head"><h2 id="variants">Variants</h2><span class="meta">{{ variants.variants }} sequence{{ variants.variants|pluralize }} of activities{% if variants.variants > variants.rows|length %}, the {{ variants.rows|length }} most frequent{% endif %}</span></div>
+  <ol class="variants">{% for v in variants.rows %}
+    <li>
+      <span class="rank num muted">{{ v.rank }}</span>
+      <span class="chain">{% for a in v.activities %}<span>{{ a }}</span>{% endfor %}</span>
+      <span class="meter-cell"><span class="meter"><span style="width: {{ v.coverage|width:100 }}"></span></span><span class="num">{{ v.cases }} · {{ v.coverage|number }} %</span></span>
+      <span class="meta">mean {{ v.duration|seconds }} · {{ v.cumulative|number }} % so far</span>
+    </li>{% endfor %}
+  </ol>
+</section>
+
+<section class="block two" aria-label="Resources and handoffs">
+  <div>
+    <div class="section-head"><h2>Resources</h2><span class="meta">busy = the union of their steps' time</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Resource</th><th scope="col" class="n">Events</th><th scope="col" class="n">Cases</th><th scope="col" class="n">Busy</th><th scope="col">Utilisation</th></tr></thead>
+      <tbody>{% for x in resources %}<tr><td>{{ x.resource }}</td><td class="n num">{{ x.events }}</td><td class="n num">{{ x.cases }}</td><td class="n num">{{ x.busy|seconds }}</td>
+        <td class="meter-cell"><span class="meter"><span style="width: {{ x.utilisation|width }}"></span></span><span class="num">{{ x.utilisation|percent }}</span></td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div>
+    <div class="section-head"><h2>Handoffs</h2><span class="meta">{{ handoffs.per_case|number:2 }} per case</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">From → to</th><th scope="col" class="n">Handoffs</th><th scope="col" class="n">Cases</th><th scope="col" class="n">Mean wait</th></tr></thead>
+      <tbody>{% for h in handoffs.pairs|slice:":10" %}<tr><td>{{ h.from }} → {{ h.to }}</td><td class="n num">{{ h.handoffs }}</td><td class="n num">{{ h.cases }}</td><td class="n num">{{ h.mean_wait|seconds }}</td></tr>{% empty %}<tr><td colspan="4" class="muted">One resource does every step.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+</section>
+
+<section class="block" aria-labelledby="decisions">
+  <div class="section-head"><h2 id="decisions">Decisions</h2><span class="meta">branch shares per gateway</span></div>
+  {% if decisions %}<div class="gateways">{% for g in decisions %}
+    <article class="gateway">
+      <h3>{{ g.gateway }}</h3>
+      <p class="meta">{{ g.decisions }} decision{{ g.decisions|pluralize }} · {% for who, n in g.decided_by.items %}{{ who }} {{ n }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if g.confidence %} · Laya's confidence median {{ g.confidence.median|percent }}, {{ g.confidence.low|percent }} below 60 %{% endif %}</p>
+      <ul class="branches">{% for b in g.branches %}<li><span>{{ b.branch }}</span><span class="meter"><span style="width: {{ b.share|width }}"></span></span><span class="num">{{ b.share|percent }} · {{ b.count }}</span></li>{% endfor %}</ul>
+    </article>{% endfor %}</div>
+  {% else %}<p class="empty">No gateway decided in these cases. Exclusive and inclusive gateways record their branches and Laya's confidence here.</p>{% endif %}
+</section>
+
+<section class="block" aria-labelledby="compare">
+  <div class="section-head"><h2 id="compare">Compare</h2>{% if comparison %}<span class="meta">A: the filters above ({{ overview.cases }}) · B: the cohort ({{ vs_cases }})</span>{% endif %}</div>
+  {% if vs_chips %}<ul class="chips">{% for c in vs_chips %}<li class="chip vs"><span>B · {{ c.label }}</span><span class="num muted">{{ c.kept }}/{{ c.before }}</span><a href="{{ c.remove }}" aria-label="Remove the cohort filter {{ c.label }}">×</a></li>{% endfor %}</ul>{% endif %}
+  {% if comparison %}
+  <div class="table-wrap"><table>
+    <thead><tr><th scope="col">Figure</th><th scope="col" class="n">A</th><th scope="col" class="n">B</th><th scope="col" class="n">B − A</th></tr></thead>
+    <tbody>{% for f in comparison.figures %}<tr><td>{{ f.figure }}</td>
+      {% if "duration" in f.figure %}<td class="n num">{{ f.a|seconds }}</td><td class="n num">{{ f.b|seconds }}</td><td class="n num">{{ f.delta|signed:"seconds" }}</td>
+      {% elif f.figure == "error rate" %}<td class="n num">{{ f.a|percent:1 }}</td><td class="n num">{{ f.b|percent:1 }}</td><td class="n num">{{ f.delta|signed:"percent" }}</td>
+      {% else %}<td class="n num">{{ f.a|number:2 }}</td><td class="n num">{{ f.b|number:2 }}</td><td class="n num">{{ f.delta|signed }}</td>{% endif %}</tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="two">
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Activity</th><th scope="col" class="n">Cases A</th><th scope="col" class="n">Cases B</th><th scope="col" class="n">Mean A</th><th scope="col" class="n">Mean B</th></tr></thead>
+      <tbody>{% for a in comparison.activities %}<tr><td>{{ a.activity }}</td><td class="n num">{{ a.cases_share.a|percent }}</td><td class="n num">{{ a.cases_share.b|percent }}</td><td class="n num">{{ a.duration.a|seconds }}</td><td class="n num">{{ a.duration.b|seconds }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Gateway · branch</th><th scope="col" class="n">A</th><th scope="col" class="n">B</th><th scope="col" class="n">B − A</th></tr></thead>
+      <tbody>{% for g in comparison.decisions %}{% for b in g.branches %}<tr><td>{{ g.gateway }} · {{ b.branch }}</td><td class="n num">{{ b.a|percent }}</td><td class="n num">{{ b.b|percent }}</td><td class="n num">{{ b.delta|signed:"percent" }}</td></tr>{% endfor %}{% empty %}<tr><td colspan="4" class="muted">No gateway decided in either cohort.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  {% else %}<p class="empty">Compare two groups of cases (this month and last, one lane's people and another's, one variant and the rest): open <em>Add filter</em> and add filters to the comparison cohort. The filters above are cohort A.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}
