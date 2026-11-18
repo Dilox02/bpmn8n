@@ -1,5 +1,7 @@
 """n8n's public API (/api/v1 with N8N_API_KEY): read workflows (conformance, checks), create and update
 them (Studio)."""
+from urllib.parse import urlencode
+
 from ..conf import settings
 from .http import ServiceUnavailable, request_json
 
@@ -45,11 +47,29 @@ def save_workflow(data, workflow_id=""):
     return create_workflow(data)
 
 
+def pages(path, **query):
+    """Every item of a listing, following n8n's nextCursor."""
+    items, cursor = [], ""
+    while True:
+        page = request("GET", f"{path}?{urlencode({'limit': 100, **query, **({'cursor': cursor} if cursor else {})})}")
+        items += page.get("data", [])
+        if not (cursor := page.get("nextCursor")):
+            return items
+
+
+def workflows(name):
+    """The workflows named `name` (archived ones left out)."""
+    return [w for w in pages("/workflows", name=name) if w.get("name") == name and not w.get("isArchived")]
+
+
+def credentials():
+    """Every credential: id, name and type (never the secret)."""
+    return pages("/credentials")
+
+
 def ensure_credential(name, type_, data):
     """The id of the credential named `name`, created or updated with `data` (the key may have changed)."""
-    # ponytail: first page only (100 credentials); follow nextCursor if an instance ever has more
-    found = next((c["id"] for c in request("GET", "/credentials?limit=100").get("data", [])
-                  if c["name"] == name and c["type"] == type_), None)
+    found = next((c["id"] for c in credentials() if c["name"] == name and c["type"] == type_), None)
     if found:
         request("PATCH", f"/credentials/{found}", {"name": name, "type": type_, "data": data})
         return found
