@@ -1,9 +1,11 @@
 """Template filters of bpmn8n's pages."""
 from django import template
-from django.utils.safestring import mark_safe
 from django.utils import timezone
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.utils.timesince import timesince, timeuntil
 
+from ..web import vocab
 from ..web.text import to_html
 
 register = template.Library()
@@ -13,6 +15,34 @@ register = template.Library()
 def prose(text):
     """Text an LLM wrote (a brief, a question), its markdown rendered and its HTML escaped."""
     return mark_safe(to_html(text)[0])  # noqa: S308 (escaped by to_html)
+
+
+@register.filter
+def status_label(status):
+    """A status in words, from bpmn8n/web/vocab.py: "waiting_person" -> "waiting for a person"."""
+    return vocab.label(status)
+
+
+@register.filter
+def status_pill(status):
+    """A status as a pill, its words and tone from bpmn8n/web/vocab.py."""
+    return format_html('<span class="pill tone-{}">{}</span>', vocab.tone(status), vocab.label(status))
+
+
+@register.filter
+def duration(ms):
+    """Milliseconds in one or two units: "120 ms", "3.4 s", "4 min", "2 h 5 min", "3 days"."""
+    if ms is None:
+        return "—"
+    if ms < 1000:
+        return f"{ms:.0f} ms"
+    if (s := ms / 1000) < 60:
+        return f"{s:.1f} s"
+    if (m := int(s // 60)) < 60:
+        return f"{m} min"
+    if (h := m // 60) < 48:
+        return f"{h} h {m % 60} min" if m % 60 else f"{h} h"
+    return f"{h // 24} days"
 
 
 @register.filter

@@ -80,7 +80,7 @@ def context(request, workflow_id: str):
             except (ValueError, OSError):
                 continue
     return conditional(request, dict(title=description.get("title", workflow.get("name", "Valutazioni del workflow")),
-        description=description.get("description", "Consulta l’andamento delle metriche e verifica le soglie del workflow."),
+        description=description.get("description", "Follow the workflow's metrics over time and check its thresholds."),
         stages=description.get("stages", []), metrics=description.get("metrics", {}), progress=description.get("progress"),
         preferred_run_label=description.get("preferred_run_label")), tag)
 

@@ -13,20 +13,24 @@
   const style = document.createElement('style');
   style.textContent = `
     [data-test-id=nps-survey-modal], [data-test-id=node-feature-request] { display: none !important; }
-    .bpmn8n-card { margin: 0 0 16px; padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5;
-      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.10); border-left: 4px solid var(--tint, #888); }
-    .bpmn8n-card h4 { margin: 10px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; opacity: .65; }
+    .bpmn8n-card { margin: 0 0 16px; padding: 12px 14px; border-radius: var(--b8-radius-card, 8px); font-size: 12px; line-height: 1.5;
+      color: var(--b8-text, inherit); background: var(--b8-raised, rgba(255,255,255,.04)); border: 1px solid var(--b8-border, rgba(255,255,255,.10)); }
+    .bpmn8n-card h4 { margin: 10px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--b8-muted, rgba(128,128,128,.9)); }
     .bpmn8n-card .kind { font-weight: 600; font-size: 13px; }
-    .bpmn8n-card .agent { margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--tint, #555); color: #fff; font-size: 11px; }
+    .bpmn8n-card .kind::before {  /* the node's tint, as bpmn.js paints it on the dark canvas */
+      content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 2px; background: var(--tint, var(--b8-faint, #888)); }
+    .bpmn8n-card .agent { margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: var(--tint, var(--b8-faint, #555)); color: var(--b8-canvas-mark, #fff); font-size: 11px; }
     .bpmn8n-card p { margin: 2px 0; white-space: pre-wrap; }
-    .bpmn8n-card code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; overflow-wrap: anywhere; }
-    .bpmn8n-card details > summary { cursor: pointer; margin: 10px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; opacity: .65; }
+    .bpmn8n-card code { font-family: var(--b8-mono, ui-monospace), Menlo, monospace; font-size: 11.5px; overflow-wrap: anywhere; }
+    .bpmn8n-card details > summary { cursor: pointer; margin: 10px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--b8-muted, rgba(128,128,128,.9)); }
     .bpmn8n-card a { color: inherit; text-decoration: underline dotted; }
+    .bpmn8n-card a:focus-visible { outline: 2px solid var(--b8-accent, currentColor); outline-offset: 2px; }
+    .bpmn8n-card .case { display: inline-block; margin-top: 10px; color: var(--b8-accent, inherit); text-decoration: underline; text-underline-offset: 3px; }
     .bpmn8n-card table { width: 100%; border-collapse: collapse; }
-    .bpmn8n-card td { padding: 2px 6px 2px 0; vertical-align: top; border-top: 1px solid rgba(255,255,255,.06); }
+    .bpmn8n-card td { padding: 2px 6px 2px 0; vertical-align: top; border-top: 1px solid var(--b8-rule, rgba(255,255,255,.06)); }
     .bpmn8n-card td:first-child code { overflow-wrap: normal; white-space: nowrap; }  /* field names whole */
-    .bpmn8n-card .muted { opacity: .55; }
-    .bpmn8n-card .warn { color: #f0b35a; }
+    .bpmn8n-card .muted { color: var(--b8-muted, rgba(128,128,128,.9)); }
+    .bpmn8n-card .warn { color: var(--b8-warning, #f0b35a); }
   `;
   document.head.appendChild(style);
 
@@ -178,12 +182,23 @@
     return null;
   }
 
+  // the execution the editor shows (/workflow/<id>/executions/<id>, or the run it follows): its case on bpmn8n
+  const openCase = () => {
+    const route = document.querySelector('#app')?.__vue_app__?.config.globalProperties.$router?.currentRoute?.value;
+    const path = location.pathname.match(/\/workflow\/([^/]+)\/executions\/(\d+)/) || [];
+    const runs = stores()?.get('workflows');
+    const workflow = route?.params?.workflowId || route?.params?.name || path[1] || runs?.workflowId;
+    const execution = String(route?.params?.executionId || path[2] || runs?.workflowExecutionData?.id || '');
+    return workflow && /^\d+$/.test(execution) ? `${workflow}:${execution}` : '';  // n8n's ids: a placeholder is not one
+  };
+
   let shown = '';
   async function render() {
     const params = document.querySelector('[data-test-id=ndv] [data-test-id=node-parameters]');
     const node = params && openNode();
     if (!node) return;
-    const key = JSON.stringify([node.name, node.parameters, node.notes]);
+    const caseId = openCase();
+    const key = JSON.stringify([node.name, node.parameters, node.notes, caseId]);
     if (key === shown && params.querySelector('.bpmn8n-card')) return;
     shown = key;
     const html = await card(node);
@@ -192,8 +207,8 @@
     const el = document.createElement('div');
     el.className = 'bpmn8n-card';
     el.style.setProperty('--tint', document.querySelector(
-      `[data-test-id=canvas-node][data-node-name="${CSS.escape(node.name)}"]`)?.style.getPropertyValue('--tinta') || '#888');
-    el.innerHTML = html;
+      `[data-test-id=canvas-node][data-node-name="${CSS.escape(node.name)}"]`)?.style.getPropertyValue('--b8-tint') || '');
+    el.innerHTML = html + (caseId ? `<a class="case" href="${esc(BPMN8N)}/cases/${caseId.split(":").map(encodeURIComponent).join(":")}/" target="_blank">Open the case</a>` : '');
     params.prepend(el);
   }
   // ponytail: polls while a panel is open (parameters change without DOM events we can rely on)

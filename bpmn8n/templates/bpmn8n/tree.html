@@ -1,0 +1,3 @@
+<ul class="tree">{% for item in items %}
+  <li>{% if item.children is not None %}<details{% if open %} open{% endif %}><summary><span class="key">{{ item.key }}</span>{% if item.llm %}<span class="pill tone-warning">by an LLM</span>{% endif %}<span class="size">{{ item.size }}</span></summary>{% include "bpmn8n/tree.html" with items=item.children open=False %}</details>{% else %}<span class="key">{{ item.key }}</span>{% if item.llm %}<span class="pill tone-warning">by an LLM</span>{% endif %}<span class="value">{{ item.value }}</span>{% endif %}</li>{% endfor %}
+</ul>
