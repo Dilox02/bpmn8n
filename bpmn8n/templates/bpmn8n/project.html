@@ -99,8 +99,7 @@
   // the workflow in n8n's preview: it says n8nReady and is sent the workflow, in the page's light or dark
   const frame = document.getElementById('preview');
   if (frame) {
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    frame.src = `${frame.dataset.src}?theme=${dark ? 'dark' : 'light'}`;
+    frame.src = `${frame.dataset.src}?theme=${b8Theme()}`;
     const workflow = JSON.parse(document.getElementById('workflow').textContent);
     addEventListener('message', e => {
       if (e.source !== frame.contentWindow) return;

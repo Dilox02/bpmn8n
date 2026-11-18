@@ -3,6 +3,7 @@ the activities this server runs, and the documentation."""
 import inspect
 import re
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 
 from django.conf import settings
@@ -11,9 +12,12 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import NoReverseMatch, reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
+from .. import conf
 from ..api.tasks import TASK_KINDS, TASKS
 from ..clients.http import ServiceUnavailable
 from ..models import Event, TransitionError, UserTask
@@ -26,12 +30,72 @@ ACTIONS = {  # what a person can do on the task page; the model allows it or rai
 }
 
 
+@dataclass(frozen=True)
+class Nav:
+    """A sidebar entry: a page by URL name, or a setting that holds an address outside this server."""
+    target: str
+    label: str
+    icon: str  # templates/bpmn8n/icons/<icon>.svg
+    staff: bool = False
+
+
+# the sidebar; an entry shows once its URL name resolves, so a page added later appears without editing base.html
+NAV = (Nav("inbox", "Inbox", "inbox"), Nav("cases", "Cases", "cases"), Nav("insights", "Insights", "insights"),
+       Nav("studio", "Studio", "studio", staff=True), Nav("activities", "Activities", "activities"),
+       Nav("workflows", "Workflows", "workflows"), Nav("variables", "Variables", "variables", staff=True),
+       Nav("docs", "Docs", "docs"))
+NAV_BOTTOM = (Nav("api-1:openapi-view", "API", "api"), Nav("N8N_PUBLIC_URL", "Editor", "editor", staff=True),
+              Nav("admin:index", "Admin", "admin", staff=True))
+THEMES, THEME_COOKIE = (("system", "System"), ("light", "Light"), ("dark", "Dark")), "b8-theme"
+
+
+def nav_entries(items, request, counts=None):
+    """The entries this person may see and this server has, with their address and whether they are open."""
+    shown = []
+    for item in items:
+        if item.staff and not request.user.is_staff:
+            continue
+        if external := item.target.isupper():
+            href = getattr(conf.settings, item.target, "")
+        else:
+            try:
+                href = reverse(item.target)
+            except NoReverseMatch:  # a page this server does not have (yet)
+                continue
+        if href:
+            shown.append({"href": href, "label": item.label, "icon": f"bpmn8n/icons/{item.icon}.svg",
+                          "external": external, "count": (counts or {}).get(item.target),
+                          "current": not external and request.path.startswith(href)})
+    return shown
+
+
+def theme_of(request):
+    """The theme the person chose (the b8-theme cookie): system, light or dark."""
+    chosen = request.COOKIES.get(THEME_COOKIE)
+    return chosen if chosen in dict(THEMES) else "system"
+
+
 def navigation(request):
-    """Context processor: the inbox count in the sidebar and the person's stable hue."""
+    """Context processor: the theme on every page; for a person also the sidebar, with the inbox count, and
+    their stable hue."""
+    context = {"theme": theme_of(request), "themes": THEMES}
     if not request.user.is_authenticated:
-        return {}
-    return {"waiting_count": UserTask.objects.waiting().for_user(request.user).count(),
-            "user_hue": zlib.crc32(request.user.username.encode()) % 360}
+        return context
+    waiting = UserTask.objects.waiting().for_user(request.user).count()
+    return {**context, "waiting_count": waiting, "user_hue": zlib.crc32(request.user.username.encode()) % 360,
+            "nav": nav_entries(NAV, request, {"inbox": waiting}), "nav_bottom": nav_entries(NAV_BOTTOM, request)}
+
+
+@require_POST
+def theme(request):
+    """The theme switch: kept a year in the b8-theme cookie (n8n's hooks may read it: not HttpOnly), then back."""
+    back = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(back, {request.get_host()}, request.is_secure()):
+        back = "/"
+    response = redirect(back)
+    if (chosen := request.POST.get("theme")) in dict(THEMES):
+        response.set_cookie(THEME_COOKIE, chosen, max_age=365 * 24 * 3600, samesite="Lax")
+    return response
 
 
 @login_required

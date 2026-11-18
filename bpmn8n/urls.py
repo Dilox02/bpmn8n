@@ -16,6 +16,7 @@ urlpatterns = [
     path("activities/", views.activities, name="activities"),
     path("login/", LoginView.as_view(template_name="bpmn8n/login.html"), name="login"),
     path("logout/", LogoutView.as_view(next_page="login"), name="logout"),
+    path("theme/", views.theme, name="theme"),
     path("inbox/", views.inbox, name="inbox"),
     path("inbox/<int:pk>/", views.task, name="task"),
     path("inbox/<int:pk>/<str:action>/", views.act, name="act"),
