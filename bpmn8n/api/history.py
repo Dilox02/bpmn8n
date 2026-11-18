@@ -1,11 +1,11 @@
 """Workflow history (core/history.py): the versions bpmn8n has kept of each n8n workflow and what changed."""
 from datetime import datetime
 
-from django.db.models import Count
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from ..models import Case, WorkflowVersion
+from ..core.history import cases_per_version
+from ..models import WorkflowVersion
 from ..workflows.changes import changes
 
 router = Router(tags=["history"])
@@ -46,8 +46,3 @@ def previous(version):
     return (WorkflowVersion.objects.filter(workflow_id=version.workflow_id, created__lte=version.created)
             .exclude(pk=version.pk).exclude(created=version.created, id__gt=version.pk).order_by("-created", "-id").first())
 
-
-def cases_per_version(workflow_id):
-    rows = (Case.objects.filter(case_id__startswith=f"{workflow_id}:").exclude(process_version="")
-            .values("process_version").annotate(n=Count("pk")).values_list("process_version", "n"))
-    return dict(rows)

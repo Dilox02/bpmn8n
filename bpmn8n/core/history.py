@@ -7,7 +7,7 @@ so bpmn8n sees a version when a case starts on it, or when `manage.py snapshot_w
 import logging
 import time
 
-from django.db.models import Count, Value
+from django.db.models import Count, Max, Value
 from django.db.models.functions import Left, StrIndex
 
 from ..clients import n8n
@@ -96,13 +96,19 @@ def workflows_in_n8n():
 
 def seen_workflow_ids():
     """The workflows bpmn8n knows: from cases ("<workflow id>:…") and from earlier snapshots."""
-    from_cases = workflow_case_counts().keys()
-    return sorted({*from_cases, *WorkflowVersion.objects.values_list("workflow_id", flat=True)})
+    return sorted({*workflow_cases(), *WorkflowVersion.objects.values_list("workflow_id", flat=True)})
 
 
-def workflow_case_counts():
-    """{workflow id: number of cases}, from the case ids."""
+def workflow_cases():
+    """{workflow id: {"cases", "process" (a name it ran as), "last" (the newest case's start)}}, from the case ids."""
     rows = (Case.objects.filter(case_id__contains=":")
             .annotate(workflow=Left("case_id", StrIndex("case_id", Value(":")) - 1))
-            .values("workflow").annotate(n=Count("pk")).values_list("workflow", "n"))
+            .values("workflow").annotate(cases=Count("pk"), process=Max("process"), last=Max("created")))
+    return {r.pop("workflow"): r for r in rows}
+
+
+def cases_per_version(workflow_id):
+    """{version id: number of cases that ran it}"""
+    rows = (Case.objects.filter(case_id__startswith=f"{workflow_id}:").exclude(process_version="")
+            .values("process_version").annotate(n=Count("pk")).values_list("process_version", "n"))
     return dict(rows)
