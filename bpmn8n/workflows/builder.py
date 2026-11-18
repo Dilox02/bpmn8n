@@ -5,31 +5,20 @@ import re
 import uuid
 from collections import defaultdict
 
-NODE = "CUSTOM.bpmn8n"
-TASK_KINDS = ("serviceTask", "scriptTask", "businessRuleTask", "sendTask")  # BPMN tasks run by a @task, one node each
+from .elements import AGENT, MERGE, NODE, SET, TASK_KINDS, element, node_type, types
+from .graph import ProcessGraph
 
+__all__ = ["AGENT", "BRANCHING", "DEFAULT_LAST", "MERGE", "NODE", "SET", "TASK_KINDS", "TIMEOUT_FIRST", "SpecError",
+           "Workflow", "node_type", "output_names"]
 
-def node_type(bpmn):
-    """The n8n type of a bpmn8n node, from its BPMN element: "serviceTask" -> "CUSTOM.bpmn8nServiceTask"."""
-    return NODE + bpmn[0].upper() + bpmn[1:]
-
-
-MERGE = "n8n-nodes-base.merge"
-AGENT = "@n8n/n8n-nodes-langchain.agent"
-SET = "n8n-nodes-base.set"
-DEFAULT_LAST = (node_type("exclusiveGateway"), node_type("inclusiveGateway"))  # their last output: "default"
-TIMEOUT_FIRST = node_type("eventBasedGateway")  # its first output: "timeout"
-BRANCHING = (*DEFAULT_LAST, TIMEOUT_FIRST, node_type("parallelGateway"))
+DEFAULT_LAST = types(default_last=True)  # their last output: "default"
+(TIMEOUT_FIRST,) = types(timeout_first=True)  # its first output: "timeout"
+BRANCHING = types(chooses=True) | types(splits=True)  # their outputs are the configured branches
 
 
 def output_names(node):
     """A node's outputs in order: a gateway's branches (with "default" or "timeout"), else ["main"]."""
-    branches = [b["name"] for b in node["parameters"].get("branches", {}).get("values", [])]
-    if node["type"] in DEFAULT_LAST:
-        return [*branches, "default"]
-    if node["type"] == TIMEOUT_FIRST:
-        return ["timeout", *branches]
-    return branches if node["type"] in BRANCHING else ["main"]
+    return element(node).outputs(node.get("parameters"))
 
 
 class SpecError(ValueError):
@@ -257,11 +246,11 @@ class Workflow:
         first row below that is free until it joins the others, so branches never overlap, and a step that
         branches join goes in the highest of their rows (the one its longest branch kept free). Flows then run right and down, as n8n draws them
         (out on the right, in on the left); only loops go back. A chat model goes under its agent."""
-        models = {name: outs["ai_languageModel"][0][0]["node"] for name, outs in self.connections.items()
-                  if "ai_languageModel" in outs}
-        after = {name: [c["node"] for port in outs.get("main", []) for c in port] for name, outs in self.connections.items()}
-        reached = {n for nodes in after.values() for n in nodes}
-        starts = [n["name"] for n in self.nodes if n["name"] not in reached | models.keys()]
+        graph = ProcessGraph(self.as_json())
+        models = graph.parent  # chat model -> its agent
+        after = {name: [n for port in graph.outs[name] for n in port] for name in graph.nodes}
+        # every step nothing leads to starts a row, a trigger or not (graph.starts would leave orphans out)
+        starts = [n for n in graph.nodes if not graph.into[n] and n not in graph.subnodes]
         order, seen = [], set()
 
         def visit(name):  # depth first; the reverse of the finishing order is a topological order
