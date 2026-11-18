@@ -37,8 +37,11 @@
   "CUSTOM.bpmn8nManualTask": [
     "context",
     "description",
+    "due",
+    "dueUntil",
     "form",
     "lane",
+    "priority",
     "title"
   ],
   "CUSTOM.bpmn8nMetrics": [
@@ -78,10 +81,20 @@
     "until"
   ],
   "CUSTOM.bpmn8nUserTask": [
+    "assignee",
+    "completion",
     "context",
+    "deadline",
     "description",
+    "due",
+    "dueAmount",
+    "dueUnit",
+    "dueUntil",
     "form",
     "lane",
+    "notSameAs",
+    "priority",
+    "quorum",
     "title"
   ]
 }
