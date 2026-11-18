@@ -60,7 +60,9 @@ def timeline(log):
     size = bucket_size(log.span)
     origin = math.floor(log.start / size) * size
     n = max(1, math.ceil((log.end - origin) / size))
-    index = lambda t: min(max(int((t - origin) // size), 0), n - 1)
+    def index(t):
+        return min(max(int((t - origin) // size), 0), n - 1)
+
     events, active = np.zeros(n, dtype=int), np.zeros(n + 1, dtype=int)
     for t in log.traces:
         for s in t.steps:
@@ -224,8 +226,15 @@ def compare(a, b):
     """Two cohorts side by side: the same figures for each, with the difference b − a."""
     oa, ob = overview(a), overview(b)
     da, db = oa["case_duration"] or {}, ob["case_duration"] or {}
-    rate = lambda o: r(o["errors"] / o["events"]) if o["events"] else None
-    per_case = lambda o: r(o["events"] / o["cases"]) if o["cases"] else None
+    def rate(o):
+        return r(o["errors"] / o["events"]) if o["events"] else None
+
+    def per_case(o):
+        return r(o["events"] / o["cases"]) if o["cases"] else None
+
+    def share(x, o):  # of the cohort's cases, the share that ran the activity
+        return r(x["cases"] / o["cases"]) if x and o["cases"] else (0.0 if o["cases"] else None)
+
     figures = [("cases", oa["cases"], ob["cases"]), ("events per case", per_case(oa), per_case(ob)),
                ("error rate", rate(oa), rate(ob))] + \
               [(f"case duration {k}", da.get(k), db.get(k)) for k in ("mean", "median", "p90")]
@@ -233,7 +242,6 @@ def compare(a, b):
     acts = []
     for name in sorted(acts_a.keys() | acts_b.keys(), key=lambda n: -(acts_a.get(n) or acts_b[n])["executions"]):
         xa, xb = acts_a.get(name), acts_b.get(name)
-        share = lambda x, o: r(x["cases"] / o["cases"]) if x and o["cases"] else (0.0 if o["cases"] else None)
         acts.append({"activity": name, "cases_share": delta(share(xa, oa), share(xb, ob)),
                      "duration": delta(xa and xa["duration"]["mean"], xb and xb["duration"]["mean"])})
     gates_a, gates_b = ({g["gateway"]: g for g in decisions(c)} for c in (a, b))

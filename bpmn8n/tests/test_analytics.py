@@ -156,7 +156,9 @@ class StatsTest(TestCase):
         self.assertEqual((second["cumulative"], second["duration"]), (100.0, 180.0))
 
     def test_decisions_per_gateway(self):
-        laya = lambda branches, p: step("Route", 1, data={"decider": "laya", "output": {"branches": branches, "scores": {"simple": p}}})
+        def laya(branches, p):
+            return step("Route", 1, data={"decider": "laya", "output": {"branches": branches, "scores": {"simple": p}}})
+
         add_events(("g:1", "G", [laya(["simple"], 0.9)]), ("g:2", "G", [laya(["simple"], 0.9)]), ("g:3", "G", [laya([], 0.5)]),
                    ("g:4", "G", [step("Route", 1, data={"decider": "conditions", "output": {"branches": ["complex"], "scores": {}}})]))
         log = Log.load(Scope(process="G"))
@@ -224,7 +226,9 @@ class QueuesTest(TestCase):
         self.assertEqual(lane["servers"], 2)
 
     def test_work_starts_at_the_claim_else_at_the_persons_previous_completion(self):
-        visit = lambda arrival, end, who, claimed=None: queues.Visit("T", "c", arrival, end, who, "human", claimed=claimed)
+        def visit(arrival, end, who, claimed=None):
+            return queues.Visit("T", "c", arrival, end, who, "human", claimed=claimed)
+
         first, second, third, claimed, unknown = (visit(0, 100, "ann"), visit(10, 150, "ann"), visit(200, 260, "ann"),
                                                   visit(0, 50, "ben", claimed=30), visit(0, 40, "api"))
         queues.starts([third, second, first, claimed, unknown])
@@ -321,3 +325,55 @@ class AnalyticsApiTest(TestCase):
         self.assertEqual((r["Access-Control-Allow-Origin"], r["Access-Control-Allow-Credentials"]), ("http://localhost:5678", "true"))
         preflight = self.client.options("/api/analytics/overlay", HTTP_ORIGIN="http://localhost:5678")
         self.assertEqual((preflight.status_code, preflight["Access-Control-Allow-Origin"]), (204, "http://localhost:5678"))
+
+
+class InsightsPageTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("viewer")
+        self.client.force_login(self.user)
+
+    def test_needs_a_login_and_says_what_to_do_without_data(self):
+        self.client.logout()
+        self.assertEqual(self.client.get("/insights/").status_code, 302)
+        self.client.force_login(self.user)
+        r = self.client.get("/insights/")
+        self.assertContains(r, "No case in the event log yet")
+        self.assertContains(r, "seed_events")
+
+    def test_renders_every_section_on_a_seeded_log(self):
+        generate("Claim Handling", 80, seed=2)
+        r = self.client.get("/insights/")
+        self.assertEqual(r.status_code, 200)
+        for text in ("Claim Handling", "Cases in progress", "Closed cases by duration", "Bottlenecks", "assessors",
+                     "Where the cycle time goes", "Variants", "Handoffs", "Route Claim", "Compare two groups"):
+            self.assertContains(r, text)
+        self.assertContains(r, 'class="plot"', count=3)  # two timelines and the histogram
+
+    def test_filters_are_added_by_form_and_removed_by_link(self):
+        tiny()
+        r = self.client.get("/insights/", {"process": "P", "add": "attribute", "key": "resource", "value": "anna",
+                                           "mode": "include", "into": "filters"})
+        self.assertEqual(r.status_code, 302)
+        page = self.client.get(r.url)
+        self.assertContains(page, "With resource anna")
+        self.assertContains(page, "2 cases of P kept by 1 filter, of 3")
+        remove = page.context["chips"][0]["remove"]
+        self.assertNotIn("filters", remove)
+        self.assertContains(self.client.get("/insights/" + remove), "3 cases of P")
+
+    def test_a_cohort_is_compared_with_the_filtered_cases(self):
+        tiny()
+        r = self.client.get("/insights/", {"process": "P", "add": "follower", "from": "Register", "to": "Pay",
+                                           "within": "5", "within_unit": "min", "into": "vs"})
+        page = self.client.get(r.url)
+        self.assertContains(page, "B · Register ⇢ Pay within 5.0 min")
+        self.assertEqual(page.context["vs_cases"], 1)
+        self.assertContains(page, "case duration mean")
+
+    def test_unreadable_filters_are_reported_not_fatal(self):
+        tiny()
+        r = self.client.get("/insights/", {"process": "P", "add": "variants", "by": "top", "n": "0"}, follow=True)
+        self.assertContains(r, "The filter was not added")
+        r = self.client.get("/insights/", {"process": "P", "filters": "[oops"})
+        self.assertContains(r, "Filters ignored")
+        self.assertContains(r, "3 cases of P")

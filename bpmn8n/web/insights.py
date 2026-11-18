@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.urls import reverse
 
 from ..analytics import FilterError, FilterStack, Log, Scope, queues, stats
 from ..analytics.log import duration_text
@@ -79,7 +80,7 @@ def insights(request):
             state[target] = stack.query()
         except FilterError as e:
             messages.error(request, f"The filter was not added: {e}")
-        return redirect(link(state))
+        return redirect(reverse("insights") + link(state))
 
     processes = stats.processes()
     process = state["process"] or (processes[0]["process"] if processes else "")

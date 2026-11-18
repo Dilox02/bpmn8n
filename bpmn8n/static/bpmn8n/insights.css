@@ -39,6 +39,7 @@
 /* sections */
 .block { margin-bottom: 40px; }
 .block.two, .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
+.table-wrap + .two { margin-top: 24px; }
 .subhead { margin: 24px 0 8px; font-size: var(--fs-body); font-weight: 600; }
 .inline-form { display: flex; align-items: center; gap: 8px; }
 .inline-form label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-small); }
