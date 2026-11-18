@@ -1,0 +1,40 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}{{ name }}{% endblock %}
+{% block crumbs %}<a href="{% url 'workflows' %}">Workflows</a><span aria-hidden="true">/</span><span>{{ name }}</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>{{ name }}</h1>
+    <p class="sub"><span class="mono">{{ workflow_id }}</span> · {{ versions|length }} version{{ versions|length|pluralize }} kept · {{ cases }} case{{ cases|pluralize }}{% if unversioned > 0 %} ({{ unversioned }} with no known version){% endif %}</p>
+  </div>
+</div>
+{% for row in versions %}{% with v=row.v %}
+<section class="panel lead" aria-labelledby="v{{ forloop.counter }}">
+  <header>
+    <h2 id="v{{ forloop.counter }}"><span class="mono">{{ v.version_id|truncatechars:13 }}</span>{% if forloop.first %} <span class="pill s-open">newest</span>{% endif %}</h2>
+    <span class="meta">seen {{ v.created|waited }} ago · <a class="inline-link" href="{% url 'cases' %}?version={{ v.version_id|urlencode }}">{{ row.cases }} case{{ row.cases|pluralize }}</a> · hash <span class="mono">{{ v.content_hash|slice:":8" }}</span></span>
+  </header>
+  {% if row.first %}
+    <p class="muted">The first version bpmn8n kept: {{ row.changes|length }} step{{ row.changes|length|pluralize }} and flows.</p>
+  {% elif row.changes %}
+    <div class="rows">
+    {% for c in row.changes %}
+      <div class="row"><span class="pill {% if c.change == 'node_added' or c.change == 'connection_added' %}s-done{% elif c.change == 'node_removed' or c.change == 'connection_removed' %}s-failed{% else %}s-doing{% endif %}">{% if c.change == "parameter" %}changed{% else %}{{ c.change|cut:"node_"|cut:"connection_" }}{% endif %}</span>
+        {% if c.change == "parameter" %}<span>“{{ c.node }}” <span class="mono muted">{{ c.path }}</span>: <code>{{ c.before }}</code> → <code>{{ c.after }}</code></span>{% else %}<span>{{ c.text }}</span>{% endif %}</div>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Saved again with no change to its steps or flows.</p>
+  {% endif %}
+  {% if user.is_staff and not forloop.first %}
+  <form class="form-actions below" method="post" action="{% url 'restore_version' workflow_id v.version_id %}">{% csrf_token %}
+    <button class="btn" type="submit" data-waiting="Saving to n8n…">Restore this version</button>
+    <span class="meta">Saved to n8n as a new version; it does not run until someone publishes it there.</span>
+  </form>
+  {% endif %}
+</section>
+{% endwith %}{% empty %}
+<p class="empty">No version kept yet: set <code>N8N_API_KEY</code>, then a new case or <code>python manage.py snapshot_workflows {{ workflow_id }}</code> keeps the current one.</p>
+{% endfor %}
+{% endblock %}

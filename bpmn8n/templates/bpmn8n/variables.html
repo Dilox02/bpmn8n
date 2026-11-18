@@ -1,0 +1,64 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}Global variables{% endblock %}
+{% block crumbs %}<span>Global variables</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Global variables</h1>
+    <p class="sub">Values every workflow shares: <code>{% templatetag openvariable %}vars.<em>key</em>{% templatetag closevariable %}</code> in any field, the Global Variable node, or <code>/api/variables</code>. Kept in {% if redis %}Redis{% else %}the database{% endif %}; JSON values.</p>
+  </div>
+</div>
+<div class="with-rail">
+  <section aria-labelledby="list">
+    <form class="form-actions lead" method="get">
+      <label class="sr-only" for="prefix">Keys starting with</label>
+      <input class="input" id="prefix" name="prefix" value="{{ prefix }}" placeholder="Keys starting with… (acme.)" style="max-width: 320px">
+      <button class="btn" type="submit">Filter</button>
+      {% if prefix %}<a class="inline-link" href="{% url 'variables' %}">All</a>{% endif %}
+      <span class="meta" id="list">{{ variables|length }} variable{{ variables|length|pluralize }}</span>
+    </form>
+    {% if variables %}
+    <div class="table-wrap">
+      <table class="as-rows">
+        <thead><tr><th scope="col">Key</th><th scope="col">Value</th><th scope="col">Expires</th><th scope="col" class="n">Updated</th></tr></thead>
+        <tbody>
+        {% for row in variables %}
+          <tr>
+            <td><span class="mono">{{ row.v.key }}</span>
+              <details>
+                <summary class="meta">Edit or delete</summary>
+                <form class="fields below" method="post">{% csrf_token %}
+                  <input type="hidden" name="key" value="{{ row.v.key }}">
+                  <label class="field"><span>Value (JSON)</span><textarea class="input mono" name="value" rows="4">{{ row.pretty }}</textarea></label>
+                  <label class="field"><span>Expires after (seconds, empty: never)</span><input class="input" name="ttl" type="number" min="0" step="any"></label>
+                  <div class="form-actions">
+                    <button class="btn primary" type="submit" name="action" value="save">Save</button>
+                    <button class="btn" type="submit" name="action" value="delete">Delete</button>
+                  </div>
+                </form>
+              </details>
+            </td>
+            <td class="line2"><code>{{ row.json|truncatechars:120 }}</code></td>
+            <td class="line2">{% if row.v.expires %}in {{ row.v.expires|timeuntil }}{% else %}never{% endif %}</td>
+            <td class="n num">{% if row.v.updated %}{{ row.v.updated|waited }} ago{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">{% if prefix %}No variable starts with “{{ prefix }}”.{% else %}No global variable yet: add one here, or let a workflow set it with the Global Variable node.{% endif %}</p>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="add">
+    <header><h2 id="add">Add a variable</h2></header>
+    <form class="fields" method="post">{% csrf_token %}
+      <label class="field"><span>Key</span><input class="input mono" name="key" required pattern="[A-Za-z0-9_.\-]{1,200}" placeholder="acme.max_refund"></label>
+      <label class="field"><span>Value (JSON)</span><textarea class="input mono" name="value" rows="4" required placeholder='1000 · "text" · {"limit": 3}'></textarea></label>
+      <label class="field"><span>Expires after (seconds, empty: never)</span><input class="input" name="ttl" type="number" min="0" step="any"></label>
+      <div class="form-actions"><button class="btn primary" type="submit" name="action" value="save">Save</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

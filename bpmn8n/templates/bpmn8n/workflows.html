@@ -1,0 +1,31 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}Workflows{% endblock %}
+{% block crumbs %}<span>Workflows</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Workflows</h1>
+    <p class="sub">The n8n workflows bpmn8n has seen, with the versions it kept and the cases each version ran. n8n keeps 24 hours of history for free; bpmn8n keeps every version it sees, for as long as you like.</p>
+  </div>
+</div>
+{% if workflows %}
+<div class="table-wrap">
+  <table class="as-rows">
+    <thead><tr><th scope="col">Workflow</th><th scope="col" class="n">Versions</th><th scope="col" class="n">Cases</th><th scope="col" class="n">Last case</th></tr></thead>
+    <tbody>
+    {% for w in workflows %}
+      <tr>
+        <td><a class="name" href="{% url 'workflow_history' w.id %}">{{ w.name }}</a><span class="sub mono">{{ w.id }}</span></td>
+        <td class="line2 n num">{{ w.versions }}</td>
+        <td class="side n num">{{ w.cases }}</td>
+        <td class="n num">{% if w.last_case %}{{ w.last_case|waited }} ago{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">No workflow yet. bpmn8n sees one when a case reaches its first bpmn8n step; with <code>N8N_API_KEY</code> set it also keeps the version the case runs. <code>python manage.py snapshot_workflows --all</code> keeps the current version of every workflow in n8n.</p>
+{% endif %}
+{% endblock %}
