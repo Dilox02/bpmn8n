@@ -1,0 +1,87 @@
+{
+  "CUSTOM.bpmn8nBusinessRuleTask": [
+    "input",
+    "output",
+    "task"
+  ],
+  "CUSTOM.bpmn8nCallActivity": [
+    "workflowId"
+  ],
+  "CUSTOM.bpmn8nErrorEndEvent": [
+    "code",
+    "message"
+  ],
+  "CUSTOM.bpmn8nEventBasedGateway": [
+    "amount",
+    "branches",
+    "correlationKey",
+    "mode",
+    "unit"
+  ],
+  "CUSTOM.bpmn8nExclusiveGateway": [
+    "branches",
+    "decider",
+    "decisionScope",
+    "minConfidence",
+    "question",
+    "state"
+  ],
+  "CUSTOM.bpmn8nInclusiveGateway": [
+    "branches",
+    "decider",
+    "decisionScope",
+    "minConfidence",
+    "question",
+    "state"
+  ],
+  "CUSTOM.bpmn8nManualTask": [
+    "context",
+    "description",
+    "form",
+    "lane",
+    "title"
+  ],
+  "CUSTOM.bpmn8nMetrics": [
+    "label",
+    "metrics",
+    "project"
+  ],
+  "CUSTOM.bpmn8nParallelGateway": [
+    "branches"
+  ],
+  "CUSTOM.bpmn8nReceiveTask": [
+    "correlationKey",
+    "message"
+  ],
+  "CUSTOM.bpmn8nScriptTask": [
+    "input",
+    "output",
+    "task"
+  ],
+  "CUSTOM.bpmn8nSendTask": [
+    "input",
+    "output",
+    "task"
+  ],
+  "CUSTOM.bpmn8nServiceTask": [
+    "includeExtraction",
+    "input",
+    "inputFrom",
+    "output",
+    "task",
+    "text"
+  ],
+  "CUSTOM.bpmn8nTimerEvent": [
+    "amount",
+    "mode",
+    "unit",
+    "until"
+  ],
+  "CUSTOM.bpmn8nUserTask": [
+    "context",
+    "description",
+    "form",
+    "lane",
+    "title"
+  ]
+}

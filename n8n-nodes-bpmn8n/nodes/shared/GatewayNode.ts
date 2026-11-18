@@ -45,6 +45,18 @@ export abstract class GatewayNode implements INodeType {
 						: "A short yes/no question, e.g. 'Was personal data leaked?'",
 				),
 				{
+					// read by bpmn8n's workflow check only: technical routing needs no person after it (GDPR art. 22)
+					displayName: 'Decision Scope',
+					name: 'decisionScope',
+					type: 'options',
+					default: 'decision',
+					options: [
+						{ name: 'Decision', value: 'decision', description: 'A person reviews what follows it' },
+						{ name: 'Technical', value: 'technical', description: 'Housekeeping (counters, files), never a decision about people' },
+					],
+					displayOptions: { show: { decider: ['conditions'] } },
+				},
+				{
 					displayName: 'State',
 					name: 'state',
 					type: 'string',

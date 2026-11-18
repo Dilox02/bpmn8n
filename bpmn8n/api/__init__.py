@@ -24,6 +24,7 @@ for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks"
                        ("/executions", executions),
                        ("", observability), ("", mining)):
     api.add_router(prefix, module.router)
+api.add_router("", workflows.elements)
 
 
 def openapi_cors(get_response):
@@ -33,7 +34,7 @@ def openapi_cors(get_response):
         preflight = read_path and request.method == "OPTIONS"
         response = HttpResponse(status=204) if preflight else get_response(request)
         evaluations_read = read_path and request.method in ("GET", "OPTIONS")
-        if request.path == "/api/openapi.json" or evaluations_read:
+        if request.path in ("/api/openapi.json", "/api/elements") or evaluations_read:
             public = urlsplit(settings.N8N_PUBLIC_URL)
             configured = f"{public.scheme}://{public.netloc}"
             origins = {configured}
