@@ -18,6 +18,7 @@ from django.db.models import Avg, Count, Max, Q
 from django.utils import timezone
 
 from ..models import Event
+from .streaming import publish
 
 log = logging.getLogger("bpmn8n")
 
@@ -83,6 +84,7 @@ def measure(name, trace=Trace(), resource="system"):
         span.close()
         Event.objects.filter(pk=span.event.pk).update(ended=span.ended, duration_ms=span.ms,
                              status="error" if span.error else "complete", error=span.error or "", data=span.data)
+        publish(span.event.pk)  # log streaming (core/streaming.py)
         if span.profile:
             _profiles[name] = span.profile
         log.info("%s %.1fms%s", name, span.ms, f" ERROR {span.error}" if span.error else "")

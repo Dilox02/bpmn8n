@@ -6,7 +6,7 @@ from django.urls import path
 from django.views.generic import RedirectView
 
 from .api import api, discover
-from .web import cases, studio, views
+from .web import cases, operations, studio, views
 
 discover()  # every app's tasks register their @task endpoints (before api.urls); broken ones are logged
 
@@ -26,6 +26,11 @@ urlpatterns = [
     path("studio/<slug:slug>/", studio.project, name="project"),
     path("studio/<slug:slug>/build/", studio.build, name="build"),
     path("studio/<slug:slug>/events/", studio.events, name="events"),
+    path("variables/", operations.variables, name="variables"),
+    path("cases/", operations.cases, name="cases"),
+    path("workflows/", operations.workflows, name="workflows"),
+    path("workflows/<str:workflow_id>/", operations.workflow_history, name="workflow_history"),
+    path("workflows/<str:workflow_id>/<str:version_id>/restore/", operations.restore_version, name="restore_version"),
     path("admin/", admin.site.urls),
 ]
 if settings.DEBUG:  # in production whitenoise serves what collectstatic gathered (bpmn8n/settings.py)

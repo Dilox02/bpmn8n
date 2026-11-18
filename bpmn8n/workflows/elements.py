@@ -126,6 +126,10 @@ ELEMENTS = {e.n8n_type: e for e in (
             logged=True, ends=True),
     _bpmn8n("metrics", "other", "Metrics",
             "Records configured measurements in the project run folder.", "", transparent=True),
+    # a task, not a data store: it sits on the sequence flow and runs like a script task; the data-store
+    # glyph is its marker. It produces data (the value under its key), so it is not transparent.
+    _bpmn8n("globalVariable", "task", "Global variable",
+            "Reads or writes a variable every workflow shares ({{vars.<key>}}).", "data/data-store"),
     Element("start", WEBHOOK, "event", "Message start event", "A request starts the case.",
             "events/start-event-message", trigger=True),
     Element("formStart", "n8n-nodes-base.formTrigger", "event", "Message start event", "A form starts the case.",

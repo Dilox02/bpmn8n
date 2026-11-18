@@ -27,8 +27,12 @@ services:
       WEB_WORKERS: ${WEB_WORKERS:-4}
       POSTGRES_HOST: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bpmn8n-dev}
+      # global variables and the event stream; database 1, n8n's queue uses 0
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      EVENT_WEBHOOKS: ${EVENT_WEBHOOKS:-}  # comma-separated URLs that receive every finished step
     depends_on:
       postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
 
   postgres:
     image: postgres:17-alpine
@@ -121,6 +125,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes  # global variables survive a restart
+    volumes: ["redis_data:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -154,6 +160,7 @@ services:
 
 volumes:
   pg_data:
+  redis_data:
   n8n_data:
   laya_cache:
   models_cache:

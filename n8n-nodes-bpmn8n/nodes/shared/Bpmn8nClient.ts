@@ -48,7 +48,7 @@ export class Bpmn8nClient {
 
 	/** The reply's body; an error reply fails with bpmn8n's own explanation (its `detail`), which
 	 * n8n's generic HTTP error would hide. */
-	private async request(method: IHttpRequestMethods, path: string, body?: IDataObject, headers: IDataObject = {}): Promise<unknown> {
+	async request(method: IHttpRequestMethods, path: string, body?: IDataObject, headers: IDataObject = {}): Promise<unknown> {
 		const { baseUrl } = await this.ctx.getCredentials(CREDENTIALS);
 		const reply = (await this.ctx.helpers.httpRequestWithAuthentication.call(this.ctx, CREDENTIALS, {
 			method,

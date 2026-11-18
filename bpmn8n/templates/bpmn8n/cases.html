@@ -1,0 +1,60 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}Cases{% endblock %}
+{% block crumbs %}<span>Cases</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Cases</h1>
+    <p class="sub">Every process instance, newest first, found by its process, version, start day, status or the values of its variables. The same search is <code>GET /api/cases</code>.</p>
+  </div>
+</div>
+<form class="panel lead" method="get" aria-label="Filters">
+  <div class="fields" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px">
+    <label class="field"><span>Process</span>
+      <select class="input" name="process"><option value="">Any</option>{% for p in processes %}<option {% if q.process == p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
+    <label class="field"><span>Status</span>
+      <select class="input" name="status"><option value="">Any</option>{% for s in statuses %}<option {% if q.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+    <label class="field"><span>Started from</span><input class="input" type="date" name="since" value="{{ q.since }}"></label>
+    <label class="field"><span>Started until</span><input class="input" type="date" name="until" value="{{ q.until }}"></label>
+    <label class="field"><span>Version</span><input class="input mono" name="version" value="{{ q.version }}" placeholder="n8n versionId"></label>
+  </div>
+  <fieldset class="fields below" style="border: 0; padding: 0; margin: 16px 0 0">
+    <legend class="meta">Variables: a path in dots (customer.email), how to compare, a value (JSON when it parses, else text)</legend>
+    {% for path, op, value in criteria %}
+    <div class="form-actions">
+      <input class="input mono" name="path" value="{{ path }}" placeholder="amount" aria-label="Variable path" style="max-width: 240px">
+      <select class="input" name="op" aria-label="Comparison" style="max-width: 140px">
+        <option value="" {% if not op %}selected{% endif %}>equals</option>
+        {% for o in operators %}<option value="{{ o }}" {% if op == o %}selected{% endif %}>{% if o == "gt" %}&gt;{% elif o == "gte" %}≥{% elif o == "lt" %}&lt;{% elif o == "lte" %}≤{% else %}contains{% endif %}</option>{% endfor %}
+      </select>
+      <input class="input" name="value" value="{{ value }}" placeholder="1000" aria-label="Value" style="max-width: 240px">
+    </div>
+    {% endfor %}
+  </fieldset>
+  <div class="form-actions below"><button class="btn primary" type="submit">Search</button><a class="inline-link" href="{% url 'cases' %}">Clear</a>
+    <span class="meta">{{ count }} case{{ count|pluralize }}</span></div>
+</form>
+{% if rows %}
+<div class="table-wrap">
+  <table class="as-rows">
+    <thead><tr><th scope="col">Case</th><th scope="col">Process</th><th scope="col">Status</th>{% if paths %}<th scope="col">Matched</th>{% endif %}<th scope="col">Started</th><th scope="col" class="n">Last step</th></tr></thead>
+    <tbody>
+    {% for row in rows %}{% with c=row.case %}
+      <tr>
+        <td><a class="name mono" href="/cases/{{ c.case_id|urlencode }}/">{{ c.case_id }}</a>{% if c.process_version %}<span class="sub mono">version {{ c.process_version|truncatechars:9 }}</span>{% endif %}</td>
+        <td class="line2">{{ c.process|default:"—" }}</td>
+        <td class="side"><span class="pill s-{% if c.status == 'waiting' %}open{% elif c.status == 'error' %}failed{% elif c.status == 'active' %}doing{% else %}done{% endif %}">{{ c.status }}</span></td>
+        {% if paths %}<td class="line2">{% for k, v in row.matched.items %}<span class="mono">{{ k }}</span> = <code>{{ v|truncatechars:60 }}</code>{% if not forloop.last %} · {% endif %}{% endfor %}</td>{% endif %}
+        <td class="line2 num"><time datetime="{{ c.created|date:'c' }}">{{ c.created|date:"Y-m-d H:i" }}</time></td>
+        <td class="n num">{% if c.last_event %}{{ c.last_event|waited }} ago{% else %}—{% endif %}</td>
+      </tr>
+    {% endwith %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if newer or older %}<div class="form-actions below">{% if newer %}<a class="btn" href="{{ newer }}">Newer</a>{% endif %}{% if older %}<a class="btn" href="{{ older }}">Older</a>{% endif %}</div>{% endif %}
+{% else %}
+<p class="empty">No case matches. Cases appear when a workflow's bpmn8n step runs.</p>
+{% endif %}
+{% endblock %}

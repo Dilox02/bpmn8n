@@ -103,7 +103,8 @@ class Workflow:
     (time runs left to right); `row` moves alternative branches up or down, layout() computes it all."""
 
     STEPS = ("start", "subprocess_start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
-             "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics")  # a spec's steps
+             "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics",
+             "global_variable")  # a spec's steps
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -172,6 +173,19 @@ class Workflow:
             raise SpecError("metrics must contain at least one metric with unique names")
         return self.add(name, node_type("metrics"), {"project": project, "label": label, "metrics": {"values": [
             {**m, "checkThreshold": m.get("threshold") is not None} for m in metrics]}})
+
+    def global_variable(self, name, key, operation="get", value=None, by=1, ttl=0):
+        """A variable every workflow shares (bpmn8n's store, {{vars.<key>}} in any field): get, set, increment
+        or delete `key`; the value goes on with the item under the key. value: any JSON (set); by: what
+        increment adds; ttl: seconds it lives, 0 for ever (set, and increment when it creates the variable)."""
+        if operation not in ("get", "set", "increment", "delete"):
+            raise SpecError(f"global_variable {name!r}: operation is get, set, increment or delete")
+        parameters = {"operation": operation, "key": key, "output": "merge"}
+        if operation == "set":
+            parameters |= {"value": json.dumps(value), "ttl": ttl}
+        elif operation == "increment":
+            parameters |= {"by": by, "ttl": ttl}
+        return self.add(name, node_type("globalVariable"), parameters)
 
     def gateway(self, name, kind, question, branches, state="", min_confidence=0.7):
         """Laya decides. kind: exclusive | inclusive. branches: {name: description}; outputs

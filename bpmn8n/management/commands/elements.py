@@ -37,6 +37,8 @@ SAMPLES = {
     "merge": [{}],
     "llm_agent": [{"prompt": "p {{a}}", "output": "o", "instructions": "i"}],
     "metrics": [{"project": "p", "metrics": [{"name": "m", "value": 1, "threshold": 1}], "label": "l"}],
+    "global_variable": [{"key": "k"}, {"key": "k", "operation": "set", "value": {"a": 1}, "ttl": 60},
+                        {"key": "k", "operation": "increment", "by": 2}],
 }
 
 

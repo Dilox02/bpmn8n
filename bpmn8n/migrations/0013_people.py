@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('bpmn8n', '0011_waiting_registration_key'),
+        ('bpmn8n', '0012_open_edition'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

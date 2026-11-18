@@ -12,6 +12,7 @@ from . import (
     evaluations,
     executions,
     gateways,
+    history,
     messages,
     mining,
     observability,
@@ -19,6 +20,7 @@ from . import (
     simulation,
     tasks,
     usertasks,
+    variables,
     workflows,
 )
 from .tasks import TASKS, Task, TaskError, discover, task, task_modules
@@ -33,7 +35,7 @@ def token_auth(request):
 api = NinjaAPI(title="bpmn8n", version="1", auth=token_auth)
 for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks", usertasks),
                        ("/messages", messages), ("/workflows", workflows), ("/evaluations", evaluations),
-                       ("/executions", executions),
+                       ("/executions", executions), ("/variables", variables), ("/history", history),
                        ("/simulation", simulation),
                        ("", observability), ("", mining), ("", ops)):
     api.add_router(prefix, module.router)

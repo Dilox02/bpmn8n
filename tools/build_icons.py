@@ -32,6 +32,7 @@ GLYPHS = {  # n8n icon name -> bpmn-font glyph
     "eventBasedGateway": "source/symbols/gateways/gateway-eventbased.svg",
     "errorEndEvent": "source/symbols/events/end-event-error.svg",
     "callActivity": "source/symbols/activities/call-activity.svg",
+    "globalVariable": "source/symbols/data/data-store.svg",
 }
 TREE = "https://api.github.com/repos/bpmn-io/bpmn-font/git/trees/main?recursive=1"
 NOT_NOTATION = ("source/symbols/tools/", "source/symbols/bpmn-io.svg")  # the modeler's tools and logo
