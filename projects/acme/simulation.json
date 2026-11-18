@@ -1,0 +1,21 @@
+{
+  "unit": "minutes",
+  "workflow": "../../examples/workflows/expense-approval.json",
+  "arrivals": {"type": "poisson", "rate": 0.1, "count": 500},
+  "resources": {
+    "managers": {"capacity": 2, "cost_per_hour": 60}
+  },
+  "tasks": {
+    "Check Expense Policy": {"duration": 0.01, "cost": 0.002},
+    "Assess Justification": {"duration": 0.01, "cost": 0.001},
+    "Approve Expense": {"duration": {"type": "lognormal", "mean": 12, "sd": 8}, "resource": "managers"},
+    "Record Expense": {"duration": 0.02, "cost": 0.002},
+    "Notify Employee": {"duration": 0.01, "cost": 0.001},
+    "Notify Rejection": {"duration": 0.01, "cost": 0.001}
+  },
+  "gateways": {
+    "Assess Justification": {"business": 0.6, "personal": 0.1, "default": 0.3}
+  },
+  "replications": 10,
+  "seed": 1
+}
