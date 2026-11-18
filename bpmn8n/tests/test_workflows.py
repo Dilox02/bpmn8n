@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase
 from projects.acme.processes import PROCESSES
 from ..workflows import SpecError, Workflow
 from ..workflows.check import WorkflowCheck
+from ..workflows.rules import PeopleDecide
 
 EXAMPLES = Path(__file__).parents[2] / "examples" / "workflows"
 LANES = ("managers", "librarians", "support-leads", "soc-analysts")
@@ -37,7 +38,8 @@ class BuilderTest(SimpleTestCase):
 
     def test_only_explicit_technical_condition_gateways_run_without_a_person(self):
         def human_rules(workflow):
-            return {(p.node, p.rule, p.level) for p in WorkflowCheck(workflow, fetch=lambda _: None).people_decide()}
+            check = WorkflowCheck(workflow, fetch=lambda _: None)
+            return {(p.node, p.rule, p.level) for p in PeopleDecide().check(check)}
 
         def technical(scope=None):
             return (Workflow("Dataset batches").start("In", "dataset")
