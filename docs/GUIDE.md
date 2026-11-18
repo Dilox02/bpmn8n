@@ -187,16 +187,34 @@ The same states apply to messages: the losers of an Event-Based Gateway become *
 
 The checker follows paths from triggers. Required fields must exist on every alternative path, including the first entry into a loop; a guaranteed parallel join combines its branches' fields. Unknown output schemas remain conservative, but do not hide missing data on a known alternative. Event gateway message outputs have unknown payloads; timeout preserves the incoming data. Disabled nodes pass data through output 0. Missing lone-template entries in a human task's optional context are warnings because rendering omits those entries; missing title variables and required task inputs remain errors. A condition counts as a person's decision only while its fields retain human provenance on every path, without a later automated overwrite.
 
-For technical housekeeping such as looping over a file queue until `pending == 0`, a `condition_gateway` may declare `decision_scope="technical"` in its Python/spec definition. This exempts only that deterministic gateway from the human-review rule. It does not exempt Laya gateways or LLM agents, and must not be used for decisions about people.
+For technical housekeeping such as looping over a file queue until `pending == 0`, a `condition_gateway` may declare `decision_scope="technical"` in its Python/spec definition (in the n8n editor: the gateway's *Decision Scope*). This exempts only that deterministic gateway from the human-review rule. It does not exempt Laya gateways or LLM agents, and must not be used for decisions about people.
 
-| Level | What it finds |
-|---|---|
-| error | a workflow with no step after its trigger; a connection to a missing node; a `@task` that does not exist or is of another kind than the node; a node unreachable from a trigger, including detached cycles; an invalid condition; a Call Activity whose sub-process waits (people, messages). With the start data declared (`start_data`): a required input or a required `{{variable}}` not supplied on every alternative path |
-| error | after an LLM agent, a path that reaches an end without passing through a person (User or Manual Task) |
-| warning | a gateway output that leads nowhere (for Laya also `default`: a person decides there); a lane without a group; no trigger; a sub-process that cannot be read; after a gateway (Laya or conditions), a path that reaches an end without a person (not for a conditions gateway that reads only fields of forms filled in before it: it applies a person's decision) |
-| info | without declared start data: the fields the webhook body must carry (the required inputs that no earlier step produces) |
+The rules are classes in `bpmn8n/workflows/rules.py`, run in this order; `python manage.py rules [--md]` lists them and prints this table (a test fails when the table here is stale). The checker reads the workflow as a `ProcessGraph` and each node as an element of the registry (`bpmn8n/workflows/elements.py`, served as JSON at `GET /api/elements` and by `python manage.py elements`): a rule asks whether a node waits, decides or joins, not which n8n type it has.
 
-These are structural checks, not PM4Py's *soundness*, which gives false negatives on n8n workflows (a Merge is an inclusive join, parallel branches need not rejoin): tried on the four examples, it rejected two correct ones. Studio runs the check on every build and treats the "without a person" warning as an error too (what its activities print goes to stderr, so the JSON report stays readable; a build or research whose process dies, killed or with its container restarted, is ended by the pages after 3 minutes without its heartbeat); a test checks that ACME's examples pass it (with that warning where they close a case on their own).
+| Rule | Level | Category | What it finds |
+|---|---|---|---|
+| `empty` | error | structure | a workflow with no step after its trigger |
+| `trigger` | warning | structure | no trigger: nothing starts a case |
+| `connection` | error | structure | a connection from or to a node that does not exist |
+| `reachable` | error | structure | a node no path from a trigger reaches, detached cycles included: it never runs |
+| `task` | error | structure | a `@task` that does not exist, or of another kind than its node |
+| `output` | warning | structure | an output that leads nowhere, on a gateway or any node with several outputs (not a conditions gateway's `default`; Laya's `default` must lead to a person) |
+| `condition` | error | data | an invalid branch condition; a warning for a branch with no condition (never taken) |
+| `lane` | warning | people | a human task whose lane is no group: only superusers will see the task |
+| `subprocess` | error | structure | a Call Activity whose sub-process waits (people, messages); a warning when the sub-process cannot be read or is not published |
+| `input` | error | data | with the start data declared: a required input of a task that neither its node nor, on every path, an earlier step or the start data provides |
+| `variable` | error | data | with the start data declared: a `{{variable}}` nothing provides on every path (`{{vars.…}}` always exists); a warning for an optional entry of a human task's context, left out when empty |
+| `start-data` | info | data | without declared start data: the fields the webhook body must carry (the required inputs no step produces) |
+| `human` | error | people | after an LLM agent, a path that reaches an end without a person (User or Manual Task); a warning after a gateway (Laya or conditions), not after a conditions gateway that reads only form fields filled in before it or declares `decision_scope="technical"` (housekeeping, never decisions about people) |
+| `wait` | error | structure | branches that run at once (a parallel or inclusive gateway, one output leading to several steps) where more than one waits (a person, a message, a timer over a minute) |
+| `metrics` | warning | metrics | a Metrics node with nothing produced before it, or without a threshold; an info when missing the threshold changes nothing (no conditions gateway after it) |
+| `implicit-split` | info | structure | one output leading to several steps (not a Parallel Gateway's): they all run, a split nobody drew |
+| `implicit-join` | warning | structure | a step that is not a Merge, reached by branches that run at once: it runs once per arriving branch; the branches of an exclusive or event-based choice may meet anywhere |
+| `endless-loop` | error | structure | a loop no flow leaves (no output out of it, none left open): it never ends |
+| `loop` | warning | structure | a loop with nothing in it that chooses, waits or keeps time: it may spin without end |
+| `naming` | info | style | a task, or the process, named with a mushy verb (`handle`, `process`, `review`…) or as an event or a state (`Claim Received`, `Request is approved`); triggers and events may be past tense |
+
+These are structural checks, not PM4Py's *soundness*, which gives false negatives on n8n workflows (a Merge is an inclusive join, parallel branches need not rejoin): tried on the four examples, it rejected two correct ones. Implicit gateways ([AW] §2.3, §3.3) are judged by dominators: the branches reaching a step that is not a Merge run at once when their nearest common dominator is a parallel split, an inclusive gateway or one output leading to several steps. Loops are judged structurally (a loop with no way out, a loop nothing in it decides); a loop through an n8n node the registry does not know (If, Switch, Loop Over Items) is not judged. Studio runs the check on every build and treats the "without a person" warning as an error too (what its activities print goes to stderr, so the JSON report stays readable; a build or research whose process dies, killed or with its container restarted, is ended by the pages after 3 minutes without its heartbeat); a test checks that ACME's examples pass it (with that warning where they close a case on their own).
 
 ### BPMN coverage
 
