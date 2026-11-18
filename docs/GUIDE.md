@@ -490,6 +490,92 @@ The datasets in `e2e/datasets/` and some E2E tickets are in several languages on
 - Studio writes code tested on its examples, not against the real systems: the `# TODO`s must be completed and the code reviewed. The examples come from the same LLM as the design: a wrong expected value fails the build rather than passing it, and the card says which.
 - An n8n API key without the credential scopes (created before the LLM agents) is replaced by `./start.sh`.
 
+## Production
+
+`./start.sh` is the development stack: `web` installs its packages at boot and reloads on every edit. Production runs
+the **web image** instead, through an override of the same compose file:
+
+```bash
+docker build -t bpmn8n-web .                       # or let compose build it (--build)
+SECRET_KEY=… BPMN8N_API_TOKEN=… ALLOWED_HOSTS=bpmn8n.example.org \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+- **The image** (`Dockerfile`): wheels built in a first stage, then a slim runtime with no compiler, the code baked in,
+  static files collected at build time, gunicorn without `--reload`, a non-root user (only `projects/` is writable: Metrics
+  samples and Studio builds) and a `HEALTHCHECK` on `/api/health`. It runs `migrate` before gunicorn; with several replicas,
+  run the migrations once instead. `requirements.local.txt`, when present, is installed too. CI builds it on every push.
+- **`docker-compose.prod.yml`**: `web` from the image (`BPMN8N_WEB_IMAGE`, default `bpmn8n-web:latest`), no source mount,
+  `DEBUG=0`, JSON logs, and `restart: unless-stopped` on every service. Compose refuses to start without `SECRET_KEY`,
+  `BPMN8N_API_TOKEN` and `ALLOWED_HOSTS`; `web` is added to the hosts because n8n's nodes call `http://web:8000`.
+  A TLS proxy (Caddy, nginx, Traefik) publishes `127.0.0.1:8000`. Evaluation samples stay in the container: mount a
+  volume on a project's `run/` folder to keep them across deployments.
+- **Settings with `DEBUG=0`** (`bpmn8n/settings.py`, `production()`): the server refuses to start with the development
+  secret key, without an API token, or with `ALLOWED_HOSTS` empty or `*`. Secure cookies; HSTS for a year with subdomains
+  (`HSTS_SECONDS`, `HSTS_INCLUDE_SUBDOMAINS=0`, `HSTS_PRELOAD=1`); `CSRF_TRUSTED_ORIGINS` (e.g. `https://bpmn8n.example.org`);
+  `SECURE_PROXY_SSL_HEADER=X-Forwarded-Proto` when the proxy sets it to `https`; `SECURE_SSL_REDIRECT=1` to redirect at
+  Django rather than at the proxy (`/api/` is exempt: n8n calls it over HTTP inside the network). whitenoise serves the
+  hashed, compressed static files from gunicorn. `DEBUG` stays on when unset, so the tests and `runserver` need no
+  variables; the image sets `DEBUG=0`. `manage.py check --deploy` is clean but for two opt-ins: W008 (the redirect, left
+  to the proxy) and W021 (HSTS preload).
+- **Health**: `GET /api/health` needs no token and answers only statuses and latencies (no URLs, no errors): `database`,
+  `redis` (with `REDIS_URL`), `n8n` (`/healthz`), `laya` and `extractor` (the models server's `/health`), `search`
+  (SearXNG's `/healthz`), each `up`, `down` or `off`, within 2 s, in parallel. Overall `ok`, `degraded` or `down`; HTTP 503
+  only when the database is down, since restarting `web` cannot fix the others. `python manage.py doctor` prints the same
+  as a table with the errors, plus hints from the configuration (no `N8N_API_KEY`, no n8n credential id, no LLM provider,
+  an open API with `DEBUG` on, no search), and exits with 1 when the database, Redis or n8n is down.
+- **Prometheus**: `GET /api/metrics/prometheus` (text format, the API token like the rest of the API) exposes, from the
+  database so every worker counts: `bpmn8n_endpoint_calls_total`, `bpmn8n_endpoint_errors_total` and
+  `bpmn8n_endpoint_duration_seconds` (sum and count) per endpoint, `bpmn8n_cases_started_total` per process,
+  `bpmn8n_user_tasks_waiting` per lane and status, `bpmn8n_message_subscriptions_open` per message,
+  `bpmn8n_studio_projects` per status. Prometheus sends the token as a bearer credential (the scrape job below).
+- **JSON logs**: `LOG_FORMAT=json` (the prod override's default) writes the `bpmn8n` logger as one JSON object per line
+  (time, level, logger, message, exception, and any `extra=` fields), with the standard library only.
+- **The n8n version is pinned** (`docker.n8n.io/n8nio/n8n:2.42.3` for `n8n`, `n8n-worker` and `n8n-preview`): the editor
+  hooks match n8n's class names and read its stores. To upgrade, change both tags in `docker-compose.yml`, restart, then
+  run `node --test n8n-editor/test/*.test.mjs` and the editor's e2e tests (`pytest e2e/test_bpmn_elements.py`) and look at
+  a workflow, an execution and the Evaluations tab; keep the old tag if anything falls back to n8n's own look.
+
+The Prometheus scrape job:
+
+```yaml
+scrape_configs:
+  - job_name: bpmn8n
+    metrics_path: /api/metrics/prometheus
+    authorization:
+      credentials_file: /etc/prometheus/bpmn8n_token   # the value of BPMN8N_API_TOKEN
+    static_configs:
+      - targets: ["web:8000"]
+```
+
+### Workflows in git: diff, push, pull
+
+The open alternative to n8n's paid source control and environments: **the project folder in git is the source of
+truth**, and each n8n instance (development, staging, production, each with its own `N8N_URL` and `N8N_API_KEY`) is a
+deployment target.
+
+```bash
+python manage.py workflows diff [projects/<name> ...] [--json]   # drift between git and n8n; exits with 1 on drift
+python manage.py workflows push [projects/<name> ...] [--json]   # create or update in n8n; never activates
+python manage.py workflows pull [projects/<name> ...] [--json]   # n8n's version back into workflow.json
+```
+
+Without folders it takes every `projects/<name>/` with a `workflow.json`. The workflow in n8n is the Studio project's
+(by its stored id) or, otherwise, the one with the same name; two with the same name is an error.
+
+- **diff** compares node by node, ignoring node ids, positions, `webhookId`, versions, dates and credential ids
+  (credentials compare by type and name), and lists nodes added and removed, each changed field with its value in git and
+  in n8n, connections added and removed, and changed settings. `workflows diff` in CI fails the job when someone edited a
+  workflow in n8n without pulling it (exit 1; exit 2 when n8n cannot be reached).
+- **push** checks everything before the first write: every credential a node uses must exist in that n8n (the same id,
+  or the same type and name, so one `workflow.json` deploys to several instances); every Call Activity's sub-process must
+  exist there or be pushed together. Sub-processes go first and the Call Activity is pointed at their id in that instance
+  (found by id, or by the name the editor's *From list* mode stores). An active workflow's change is saved as a draft to
+  publish in the editor, as n8n 2 does.
+- **pull** writes n8n's name, nodes, connections and settings into `workflow.json` in the file's own key order, so
+  `git diff` shows only what the editor changed (positions included); an unchanged workflow leaves the file untouched.
+  Settings n8n adds on its own show up as drift until the first pull.
+
 ## Licences
 
 - **PM4Py is AGPL-3.0.** For internal use nothing changes. If bpmn8n is offered **to third parties over a network** (SaaS), the AGPL requires publishing the code of the whole service, or buying PM4Py's commercial licence. Mining is isolated in `bpmn8n/mining/` (the workflow check does not use it), so it stays replaceable.
