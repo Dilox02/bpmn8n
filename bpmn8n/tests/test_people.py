@@ -1,7 +1,6 @@
 """People's work on user tasks: the states and who may move them, deadlines, quorum, four-eyes, the
 richer forms, the inbox and the task page, the builder and the API."""
-from datetime import datetime, timedelta
-from datetime import timezone as utc
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from unittest.mock import patch
 
@@ -170,10 +169,10 @@ class DeadlineTest(People):
     def test_due_from_a_variable_and_one_deadline_per_batch(self):
         items = [{"due_date": "2026-12-31"}, {"due_date": "2026-12-20T09:30:00+01:00"}]
         own = self.create(items=items, due="{{due_date}}", url=f"{self.URL}&own")
-        self.assertEqual([t.due for t in own], [datetime(2026, 12, 31, 23, 59, 59, tzinfo=utc.utc),  # the end of the day
-                                                datetime(2026, 12, 20, 8, 30, tzinfo=utc.utc)])
+        self.assertEqual([t.due for t in own], [timezone.make_aware(datetime(2026, 12, 31, 23, 59, 59)),  # the day's end
+                                                datetime(2026, 12, 20, 8, 30, tzinfo=UTC)])
         shared = self.create(items=items, due="{{due_date}}", deadline=True, url=f"{self.URL}&shared")
-        self.assertEqual({t.due for t in shared}, {datetime(2026, 12, 20, 8, 30, tzinfo=utc.utc)})  # n8n waits once
+        self.assertEqual({t.due for t in shared}, {datetime(2026, 12, 20, 8, 30, tzinfo=UTC)})  # n8n waits once
         self.assertIn("not an ISO date", self.create(422, due="{{nothing}}x").json()["detail"])
         self.assertIn("needs a due time", self.create(422, deadline=True).json()["detail"])
 
@@ -296,7 +295,7 @@ class InboxTest(People):
         page = self.client.get("/inbox/")
         self.assertEqual([t.title for t in page.context["tasks"]], [
             "late normal", "late low", "urgent", "high sooner", "high later", "normal old", "normal new"])
-        self.assertContains(page, "overdue by 1 hour")
+        self.assertContains(page, "overdue by 1\xa0hour")  # timesince's non-breaking space
         self.assertContains(page, '<span class="pill priority p-urgent">urgent</span>', html=True)
 
     def test_filters(self):
