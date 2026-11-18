@@ -33,8 +33,10 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const vars = text => [...new Set(String(text ?? '').match(/\{\{\s*[\w.]+\s*\}\}/g) || [])].map(v => v.replace(/\s/g, ''));
   const rows = list => `<table>${list.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>`;
-  const KINDS = {
-    Metrics: ['Metrics', 'Records configured measurements in the project run folder. Open Evaluations to compare runs and inspect thresholds.'],
+  // what each bpmn8n node is, by the type after CUSTOM.bpmn8n: [label, one line]. bpmn8n's element registry
+  // (/api/elements) is the source; this copy is what the card says while bpmn8n cannot be reached.
+  let KINDS = {
+    Metrics:['Metrics', 'Records configured measurements in the project run folder. Open Evaluations to compare runs and inspect thresholds.'],
     ServiceTask: ['Service task', 'Software calls a service: a Python function on bpmn8n.'],
     ScriptTask: ['Script task', 'Software transforms data: a Python function on bpmn8n.'],
     BusinessRuleTask: ['Business rule task', 'Software applies a policy: a Python function on bpmn8n.'],
@@ -49,6 +51,18 @@
     TimerEvent: ['Timer event', 'The case waits for a time.'],
     ErrorEndEvent: ['Error end event', 'The case ends with an error.'],
     CallActivity: ['Call activity', 'Runs another workflow as a sub-process.'],
+  };
+  let elementsRead = false;
+  const kinds = async () => {  // read once; retried when the next panel opens if bpmn8n did not answer
+    if (!elementsRead) {
+      try {
+        const { node_prefix: prefix, elements } = await (await fetch(`${BPMN8N}/api/elements`)).json();
+        KINDS = Object.fromEntries(elements.filter(e => e.bpmn8n)
+          .map(e => [e.n8n_type.slice(prefix.length), [e.label, e.summary]]));
+        elementsRead = true;
+      } catch (_) { /* the copy above */ }
+    }
+    return KINDS;
   };
 
   // n8n's state: the open node, and any node of the workflow by name
@@ -154,7 +168,7 @@
   }
 
   async function card(node) {
-    const kind = Object.keys(KINDS).find(k => node.type === `CUSTOM.bpmn8n${k}`);
+    const kind = Object.keys(await kinds()).find(k => node.type === `CUSTOM.bpmn8n${k}`);
     if (kind && 'task' in node.parameters) return task(node, KINDS[kind]);
     if (kind && /Gateway$/.test(kind) && node.parameters.branches) return gateway(node, KINDS[kind]);
     if (kind === 'UserTask' || kind === 'ManualTask') return human(node, KINDS[kind]);
