@@ -37,10 +37,11 @@ class TokensTest(TestCase):
         self.assertEqual(set(chosen), set(light))  # every colour has both themes
 
     def test_the_hooks_use_the_tokens_with_their_old_colour_as_fallback(self):
+        per_node = set(re.findall(r"setProperty\('(--b8-[\w-]+)'", (HOOKS / "bpmn.js").read_text()))  # a node's tint
         for hook in ("bpmn.js", "preview.js", "panel.js", "evaluations.css", "executions.css"):
             text = (HOOKS / hook).read_text()
             for token in re.findall(r"var\((--b8-[\w-]+)", text):
-                self.assertIn(token, self.defined, f"{hook}: {token} is not in tokens.css")
+                self.assertIn(token, self.defined | per_node, f"{hook}: {token} is not in tokens.css")
             bare = re.sub(r"var\(--b8-[\w-]+,\s*(?:var\([^()]*\)|[^()]*)\)", "", text)
             self.assertEqual(re.findall(r"#[0-9a-fA-F]{3,8}\b", bare), [], f"{hook}: a colour outside the tokens")
 

@@ -2,10 +2,10 @@
 (async () => {
   const source = new URL(document.currentScript.src);
   const { esc, number, measurement, date, metricKey, runKey, text, html, keyed, localURL, sessionURL, ApiClient, LiveUpdates, viewComponent, installRoute } =
-    await import(new URL('bpmn8n-live.mjs?v=4', source));
+    await import(new URL('bpmn8n-live.mjs?v=5', source));
   const backend = localURL(source.searchParams.get('bpmn8n') || 'http://localhost:8000');
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('bpmn8n-evaluations.css?v=3', source); document.head.append(css);
-  const statuses = { passed: 'Soglie rispettate', failed: 'Soglie non rispettate', unscored: 'Solo misure' };
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('bpmn8n-evaluations.css?v=4', source); document.head.append(css);
+  const statuses = { passed: 'Thresholds met', failed: 'Thresholds not met', unscored: 'Measurements only' };
 
   class MetricChart {
     constructor() {
@@ -18,7 +18,7 @@
       if (this.revision === JSON.stringify(metric)) return;
       this.revision = JSON.stringify(metric);
       text(this.root.querySelector('figcaption'), metric.name); text(this.root.querySelector('.metric-explanation'), metric.explanation || metric.node_name);
-      this.root.querySelector('svg').setAttribute('aria-label', `${metric.name}: ultimo ${number(metric.last)} ${metric.unit}, ${metric.count} campioni`);
+      this.root.querySelector('svg').setAttribute('aria-label', `${metric.name}: last ${number(metric.last)} ${metric.unit}, ${metric.count} samples`);
       const values = metric.series.map(p => p.value);
       const low = Math.min(0, ...metric.series.map(p => p.minimum), metric.threshold ?? Infinity);
       const high = Math.max(...metric.series.map(p => p.maximum), metric.threshold ?? -Infinity, low + 1);
@@ -31,7 +31,7 @@
       html(this.root.querySelector('.chart-grid'), [0, .5, 1].map(t => `<path d="M52,${150-t*125}H462"/>`).join(''));
       html(this.root.querySelector('.chart-labels'), [0, .5, 1].map(t => `<text x="44" y="${154-t*125}" text-anchor="end">${esc(measurement(low+t*(high-low), metric.unit))}</text>`).join('') +
         `<text x="52" y="178">${esc(date(metric.series[0]?.at))}</text><text x="462" y="178" text-anchor="end">${esc(date(metric.series.at(-1)?.at))}</text>`);
-      text(this.root.querySelector('p'), `Ultimo ${measurement(metric.last, metric.unit)} · ${metric.count} campioni${metric.series.length < metric.count ? ` · ${metric.series.length} intervalli (media)` : ''}${metric.threshold == null ? '' : ` · soglia ${metric.direction === 'higher' ? '≥' : '≤'} ${measurement(metric.threshold, metric.unit)}`}`);
+      text(this.root.querySelector('p'), `Last ${measurement(metric.last, metric.unit)} · ${metric.count} samples${metric.series.length < metric.count ? ` · ${metric.series.length} intervals (mean)` : ''}${metric.threshold == null ? '' : ` · threshold ${metric.direction === 'higher' ? '≥' : '≤'} ${measurement(metric.threshold, metric.unit)}`}`);
     }
   }
 
@@ -40,17 +40,17 @@
       this.workflowId = workflowId; this.runs = []; this.offset = 0;
       this.api = new ApiClient(`${backend}/api/evaluations/${encodeURIComponent(workflowId)}`);
       this.root = document.createElement('section'); this.root.className = 'bpmn8n-evaluations'; this.root.dataset.testId = 'local-evaluations';
-      this.root.lang = 'it'; this.root.translate = false;
-      this.root.innerHTML = `<header class="evaluation-header"><div><h1>Valutazioni del workflow</h1><p class="evaluation-description"></p></div>
-        <div class="evaluation-actions"><span class="evaluation-connection" role="status">Connessione live…</span><button data-action="charts">Grafici</button><button data-action="refresh">Aggiorna</button></div></header><ol class="evaluation-stages"></ol>
-        <p class="evaluation-message" role="status" aria-live="polite">Caricamento…</p>
-        <div class="evaluation-empty" hidden><h2>La prima misura parte dal workflow</h2><p>Aggiungi un nodo Metrics, scegli il progetto e definisci le metriche con espressioni n8n.</p></div>
-        <details class="evaluation-history"><summary>Storico delle esecuzioni</summary><div class="evaluation-table-scroll"><table class="evaluation-runs"><caption>Esecuzioni con metriche · ultime 50</caption><thead><tr><th>Esecuzione</th><th>Ultima misura</th><th>Progetto</th><th>Campioni</th><th>Valutazione</th></tr></thead><tbody></tbody></table></div></details>
-        <section class="evaluation-detail" hidden><header class="evaluation-detail-header"><div><h2></h2><p class="evaluation-label"></p></div><div class="evaluation-actions"><a data-action="execution">Apri in Executions</a><a data-action="export">Esporta JSON</a></div></header>
-        <section class="evaluation-overview" aria-label="Avanzamento del dataset"></section><label class="evaluation-compare">Confronta con <select data-action="compare"></select></label>
-        <h3>Come sta procedendo</h3><p class="evaluation-chart-help">Ogni grafico segue una metrica nel tempo. La linea tratteggiata indica la soglia, quando definita.</p><div class="evaluation-charts"></div>
-        <details class="evaluation-all-metrics"><summary>Tutte le metriche e le soglie</summary><div class="evaluation-table-scroll"><table class="evaluation-metrics"><caption>Metriche per nodo</caption><thead><tr><th>Metrica / nodo</th><th>Ultimo</th><th>Media</th><th>Min – max</th><th>Campioni</th><th>Soglia</th><th>Esiti</th><th>Δ media</th></tr></thead><tbody></tbody></table></div></details>
-        <details class="evaluation-storage"><summary>Dove sono salvati i dati</summary><p class="evaluation-path"></p></details><details class="evaluation-samples"><summary></summary><div class="evaluation-table-scroll"><table><thead><tr><th>Quando</th><th>Nodo</th><th>Iterazione:item</th><th>Misure</th></tr></thead><tbody></tbody></table></div><div class="evaluation-actions"><button data-action="newer">Più recenti</button><span class="evaluation-page"></span><button data-action="older">Precedenti</button></div></details></section>`;
+      this.root.lang = 'en'; this.root.translate = false;
+      this.root.innerHTML = `<header class="evaluation-header"><div><h1>Workflow evaluations</h1><p class="evaluation-description"></p></div>
+        <div class="evaluation-actions"><span class="evaluation-connection" role="status">Connecting…</span><button data-action="charts">Charts</button><button data-action="refresh">Refresh</button></div></header><ol class="evaluation-stages"></ol>
+        <p class="evaluation-message" role="status" aria-live="polite">Loading…</p>
+        <div class="evaluation-empty" hidden><h2>The first measurement starts in the workflow</h2><p>Add a Metrics node, choose the project and define the metrics with n8n expressions.</p></div>
+        <details class="evaluation-history"><summary>Execution history</summary><div class="evaluation-table-scroll"><table class="evaluation-runs"><caption>Executions with metrics · last 50</caption><thead><tr><th>Execution</th><th>Last measured</th><th>Project</th><th>Samples</th><th>Evaluation</th></tr></thead><tbody></tbody></table></div></details>
+        <section class="evaluation-detail" hidden><header class="evaluation-detail-header"><div><h2></h2><p class="evaluation-label"></p></div><div class="evaluation-actions"><a data-action="execution">Open in Executions</a><a data-action="export">Export JSON</a></div></header>
+        <section class="evaluation-overview" aria-label="Progress of the dataset"></section><label class="evaluation-compare">Compare with <select data-action="compare"></select></label>
+        <h3>How it is going</h3><p class="evaluation-chart-help">Each chart follows one metric over time. The dashed line is its threshold, when it has one.</p><div class="evaluation-charts"></div>
+        <details class="evaluation-all-metrics"><summary>Every metric and threshold</summary><div class="evaluation-table-scroll"><table class="evaluation-metrics"><caption>Metrics by node</caption><thead><tr><th>Metric / node</th><th>Last</th><th>Mean</th><th>Min – max</th><th>Samples</th><th>Threshold</th><th>Outcomes</th><th>Δ mean</th></tr></thead><tbody></tbody></table></div></details>
+        <details class="evaluation-storage"><summary>Where the data is stored</summary><p class="evaluation-path"></p></details><details class="evaluation-samples"><summary></summary><div class="evaluation-table-scroll"><table><thead><tr><th>When</th><th>Node</th><th>Iteration:item</th><th>Measurements</th></tr></thead><tbody></tbody></table></div><div class="evaluation-actions"><button data-action="newer">Newer</button><span class="evaluation-page"></span><button data-action="older">Older</button></div></details></section>`;
       this.root.addEventListener('click', event => {
         const target = event.target.closest('button'); if (!target) return;
         if (target.dataset.run) this.select(target.dataset.run);
@@ -78,7 +78,7 @@
           this.selectedKey = runKey(preferred); this.renderRuns();
         }
         await this.load(); await this.loadBaseline();
-        this.message(this.runs.length ? '' : 'Nessun run misurato: collega un nodo Metrics per iniziare.');
+        this.message(this.runs.length ? '' : 'No measured run yet: connect a Metrics node to start.');
       } catch (error) { if (error.name !== 'AbortError') this.message(error.message, true); }
       finally { this.loading = false; button.disabled = false; if (this.pending) { this.pending = false; this.refresh(); } }
     }
@@ -112,14 +112,14 @@
         const status = cells[4].querySelector('span'); status.dataset.status = run.status; text(status, statuses[run.status]);
       });
       const select = this.root.querySelector('[data-action=compare]');
-      keyed(select, [{ value: '', label: 'Nessun confronto' }, ...this.runs.filter(r => runKey(r) !== this.selectedKey).map(r => ({ value: runKey(r), label: `#${r.execution_id} · ${r.label || date(r.updated_at)}` }))], o => o.value,
+      keyed(select, [{ value: '', label: 'No comparison' }, ...this.runs.filter(r => runKey(r) !== this.selectedKey).map(r => ({ value: runKey(r), label: `#${r.execution_id} · ${r.label || date(r.updated_at)}` }))], o => o.value,
         () => document.createElement('option'), (el, option) => { el.value = option.value; text(el, option.label); });
       select.value = this.baselineKey || '';
     }
     renderDetail() {
       const run = this.selected; if (!run) return;
       const detail = this.root.querySelector('.evaluation-detail'); detail.hidden = false;
-      text(detail.querySelector('h2'), `Risultati del run #${run.execution_id}`); text(detail.querySelector('.evaluation-label'), run.label);
+      text(detail.querySelector('h2'), `Results of run #${run.execution_id}`); text(detail.querySelector('.evaluation-label'), run.label);
       text(detail.querySelector('.evaluation-path'), run.path);
       detail.querySelector('[data-action=execution]').href = `/workflow/${encodeURIComponent(this.workflowId)}/executions/${encodeURIComponent(run.execution_id)}`;
       detail.querySelector('[data-action=export]').href = sessionURL(`${this.api.base}/runs/${this.selectedKey.split('/').map(encodeURIComponent).join('/')}/export`);
@@ -127,17 +127,17 @@
       const comparison = new Map((this.baseline?.metrics || []).map(m => [metricKey(m), m]));
       keyed(detail.querySelector('.evaluation-metrics tbody'), run.metrics, metricKey, () => document.createElement('tr'), (el, m) => {
         const base = comparison.get(metricKey(m)), delta = base ? m.mean-base.mean : null;
-        html(el, `<td><strong>${esc(m.name)}</strong><small>${esc(m.node_name)}</small></td><td>${number(m.last)} ${esc(m.unit)}</td><td>${number(m.mean)}</td><td>${number(m.minimum)} – ${number(m.maximum)}</td><td>${m.count}</td><td>${m.threshold == null ? '—' : `${m.direction === 'higher' ? '≥' : '≤'} ${number(m.threshold)}`}</td><td>${m.checked_count ? `${m.passed_count} / ${m.checked_count} rispettati` : 'Solo misura'}</td><td>${delta == null ? '—' : `${delta > 0 ? '+' : ''}${number(delta)}`}</td>`);
+        html(el, `<td><strong>${esc(m.name)}</strong><small>${esc(m.node_name)}</small></td><td>${number(m.last)} ${esc(m.unit)}</td><td>${number(m.mean)}</td><td>${number(m.minimum)} – ${number(m.maximum)}</td><td>${m.count}</td><td>${m.threshold == null ? '—' : `${m.direction === 'higher' ? '≥' : '≤'} ${number(m.threshold)}`}</td><td>${m.checked_count ? `${m.passed_count} / ${m.checked_count} met` : 'Measurement only'}</td><td>${delta == null ? '—' : `${delta > 0 ? '+' : ''}${number(delta)}`}</td>`);
       });
       const chartMetrics = run.metrics.filter(m => m.count > 1);
       keyed(detail.querySelector('.evaluation-charts'), chartMetrics.length ? chartMetrics : run.metrics, metricKey,
         () => { const chart = new MetricChart(); chart.root.chart = chart; return chart.root; }, (el, metric) => el.chart.update({ ...metric, explanation: this.context?.metrics?.[metric.name] }));
-      text(detail.querySelector('.evaluation-samples summary'), `Campioni registrati (${run.sample_count})`);
+      text(detail.querySelector('.evaluation-samples summary'), `Recorded samples (${run.sample_count})`);
       keyed(detail.querySelector('.evaluation-samples tbody'), run.samples, s => `${s.node_id}/${s.sample_id}`, () => document.createElement('tr'), (el, sample) => {
         html(el, `<td>${esc(date(sample.recorded_at))}</td><td>${esc(sample.node_name)}</td><td>${esc(sample.sample_id)}</td><td>${sample.metrics.map(m => `${esc(m.name)}: ${number(m.value)} ${esc(m.unit)}`).join('<br>')}</td>`);
       });
       detail.querySelector('[data-action=newer]').disabled = !run.offset; detail.querySelector('[data-action=older]').disabled = !run.has_more;
-      text(detail.querySelector('.evaluation-page'), `${run.offset+1}–${Math.min(run.offset+run.limit, run.sample_count)} di ${run.sample_count}`);
+      text(detail.querySelector('.evaluation-page'), `${run.offset+1}–${Math.min(run.offset+run.limit, run.sample_count)} of ${run.sample_count}`);
     }
     renderContext() {
       text(this.root.querySelector('h1'), this.context.title);
@@ -150,7 +150,7 @@
       const run = this.selected, config = this.context?.progress;
       const overview = this.root.querySelector('.evaluation-overview');
       if (!config) {
-        html(overview, `<p>${esc(statuses[run.status])}. Le soglie si riferiscono ai campioni raccolti. Apri Executions per lo stato del motore.</p>`);
+        html(overview, `<p>${esc(statuses[run.status])}. The thresholds refer to the samples collected. Open Executions for the engine's state.</p>`);
         return;
       }
       const get = role => (run.metrics.find(m => m.node_name === config.node && m.name === config[role]) || run.metrics.find(m => m.name === config[role]))?.last ?? 0;
@@ -158,13 +158,13 @@
       const final = run.metrics.find(m => m.name === config.quality);
       const passed = final && final.threshold != null && (final.direction === 'higher' ? final.last >= final.threshold : final.last <= final.threshold);
       const failures = run.metrics.filter(m => m.checked_count && m.name !== config.quality && m.threshold != null && (m.direction === 'higher' ? m.last < m.threshold : m.last > m.threshold));
-      const outcome = final ? passed ? 'Controlli finali superati' : 'Dataset non promosso dai controlli finali'
-        : pending ? 'Dati parziali: elaborazione da completare' : 'Elaborazione delle frasi terminata: in attesa dei controlli finali';
-      html(overview, `<h3>${esc(outcome)}</h3><p>${number(accepted+rejected)} di ${number(total)} ${esc(config.completed_label || 'elementi risolti')}. ${pending ? 'La qualità finale sarà disponibile dopo l’esportazione.' : 'Gli elementi scartati restano esclusi dall’esportazione.'}</p>
-        <progress max="${Math.max(total, 1)}" value="${accepted+rejected}" aria-label="Frasi risolte"></progress>
-        <dl><div><dt>${esc(config.accepted_label || 'Accettati')}</dt><dd>${number(accepted)}</dd></div><div><dt>${esc(config.rejected_label || 'Scartati')}</dt><dd>${number(rejected)}</dd></div><div><dt>${esc(config.pending_label || 'Da elaborare')}</dt><dd>${number(pending)}</dd></div></dl>
-        ${failures.length ? `<p><strong>Soglie non rispettate</strong></p><ul>${failures.map(m => `<li>${esc(m.name)}: ${esc(measurement(m.last, m.unit))} · obiettivo ${m.direction === 'higher' ? '≥' : '≤'} ${esc(measurement(m.threshold, m.unit))}</li>`).join('')}</ul>` : ''}
-        <p class="evaluation-note">${esc(config.note || 'Lo stato delle chiamate attive è in Executions.')}</p>`);
+      const outcome = final ? passed ? 'Final checks passed' : 'The final checks did not promote the dataset'
+        : pending ? 'Partial data: processing still to complete' : 'Processing finished: waiting for the final checks';
+      html(overview, `<h3>${esc(outcome)}</h3><p>${number(accepted+rejected)} of ${number(total)} ${esc(config.completed_label || 'items resolved')}. ${pending ? 'The final quality is known after the export.' : 'Rejected items stay out of the export.'}</p>
+        <progress max="${Math.max(total, 1)}" value="${accepted+rejected}" aria-label="Items resolved"></progress>
+        <dl><div><dt>${esc(config.accepted_label || 'Accepted')}</dt><dd>${number(accepted)}</dd></div><div><dt>${esc(config.rejected_label || 'Rejected')}</dt><dd>${number(rejected)}</dd></div><div><dt>${esc(config.pending_label || 'To process')}</dt><dd>${number(pending)}</dd></div></dl>
+        ${failures.length ? `<p><strong>Thresholds not met</strong></p><ul>${failures.map(m => `<li>${esc(m.name)}: ${esc(measurement(m.last, m.unit))} · target ${m.direction === 'higher' ? '≥' : '≤'} ${esc(measurement(m.threshold, m.unit))}</li>`).join('')}</ul>` : ''}
+        <p class="evaluation-note">${esc(config.note || 'The state of active calls is in Executions.')}</p>`);
     }
     destroy() { this.live.destroy(); this.api.destroy(); this.root.remove(); }
   }

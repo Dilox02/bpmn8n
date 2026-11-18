@@ -1,10 +1,10 @@
 // Shared transport and keyed DOM updates for the editor's local live views.
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const numericFormat = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 4 });
-const percentFormat = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
+const numericFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 4 });
+const percentFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 });
 export const number = value => value == null ? '—' : numericFormat.format(value);
 export const measurement = (value, unit = '') => unit === 'ratio' ? `${percentFormat.format(value * 100)} %` : `${number(value)}${unit ? ' ' + unit : ''}`;
-export const date = value => value ? new Date(value).toLocaleString('it-IT') : '—';
+export const date = value => value ? new Date(value).toLocaleString('en-GB') : '—';
 export const metricKey = m => JSON.stringify([m.node_name, m.name, m.unit, m.direction, m.threshold]);
 export const runKey = r => `${r.project}/${r.execution_id}`;
 export const text = (el, value) => { const next = String(value ?? ''); if (el.textContent !== next) el.textContent = next; };
@@ -57,7 +57,7 @@ export class ApiClient {
       headers });
     if (response.status === 304 && cached) return { data: cached.data, changed: false };
     if (!response.ok) throw Error(response.status === 401 || response.status === 403
-      ? 'Sessione scaduta o accesso negato. Accedi nuovamente e aggiorna.' : `Impossibile recuperare i dati (HTTP ${response.status}). Riprova con Aggiorna.`);
+      ? 'Session expired or access denied: sign in again and refresh.' : `Could not read the data (HTTP ${response.status}): try Refresh.`);
     const data = await response.json();
     this.cache.delete(path);
     this.cache.set(path, { etag: response.headers.get('ETag'), data });
@@ -76,9 +76,9 @@ export class LiveUpdates {
   connect() {
     if (this.events || this.closed) return;
     this.events = new EventSource(sessionURL(this.url), { withCredentials: true });
-    this.events.onopen = () => this.state('Aggiornamenti live connessi');
+    this.events.onopen = () => this.state('Live updates connected');
     this.events.addEventListener('change', () => this.change());
-    this.events.onerror = () => this.state('Riconnessione agli aggiornamenti live…');
+    this.events.onerror = () => this.state('Reconnecting to live updates…');
   }
   disconnect() { this.events?.close(); this.events = null; }
   destroy() { this.closed = true; this.disconnect(); document.removeEventListener('visibilitychange', this.visible); }
