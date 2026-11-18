@@ -1,0 +1,5 @@
+{% load bpmn8n %}{% if task.priority != "normal" %}<span class="pill priority p-{{ task.priority }}">{{ task.priority }}</span>{% endif %}
+{% if task.overdue %}<span class="pill s-overdue" title="due {{ task.due|date:'j M Y, H:i' }}">overdue by {{ task.due|span }}</span>
+{% elif task.due_soon %}<span class="pill s-due-soon" title="due {{ task.due|date:'j M Y, H:i' }}">due in {{ task.due|span }}</span>
+{% elif task.due %}<time datetime="{{ task.due|date:'c' }}" title="{{ task.due|date:'j M Y, H:i' }}">due in {{ task.due|span }}</time>
+{% elif task.priority == "normal" %}<span class="muted">—</span>{% endif %}
