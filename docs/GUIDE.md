@@ -168,16 +168,37 @@ Every User or Manual Task has its own page, `/inbox/<id>/`, generated from the n
 - always, even when reopening an execution from the list, a notice links the **inbox**, where every task shows its workflow and execution number (what n8n shows as *ID#*). n8n 2.42 does not show the waiting node of an execution reopened from the list (nor its Wait node): there the direct link cannot appear.
 
 ```
-open ──claim──▶ claimed ──complete──▶ completed
-  ▲  ◀─release──┘    │
-  └──────────────────┴─────────────▶ cancelled   (n8n no longer waits: execution stopped, deleted or finished)
+open ──claim, reassign──▶ claimed ──complete──▶ completed      (open completes directly too)
+  ▲  ◀──────release─────────┘  ↻ reassign, delegate: claimed by someone else
+open, claimed ──suspend──▶ suspended ──resume──▶ open           n8n still waits; nobody can claim it
+open, claimed, suspended ──▶ cancelled   n8n no longer waits (stopped, deleted, finished), or the quorum was reached
+open, claimed, suspended ──▶ expired     its deadline passed: n8n went on through "timeout"
 ```
 
 - **claim**: a person takes the task; the others see it read-only until it is released or completed;
 - **complete**: in a single transaction the task closes, the form goes into the case's variables and the event log, and n8n resumes. If n8n does not answer, nothing changes and you can retry; if the execution no longer exists (n8n answers 404, or 409 "finished"), the task becomes **cancelled** instead of staying open forever;
-- with several items (multi-instance) the process resumes when all the tasks of the group are completed, with one item per task in the order of the items;
+- **suspend** / **resume**: a suspended task waits for nobody: n8n still waits, but nobody can claim or complete it, and the inbox count leaves it out; resumed, it goes back to its lane, open. Its worker (the assignee, or anyone of the lane while it is open) or staff can do it;
+- **reassign** (staff) and **delegate** (the assignee) hand the task to someone else who may work it: it becomes claimed by them;
+- with several items (multi-instance) the process resumes when all the tasks of the group are completed, with one item per completed task in the order of the items. **Completion** can ask for less ([BO] §2.7's join checker): *any* (the first wins) or *at least N*; once reached, the case resumes with the completed items and the batch's other tasks are cancelled ("the quorum was reached"), like an Event-Based Gateway's losers;
 - if n8n retries the same node run, it gets the entire original batch, including completed tasks, with no duplicates; a new loop iteration creates a new wait;
 - an administrator can cancel tasks left hanging from the admin (the *Cancel* action).
+
+**Due date, deadline and priority.** *Due* is the task's SLA: after a time span, or until a date (an ISO date, which means the end of that day, a date-time, or a `{{variable}}` holding one, filled in from the case). It orders the inbox and marks the task *overdue* (or *due soon*, within a day). With **Deadline** on, the due time interrupts the wait (BPMN's interrupting boundary timer): the node gets two outputs, **timeout** (output 0, taken when the due time passes: n8n moves on by itself) and **done** (completed in time); its tasks become **expired** (read lazily whenever tasks are read, and by `python manage.py expire_tasks`), completing one answers 410, and the tasks of one batch share the earliest due time, since n8n waits once. Without a deadline the node keeps its single output. **Priority** (low, normal, high, urgent) orders the inbox after *overdue*: the inbox lists the most urgent first (overdue, then priority, then the earliest due, then the oldest), with tabs *All*, *Mine*, *My lanes*, *Overdue*, *Suspended* and a priority filter.
+
+**Who works it** ([BO] §2.3.4). **Assignee**: a username or a `{{variable}}` (e.g. `{{approver}}`): the task is created already claimed by that person, if they exist and may work it; else it opens to the lane. **Not Same As** is four-eyes: whoever completed one of the named activities in the same case may not claim or complete this one (the task page says why), and is not offered for a reassignment.
+
+**Form fields.** *Text*, *Long Text*, *Number*, *Yes/No*, *Choice* (its options, comma-separated), *Date* (`YYYY-MM-DD`) and *Email*; every field is required unless *Required* is off (an optional field left empty becomes `null`; a Yes/No is never missing: unchecked is false), and *Help* is shown under it. bpmn8n checks each value; on the task page each error appears next to its field and what was typed stays. Forms with only name, label and type work as before.
+
+| Builder (`user_task`, `manual_task`) | Node | API (`POST /api/usertasks`) |
+|---|---|---|
+| `due_in=(2, "days")` · `due_at="{{due_date}}"` | Due | `due`: ISO or `{{variable}}` |
+| `deadline=True` (then `flow(..., output="timeout")` / `"done"`) | Deadline | `deadline` |
+| `priority="high"` | Priority | `priority` |
+| `assignee="{{approver}}"` · `not_same_as=["Submit Expense"]` | Assignee · Not Same As | `assignee` · `not_same_as` |
+| `completion="any"` or `2` | Completion · Quorum | `completion` |
+| `form=[{"name", "label", "type", "required", "help", "options"}]` (or `[name, label, type]`) | Form Fields | `form` |
+
+`GET /api/usertasks?priority=&overdue=` lists them; `POST /api/usertasks/<id>/suspend`, `/resume`, `/reassign {"username"}`, `/delegate {"username"}` move them (409: the state does not allow it; 410: cancelled or expired; 422: invalid data). The task page links its case (`/cases/<case id>/`) and shows its due time, priority and only the actions its state allows.
 
 The same states apply to messages: the losers of an Event-Based Gateway become *cancelled*; a message for an execution that no longer exists goes to the next one waiting.
 
