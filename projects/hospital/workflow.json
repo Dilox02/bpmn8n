@@ -216,7 +216,7 @@
         "title": "Choose an available appointment",
         "lane": "patients",
         "description": "",
-        "context": "{{slots}}",
+        "context": "{\"Available slots\": \"{{slots}}\"}",
         "form": {
           "fields": [
             {
@@ -319,7 +319,7 @@
         "title": "Appointment confirmed",
         "lane": "patients",
         "description": "",
-        "context": "{{confirmation}}",
+        "context": "{\"Confirmation\": \"{{confirmation}}\"}",
         "form": {
           "fields": []
         }
@@ -385,7 +385,7 @@
         "title": "Resolve the booking request",
         "lane": "hospital-staff",
         "description": "",
-        "context": "{{reason}}",
+        "context": "{\"Reason\": \"{{reason}}\"}",
         "form": {
           "fields": [
             {
