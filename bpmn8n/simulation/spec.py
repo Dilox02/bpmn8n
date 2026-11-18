@@ -11,6 +11,7 @@ plus the unit of time (minutes by default), replications, seed, horizon and warm
 leaves out comes from the element (`SimModel`): human tasks are done by their lane, timers wait for
 their parameters, automated steps take no time and wait for nobody, so any workflow can be simulated
 without a spec. Pure Python, no Django."""
+import copy
 import itertools
 import json
 import math
@@ -354,3 +355,9 @@ class SimModel:
     @property
     def unit(self):
         return self.spec.unit
+
+    def with_capacity(self, capacity):
+        """The same model with other capacities ({resource: servers}): a what-if."""
+        other = copy.copy(self)
+        other.capacity = {**self.capacity, **capacity}
+        return other
