@@ -9,6 +9,7 @@
   exclusive gateway's shares, an inclusive gateway's share per branch;
 - per lane: as many people as distinct `resource` values completed its tasks.
 Django: it reads bpmn8n.models.Event."""
+import itertools
 import math
 
 import numpy as np
@@ -65,10 +66,12 @@ def calibrate(process, since=None, until=None, workflow=None, unit="minutes"):
     for row in rows:
         starts[row["case_id"]] = min(starts.get(row["case_id"], row["started"]), row["started"])
     starts = sorted(starts.values())
-    gaps = [(b - a).total_seconds() * 1000 / ms for a, b in zip(starts, starts[1:])]
+    gaps = [(b - a).total_seconds() * 1000 / ms for a, b in itertools.pairwise(starts)]
+    # ponytail: UserTask keeps no claim time, so a human task's time is its whole open time. Upgrade: a
+    # claimed timestamp on UserTask, then queue and work apart.
     report = {"process": process, "unit": unit, "cases": len(starts), "events": len(rows), "notes": [
-        "a human task's time runs from its creation to its completion: the log has no claim time, so it "
-        "includes the wait for a free person, which the simulation adds again when the lane is busy"]}
+        ("a human task's time runs from its creation to its completion: the log has no claim time, so it "
+         "includes the wait for a free person, which the simulation adds again when the lane is busy")]}
     arrivals = None
     if gaps and sum(gaps) > 0:
         every, report["arrivals"] = fit(gaps)

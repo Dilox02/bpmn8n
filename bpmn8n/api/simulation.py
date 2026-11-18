@@ -9,7 +9,8 @@ from typing import Literal
 from django.conf import settings
 from ninja import Router, Schema
 
-from ..simulation import analytic, calibrate as calibration, des, optimise, scenarios
+from ..simulation import analytic, des, optimise, scenarios
+from ..simulation import calibrate as calibration
 from ..simulation.spec import SimModel, SimSpec, SpecError, load
 
 router = Router(tags=["simulation"])

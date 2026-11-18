@@ -9,13 +9,22 @@ the visits, queue time, work time and cost; per scenario the first and last case
 their mean cycle time. `simulate` repeats it on independent seeds and gives every headline metric
 with its confidence interval; `compare` runs two specs on common random numbers. Pure Python and
 numpy, no Django."""
+import itertools
 import math
 import zlib
 from functools import cached_property
 
 import numpy as np
 
-from ..engine import COMPLETED, ERROR, LOOP_LIMIT, Outcome, Resolver, Resources, TokenEngine
+from ..engine import (
+    COMPLETED,
+    ERROR,
+    LOOP_LIMIT,
+    Outcome,
+    Resolver,
+    Resources,
+    TokenEngine,
+)
 from . import stats
 from .spec import UNITS, SimModel
 
@@ -135,7 +144,7 @@ class Run:
                         "cost": sum(self.cost(v) for v in vs)} for node, vs in visits.items()}
         edges = np.linspace(self.begin, self.end, BUCKETS + 1)
         resources = {r: {"capacity": None if math.isinf(c) else c, "utilisation": self.utilisation(r),
-                         "over_time": [[float(a), self.utilisation(r, a, b)] for a, b in zip(edges, edges[1:])]}
+                         "over_time": [[float(a), self.utilisation(r, a, b)] for a, b in itertools.pairwise(edges)]}
                      for r, c in self.model.capacity.items()}
         scenarios = {}
         for case in self.done:

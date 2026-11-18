@@ -195,7 +195,7 @@ class WorkSchedule(Strict):
     def _hours(cls, value):
         if isinstance(value, str) and (m := re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", value.strip())):
             h, mi, s = int(m[1]), int(m[2]), int(m[3] or 0)
-            return h + mi / 60 + s / 3600 + (1 / 3600 if (h, mi, s) == (23, 59, 59) else 0)  # the course's 23:59:59
+            return 24.0 if (h, mi, s) == (23, 59, 59) else h + mi / 60 + s / 3600  # the course's end of day
         return value
 
     @model_validator(mode="after")
@@ -305,7 +305,7 @@ class SimModel:
         return self.spec.minutes(params.get("amount", 1), params.get("unit", "hours"))
 
     def _default(self, node, element, params):
-        minutes = lambda m: self.spec.minutes(m, "minutes")  # noqa: E731
+        minutes = lambda m: self.spec.minutes(m, "minutes")
         if element.human:
             return Distribution(type="exponential", mean=minutes(HUMAN_MINUTES))
         if element.kind == "receiveTask":
