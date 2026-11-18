@@ -84,7 +84,9 @@ def analyse(model: SimModel, scenario_limit=500):
             cycle, method = sum(r["probability"] * r["time"] for r in table["rows"]) / covered, "scenarios"
         else:  # too many paths to play: add up every visit (parallel branches summed, an upper bound)
             cycle, method = sum(visits[n] * times[n] for n in visits), "visits"
-    finite = lambda v: v if v is not None and math.isfinite(v) else None
+    def finite(v):
+        return v if v is not None and math.isfinite(v) else None
+
     return {**result, "steady": True, "rate": rate, "ca2": ca2, "stable": stable,
             "bottleneck": max(found, key=lambda r: found[r][0].utilisation, default=None),
             "cycle_time": cycle, "cycle_time_method": method, "in_system": finite(cycle and rate * cycle),

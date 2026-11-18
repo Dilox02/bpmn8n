@@ -22,6 +22,7 @@ bpmn8n = ["templates/**/*", "static/**/*"]
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+extend-exclude = [".claude"]  # agents' git worktrees
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]

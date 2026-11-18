@@ -305,7 +305,9 @@ class SimModel:
         return self.spec.minutes(params.get("amount", 1), params.get("unit", "hours"))
 
     def _default(self, node, element, params):
-        minutes = lambda m: self.spec.minutes(m, "minutes")
+        def minutes(m):
+            return self.spec.minutes(m, "minutes")
+
         if element.human:
             return Distribution(type="exponential", mean=minutes(HUMAN_MINUTES))
         if element.kind == "receiveTask":

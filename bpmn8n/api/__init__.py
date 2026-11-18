@@ -8,7 +8,19 @@ from django.utils.crypto import constant_time_compare
 from ninja import NinjaAPI
 
 from ..conf import settings
-from . import evaluations, executions, gateways, messages, mining, observability, ops, simulation, tasks, usertasks, workflows
+from . import (
+    evaluations,
+    executions,
+    gateways,
+    messages,
+    mining,
+    observability,
+    ops,
+    simulation,
+    tasks,
+    usertasks,
+    workflows,
+)
 from .tasks import TASKS, Task, TaskError, discover, task, task_modules
 
 
