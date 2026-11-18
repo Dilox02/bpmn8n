@@ -345,6 +345,94 @@ The editor hook replaces the Evaluation route component; it does not change n8n'
 enable its commercial evaluation backend. As with the other editor hooks, verify router integration
 when upgrading n8n. If assets remain cached after editing a hook, restart the n8n editor container.
 
+## Simulation and capacity
+
+How long will a case take, where will it wait, how many people does a lane need? bpmn8n answers on the
+workflow itself, from the same n8n JSON that runs: queueing theory in closed form at once, an event
+simulation to confirm, both from a spec you write or one read from the event log. Pure Python and numpy
+(`bpmn8n/engine/`, `bpmn8n/simulation/`); no PM4Py there.
+
+**The token engine** (`bpmn8n/engine/`) plays a case on a virtual clock with n8n's semantics: one token per
+item; an output connected to several nodes forks the token (AND split); a node that is not a Merge runs once
+per token that reaches it (XOR join); a Merge fires once every input has a token or can no longer get one
+(loops included), and in n8n's default *append* mode passes on every item it joined, so the steps after a
+parallel join run once per branch (*combine* passes one); gateways take what a `Resolver` decides
+(exclusive one output, inclusive any subset or `default`, event-based `timeout` or one message); an Error
+End Event stops the case; a node visited more than `visit_limit` times per case stops it as *loop limit*.
+`Resources` make tokens wait for a lane's people (FIFO, optional priority, working hours). Every case keeps
+its trace. The simulator uses it with sampled times; a `Stub` resolver plays a case with given answers.
+
+**The spec**: `projects/<p>/simulation.json`, next to `workflow.json`, in the sections of the course's process
+simulation specification ([BS] p.83–85). Everything is optional: without it a user or manual task is done by
+its lane (one person, about 10 minutes), a timer waits for its parameters, an event-based gateway's message
+comes before its timeout, automated steps take no time and wait for nobody, branches are equally likely.
+
+```jsonc
+{"unit": "minutes", "workflow": "workflow.json",
+ "arrivals":  {"type": "poisson", "rate": 0.1, "count": 500},             // PSS: peak (count) · interval (every) · poisson (rate) · list (times)
+ "resources": {"managers": {"capacity": 2, "cost_per_hour": 60, "schedule": "office"}},   // RES
+ "schedules": {"office": {"days": ["mon", "tue", "wed", "thu", "fri"], "start": "09:00", "end": "17:00"}},  // WS
+ "tasks":     {"Approve Expense": {"duration": {"type": "lognormal", "mean": 12, "sd": 8},
+                                   "resource": "managers", "cost": 0.5}},  // TSK, any step by name
+ "gateways":  {"Assess Justification": {"business": 0.6, "personal": 0.1, "default": 0.3}},  // GTW
+ "replications": 10, "seed": 1, "horizon": null, "warmup": 0, "visit_limit": 100}
+```
+
+Durations: a number (fixed), or `exponential` (mean), `normal`, `lognormal`, `gamma` (mean, sd),
+`triangular` (min, mode, max), `uniform` (min, max), `empirical` (values). An exclusive or event-based
+gateway's probabilities sum to 1, what they leave goes to `default` / `timeout`; an inclusive gateway gives
+each branch its own probability, and takes `default` when none applies. `projects/acme/simulation.json`
+simulates the expense approval.
+
+**Commands and API**
+
+```bash
+python manage.py simulate projects/acme --analytic          # closed forms and the scenario table, at once
+python manage.py simulate projects/acme --replications 20   # the event simulation, with confidence intervals
+python manage.py simulate projects/<p> --calibrate --process "<n8n workflow name>" [--since 2026-01-01]
+python manage.py simulate projects/acme --staffing 20 --metric mean   # the fewest managers for a 20-minute mean
+```
+
+`POST /api/simulation/analytic`, `/run` (with `compare`: a second spec on common random numbers),
+`/staffing`, and `GET /api/simulation/calibrate?process=&since=&until=&project=`. A workflow comes inline
+(`{"workflow": …}`) or as a project (`{"project": "acme"}`), with an optional `spec`. Runs are synchronous,
+capped at 200 000 simulated cases per request; bigger ones go through the command.
+
+**What the outputs mean**
+- **Scenario table** (`--analytic`): the paths a case can take (the outputs of its choices, in order), with
+  their probability and tokens out of N, as students draw them ([BS] p.18–21): for ACME's library lending
+  with available 60 %, hold 25 %, decline 25 %, a week without answer 50 %, the rows are 60, 20, 10, 6, 2, 1,
+  0.6… and sum to 100. Loops are unrolled until a path's probability falls below a threshold; the rest is
+  one "unrolled further" row. A case through a parallel split ends once: its row combines the choices of
+  every branch and lists every end it reached. Expected visits per step come exactly from the absorbing
+  chain (I − Q)⁻¹.
+- **Queueing network** (`--analytic`): per lane λ = arrival rate × visits of its steps, ρ, Wq and W as a
+  G/G/c station (M/M/c is exact); the bottleneck; *unstable* when work arrives faster than people do it.
+- **Simulation**: completed cases, total cost, simulated time; cycle and waiting times (mean, p50, p90,
+  max); utilisation per resource and over time; cost per case; per step visits, queue time, work time and
+  cost; per scenario the first and last case out, how many and their mean cycle time ([BS] p.26–28,
+  62–64, 85). Every headline metric is the mean of the replications with its Student t interval at 90, 95
+  and 99 % ([BS] p.89): read a difference only when the intervals say so.
+- **Staffing**: the fewest people per resource for a target (mean or p90 cycle time, or the total time of
+  the simulated cases), at most 20 each by default and optionally a total cap; greedy descent as in [BS]
+  p.45–51, 90–96, screened by the closed forms and confirmed by replications, with the sensitivity of one
+  person less per resource.
+- **Calibration**: arrivals, a fitted distribution per activity (exponential, lognormal or gamma by AIC;
+  the samples themselves when fewer than 10), branch shares from the gateways' decisions, people per lane
+  from who completed the tasks. The log has no claim time: a human task's time includes the wait for a free
+  person, which the simulation then adds again on a busy lane.
+
+**Approximations** (each marked in the code): every station sees the process's arrival variability (no
+propagation between stations); Allen–Cunneen for G/G/c; the analytic cycle time takes the longest of the
+parallel branches' means (an underestimate when they vary); the closed forms ignore work schedules; work
+started before closing goes on after it; parallel branches overlap in time (n8n runs one node of an execution
+at a time, but people work in parallel and automated steps take milliseconds).
+
+**Unlike the course's simulators** ([BS] p.65–68, 73–75), which cannot run parallel paths of one scenario
+and need a redundant "emulation" model, allocate few resources unevenly, and fake inter-arrival times with a
+timer in a one-instance lane to subtract afterwards: here parallel branches, joins, loops and arrivals are
+native, and the analytic tables, the simulation and the running workflow read the same JSON.
+
 ## Observability and process mining
 
 - Every measured call is an `Event` row in Postgres. The **metrics** (`/api/metrics`: calls, errors, latencies) are SQL aggregates, so they cover every worker. `X-Bpmn8n-Profile: 1` adds cProfile and the memory peak.
