@@ -161,6 +161,18 @@ Native n8n elements used as BPMN:
 - **join** (parallel and inclusive) = the **Merge** node: with execution order v1, the editor's default, it waits only for the active branches;
 - **boundary error event** on a node = *Settings → On Error → Continue (using error output)*.
 
+### Global variables: `{{vars.max_refund}}`, shared by every workflow
+
+Process variables belong to one case; **global variables** belong to every workflow at once: a limit, a rate, a counter, a switch. They are bpmn8n's open alternative to n8n's paid Variables (`$vars`).
+
+- **Where they live**: in Redis when `REDIS_URL` is set (`docker-compose.yml` uses `redis://redis:6379/1`, a database n8n's queue does not use; Redis keeps them on disk with `--appendonly yes`), else in the database (`GlobalVariable`: tests, SQLite, bpmn8n inside another Django project). Both behave the same.
+- **Keys** are letters, digits, `_ . -` (`acme.max_refund`); **values** are JSON; a variable may **expire** after a TTL.
+- **In templates**, wherever bpmn8n fills them (task fields, texts, gateway conditions, user task title, description and context, correlation keys): `{{vars.max_refund}}`, `{{amount}} > {{vars.max_refund}}`, `{{vars.acme.policy.currency}}` (a key with dots: the longest key that exists, then the path inside its value). Only the keys a template names are read, once per template. `vars` is reserved: a case variable called `vars` is shadowed in templates.
+- **The Global Variable node** (BPMN, a task with the data-store marker): *Get*, *Set* (optional TTL), *Increment* (atomic; a missing variable counts as 0; the TTL applies when the increment creates it, a counter per time window) or *Delete*. The value goes on with the item under the variable's key, so the next bpmn8n step also has it as a case variable.
+- **The API** (token as the rest of `/api`): `GET /api/variables?prefix=`, `GET|PUT|DELETE /api/variables/<key>` (`PUT {"value": …, "ttl": seconds}`), `POST /api/variables/<key>/increment {"by": 1}`, `POST /api/variables/<key>/compare-and-set {"expected": …, "value": …}` (409 with the current value when it changed).
+- **In Python**: `from bpmn8n.core.shared import store`: `get`, `set(key, value, ttl)`, `delete`, `list(prefix)`, `increment`, `compare_and_set`, and `with store().lock("nightly-export", ttl=30):`, a short lock that a crashed holder releases after `ttl` seconds.
+- **The page** `/variables/` (staff): filter by prefix, add, edit and delete, with the last update and the expiry.
+
 ## People: inbox, task page and states
 
 Every User or Manual Task has its own page, `/inbox/<id>/`, generated from the node's form: the case's context, the fields, the actions allowed in its current state. Only people in the lane see the task (a Django group; without a lane, anyone). Opening the node in n8n:
@@ -515,10 +527,18 @@ The datasets in `e2e/datasets/` and some E2E tickets are in several languages on
 
 | n8n paid feature | In bpmn8n (open) |
 |---|---|
-| Variables (`$vars`) | per-case process variables: `{{book}}` |
-| Log streaming, audit log, Insights | event log in Postgres, `/api/metrics`, process mining |
-| Advanced execution filters | `/api/cases/<id>`, event log filterable by process and date |
-| Source control, workflow diffs, named versions | `./start.sh export` writes `workflows/*.json` to version with git; `./start.sh import` imports them again |
+| Variables (`$vars`) | **global variables** on Redis (or the database): `{{vars.<key>}}`, the Global Variable node, `/api/variables`, `/variables/` (see *Global variables*); per-case process variables: `{{book}}` |
+| Workflow history beyond 24 hours, workflow diffs | **versions + diff + restore**: every version bpmn8n sees is kept (`WorkflowVersion`), each case records the version it runs (`Case.process_version`), `/workflows/` and `/workflows/<id>/` show what changed and restore an old version, `/api/history/<workflow>` |
+| Log streaming | **Redis stream + webhooks + SSE**: every finished step goes to the Redis stream `bpmn8n:events` and to `EVENT_WEBHOOKS`; `GET /api/events/stream` serves it live |
+| Advanced execution filters, custom execution data | **case search**: `GET /api/cases?process=&version=&since=&until=&status=&var.<path>=` and the page `/cases/` |
+| Insights | **bpmn8n Insights** (`/insights/`), the event log in Postgres, `/api/metrics`, process mining |
+| Source control and environments | `manage.py workflows diff/push/pull`: the project folder in git is the source, n8n the target |
+
+**Workflow history.** A version is n8n's `versionId`; with n8n 2's publishing, cases run the published version (`activeVersionId`), and that is the one a case records. When a case starts, bpmn8n asks n8n for the workflow's current version at most once every 30 seconds per workflow (never without `N8N_API_KEY`) and keeps it if it has not seen it. n8n's public API shows only the current version, so run `python manage.py snapshot_workflows` (the workflows bpmn8n has seen; `--all`: every workflow in n8n) from cron to keep every version. A version's page lists, against the one before, the steps added, removed and renamed (matched by node id), every setting changed with its value before and after, and the flows added and removed (a move on the canvas is not a change). *Restore this version* (staff) saves it back to n8n as a new version and never activates it: an active workflow keeps running its published version until someone publishes the restored one.
+
+**Log streaming.** What is sent is what happened (process, case, activity, endpoint, status, times, resource, error), never the step's input and output, which stay in the database. A step is announced once its transaction commits; a webhook gets a JSON POST from a background thread with a 3-second timeout, and a sink that fails is logged, never the step's problem. The Redis stream keeps about `EVENT_STREAM_MAXLEN` events (100 000). `GET /api/events/stream` sends one server-sent event per step with an `id` to send back as `Last-Event-ID`: it reads the Redis stream, or without Redis polls the database (two seconds behind, so late writes are not missed); each response lasts 55 seconds and the client reconnects where it stopped.
+
+**Case search.** `status` is *waiting* (a person or a message is awaited), *error* (its last step failed), *active* (a step ran in the last minute or runs now) or *closed*. `var.<path>` takes a path in dots and `__gt`, `__gte`, `__lt`, `__lte` or `__contains` (text, ignoring case): `var.amount__gt=1000&var.customer.email__contains=@acme.com`. A value is JSON when it parses (`1000`, `true`, `"00123"` quoted to stay text), else text. Results come newest first, `limit` (up to 200) and `offset`, with `matched`: the values of the variables the query names. `/cases/` (staff) is the same search as a form; each case links to its page.
 
 Free and legal: registering the *Community Edition* (n8n → Settings → Usage and plan) unlocks folders, debugging in the editor, search in execution data and 24 hours of workflow history in n8n.
 
