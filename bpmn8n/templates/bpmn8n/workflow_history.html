@@ -16,7 +16,7 @@
     <span class="meta">seen {{ v.created|waited }} ago · <a class="inline-link" href="{% url 'cases' %}?version={{ v.version_id|urlencode }}">{{ row.cases }} case{{ row.cases|pluralize }}</a> · hash <span class="mono">{{ v.content_hash|slice:":8" }}</span></span>
   </header>
   {% if row.first %}
-    <p class="muted">The first version bpmn8n kept: {{ row.changes|length }} step{{ row.changes|length|pluralize }} and flows.</p>
+    <p class="muted">The first version bpmn8n kept, with {{ v.workflow.nodes|length }} node{{ v.workflow.nodes|length|pluralize }}.</p>
   {% elif row.changes %}
     <div class="rows">
     {% for c in row.changes %}
