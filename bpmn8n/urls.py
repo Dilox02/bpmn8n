@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
@@ -25,4 +26,5 @@ urlpatterns = [
     path("studio/<slug:slug>/events/", studio.events, name="events"),
     path("admin/", admin.site.urls),
 ]
-urlpatterns += staticfiles_urlpatterns()  # admin CSS when DEBUG; in production use collectstatic + a web server
+if settings.DEBUG:  # in production whitenoise serves what collectstatic gathered (bpmn8n/settings.py)
+    urlpatterns += staticfiles_urlpatterns()

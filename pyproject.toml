@@ -16,3 +16,45 @@ include = ["bpmn8n*"]
 
 [tool.setuptools.package-data]
 bpmn8n = ["templates/**/*", "static/**/*"]
+
+# Lint (CI runs `ruff check .`). The code wraps at 120 columns; E501 stops lines past 150. The
+# per-file ignores list what the tree had when CI started: a later tightening removes them file by file.
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["B905"]  # zip() without strict=: the zipped sequences have the same length by construction
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 150
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["ninja.Body"]  # django-ninja declares request bodies as defaults
+
+[tool.ruff.lint.isort]
+known-first-party = ["bpmn8n", "projects"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*" = ["E501"]  # generated
+"e2e/*" = ["I001", "B008"]
+"tools/*" = ["I001", "B019"]
+"projects/*" = ["I001"]
+"bpmn8n/tests/*" = ["I001", "E731"]
+"bpmn8n/api/messages.py" = ["B904"]
+"bpmn8n/api/usertasks.py" = ["B904"]
+"bpmn8n/api/tasks.py" = ["E501"]
+"bpmn8n/core/evaluations.py" = ["I001", "E501"]
+"bpmn8n/workflows/check.py" = ["I001", "B007"]
+"bpmn8n/api/executions.py" = ["I001"]
+"bpmn8n/api/gateways.py" = ["I001"]
+"bpmn8n/clients/extraction.py" = ["I001"]
+"bpmn8n/clients/laya.py" = ["I001"]
+"bpmn8n/management/commands/build_project.py" = ["I001"]
+"bpmn8n/management/commands/mcp.py" = ["I001"]
+"bpmn8n/management/commands/research_project.py" = ["I001"]
+"bpmn8n/models/config.py" = ["I001"]
+"bpmn8n/models/studio.py" = ["I001"]
+"bpmn8n/templatetags/bpmn8n.py" = ["I001"]
+"bpmn8n/web/studio.py" = ["I001"]

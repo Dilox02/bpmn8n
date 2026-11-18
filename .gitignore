@@ -62,3 +62,6 @@ playwright-report/
 !/projects/motor_insurance_claim/
 !/projects/personal_data_breach_response/
 /requirements.local.txt
+
+# collectstatic output (production images collect their own)
+/staticfiles/

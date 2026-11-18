@@ -12,6 +12,7 @@ services:
     # requirements.local.txt (git-ignored) holds the packages of local projects that are not in the repository
     ports: ["127.0.0.1:8000:8000"]
     environment:
+      DEBUG: "1"  # development: docker-compose.prod.yml runs the built image with DEBUG=0
       # ./start.sh sets them: the models server on the Mac (host.docker.internal:8001) or containers
       LAYA_URL: ${LAYA_URL:-http://laya:8000/v1/systemone}
       EXTRACTOR_URL: ${EXTRACTOR_URL:-http://models:8001/v1/extract}
@@ -44,8 +45,11 @@ services:
 
   # n8n in queue mode: `n8n` receives webhooks and serves the editor, `n8n-worker` runs the
   # executions (scale with `docker compose up -d --scale n8n-worker=N`); Redis is the queue.
+  # Pinned: the editor hooks (n8n-editor/: bpmn.js matches n8n's class names, panel.js reads its stores) are
+  # verified against this version. Bump it here and on n8n-preview (n8n-worker inherits it) together, only after
+  # the hooks' checks pass on the new version (docs/GUIDE.md, "Production").
   n8n: &n8n
-    image: docker.n8n.io/n8nio/n8n
+    image: docker.n8n.io/n8nio/n8n:2.42.3
     ports: ["127.0.0.1:5678:5678"]
     environment: &n8n-env
       N8N_CUSTOM_EXTENSIONS: /bpmn8n-nodes  # ./start.sh builds n8n-nodes-bpmn8n into it
@@ -91,7 +95,7 @@ services:
   # own preview architecture (its n8n-demo component): an instance in preview mode opens /workflows/demo
   # without login and draws the workflow received by postMessage; it stores and runs nothing.
   n8n-preview:
-    image: docker.n8n.io/n8nio/n8n
+    image: docker.n8n.io/n8nio/n8n:2.42.3  # the same version as n8n
     ports: ["127.0.0.1:5679:5678"]
     environment:
       N8N_PREVIEW_MODE: "true"
