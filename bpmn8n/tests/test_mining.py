@@ -136,3 +136,24 @@ class TrainingDataTest(TestCase):
         import json
         r = self.client.get("/api/datasets/decisions", {"split": "test"})
         self.assertEqual([json.loads(line)["case_id"] for line in r.streaming_content], ["wf:8", "wf:9"])
+
+
+class WorkflowModelTest(SimpleTestCase):
+    def test_a_disabled_step_passes_through_and_a_chat_model_is_no_start(self):
+        """ProcessGraph's semantics: n8n runs a disabled node as a silent pass-through; an agent's chat
+        model is a sub-node, not a second way into the process."""
+        from pm4py.objects.bpmn.obj import BPMN
+        from ..mining import WorkflowModel
+        from ..workflows import Workflow
+        model = {"type": "@n8n/n8n-nodes-langchain.lmChatOllama", "typeVersion": 1, "parameters": {}}
+        workflow = (Workflow("Drafts", chat_model=model).start("In", "in").task("Read", "serviceTask", "register_ticket")
+                    .task("Off", "serviceTask", "register_ticket").llm_agent("Draft", "Reply to {{message}}", "draft")
+                    .flow("In", "Read", "Off", "Draft").as_json())
+        next(n for n in workflow["nodes"] if n["name"] == "Off")["disabled"] = True
+        wf = WorkflowModel(workflow)
+        start = next(n for n in wf.bpmn.get_nodes() if isinstance(n, BPMN.NormalStartEvent))
+        self.assertEqual([f.get_target().get_name() for f in wf.bpmn.get_flows() if f.get_source() is start], ["In"])
+        self.assertNotIn("Draft: model", wf.nodes)
+        self.assertEqual(wf.outputs["Off"], [["Draft: prompt"]])  # not a gap in the flow
+        net, _, _ = wf.petri_net()
+        self.assertEqual(sorted(t.label for t in net.transitions if t.label), ["Draft: prompt", "Read"])  # Off is silent
