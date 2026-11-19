@@ -43,10 +43,14 @@ for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks"
 api.add_router("", workflows.elements)
 
 
+# what n8n's editor reads with the browser's n8n session (the hooks' evaluations, executions and canvas modes)
+READ_PATHS = ("/api/evaluations/", "/api/executions/", "/api/analytics/", "/api/simulation/")
+
+
 def openapi_cors(get_response):
     """Middleware: n8n's editor (n8n-editor/node-panel.js) reads the tasks' OpenAPI from its own origin."""
     def middleware(request):
-        read_path = request.path.startswith(("/api/evaluations/", "/api/executions/", "/api/analytics/"))
+        read_path = request.path.startswith(READ_PATHS)
         preflight = read_path and request.method == "OPTIONS"
         response = HttpResponse(status=204) if preflight else get_response(request)
         evaluations_read = read_path and request.method in ("GET", "OPTIONS")
@@ -66,7 +70,7 @@ def openapi_cors(get_response):
             response["Cache-Control"] = "no-store"
             patch_vary_headers(response, ["Cookie"])
             response["Access-Control-Expose-Headers"] = "ETag, Content-Disposition"
-        if request.method == "OPTIONS" and request.path.startswith(("/api/evaluations/", "/api/executions/", "/api/analytics/")):
+        if request.method == "OPTIONS" and request.path.startswith(READ_PATHS):
             response["Access-Control-Allow-Headers"] = "If-None-Match, Last-Event-ID, browser-id"
             response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         return response

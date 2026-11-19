@@ -23,6 +23,15 @@ def summary(values):
             "p90": float(np.percentile(v, 90)), "max": float(v.max())}
 
 
+def histogram(values, bins=20):
+    """Samples counted in `bins` equal bins from 0 to the largest: the shape a mean and a p90 hide."""
+    v = np.asarray(_finite(values))
+    if not len(v):
+        return []
+    counts, edges = np.histogram(v, bins=bins, range=(0.0, float(v.max()) or 1.0))
+    return [{"from": float(a), "to": float(b), "count": int(n)} for a, b, n in zip(edges, edges[1:], counts)]
+
+
 def half_width(values, level=0.95):
     """Half the width of the t confidence interval of the mean (None with fewer than 2 values)."""
     v = _finite(values)

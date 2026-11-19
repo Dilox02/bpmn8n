@@ -1,17 +1,24 @@
 """Simulation and capacity (bpmn8n/simulation/): the analytic model and scenario table, the event
 simulator with confidence intervals, staffing, and a spec calibrated from the event log. A workflow
-comes inline (n8n JSON) or as a project (projects/<p>/: its workflow and simulation.json)."""
+comes inline (n8n JSON) or as a project (projects/<p>/: its workflow and simulation.json). /overlay
+feeds the canvas's Capacity mode (n8n-editor/insights.js), with the editor's n8n session."""
+import json
+import math
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlencode
 
 from django.conf import settings
 from ninja import Router, Schema
 
+from ..clients import n8n
+from ..models import Project
 from ..simulation import analytic, des, optimise, scenarios
 from ..simulation import calibrate as calibration
-from ..simulation.spec import SimModel, SimSpec, SpecError, load
+from ..simulation.spec import UNITS, SimModel, SimSpec, SpecError, load
+from .analytics import overlay_auth
 
 router = Router(tags=["simulation"])
 
@@ -52,6 +59,33 @@ def project_folder(name):
     if not folder.is_dir():
         raise SpecError(f"no project {name!r}")
     return folder
+
+
+def sources():
+    """What can be simulated, key -> workflow name: every project with a workflow, then the ACME
+    examples (examples/workflows/, key "example:<file>", simulated on the defaults)."""
+    found = {}
+    for folder in sorted((Path(settings.BASE_DIR) / "projects").iterdir()):
+        if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9_-]+", folder.name):
+            try:
+                found[folder.name] = load(folder)[0].get("name") or folder.name
+            except (ValueError, OSError):  # no workflow, or a spec that does not parse
+                continue
+    for path in sorted((Path(settings.BASE_DIR) / "examples" / "workflows").glob("*.json")):
+        found[f"example:{path.stem}"] = json.loads(path.read_text()).get("name") or path.stem
+    return found
+
+
+def source(key):
+    """(workflow, spec, project folder) of a key of sources(); the folder is None for an example."""
+    if key.startswith("example:"):
+        name = key.removeprefix("example:")
+        path = Path(settings.BASE_DIR) / "examples" / "workflows" / f"{name}.json"
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name) or not path.is_file():
+            raise SpecError(f"no example {name!r}")
+        return json.loads(path.read_text()), SimSpec(), None
+    folder = project_folder(key)
+    return (*load(folder), folder)
 
 
 def model_of(data, spec=None):
@@ -132,3 +166,54 @@ def calibrate(request, process: str, since: datetime | None = None, until: datet
         spec, report = calibration.calibrate(process, since, until, workflow, unit)
         return {"spec": spec.model_dump(exclude_none=True), "report": report}
     return answer(handler, None)
+
+
+def canvas_model(workflow_id):
+    """(SimModel, source key) of a workflow open in n8n: the Studio project imported as it, else the
+    workflow read from n8n with the spec of the project or example of the same name (its defaults when
+    that spec does not fit). None when neither knows it."""
+    if project := Project.objects.filter(n8n_id=workflow_id).first():
+        try:
+            workflow, spec, _ = source(project.slug)
+            return SimModel(workflow, spec), project.slug
+        except ValueError:
+            pass
+    if not (workflow := n8n.workflow(workflow_id)):
+        return None
+    key = next((k for k, name in sources().items() if name == workflow.get("name")), None)
+    if key:
+        try:
+            return SimModel(workflow, source(key)[1]), key
+        except ValueError:
+            pass
+    return SimModel(workflow), key
+
+
+@router.get("/overlay", auth=overlay_auth, response={200: dict, 404: dict, 422: dict})
+def overlay(request, workflow_id: str):
+    """Per node of a canvas, the closed forms: its lane's utilisation ρ and servers, the expected wait and
+    response (seconds), its visits per case; the bottleneck, and the simulation page of its source."""
+    try:
+        found = canvas_model(workflow_id) if workflow_id.strip() else None  # "" would match every unimported project
+        if found is None:
+            return 404, {"detail": f"no project or n8n workflow {workflow_id!r} to simulate"}
+        model, key = found
+        a = analytic.analyse(model)
+    except ValueError as e:
+        return 422, {"detail": str(e)}
+    seconds = UNITS[model.unit] * 60
+
+    def secs(value):
+        return None if value is None or not math.isfinite(value) else value * seconds
+
+    stations = a.get("stations", {})
+    nodes = {}
+    for name, row in a.get("nodes", {}).items():
+        station = stations.get(row["resource"]) or {}
+        nodes[name] = {"visits": row["visits"], "resource": row["resource"], "utilisation": station.get("utilisation"),
+                       "servers": station.get("servers"), "stable": station.get("stable", True),
+                       "wait": secs(row["waiting_time"]), "response": secs(row["response_time"])}
+    return 200, {"workflow_id": workflow_id, "source": key, "steady": a["steady"], "stable": a.get("stable"),
+                 "bottleneck": a.get("bottleneck"), "cycle_time": secs(a.get("cycle_time")),
+                 "page": f"/simulation/?{urlencode({'project': key})}" if key else None, "nodes": nodes,
+                 "note": a.get("note", ""), "warnings": a["warnings"]}
