@@ -377,7 +377,9 @@
               "type": "string"
             }
           ]
-        }
+        },
+        "due": "until",
+        "dueUntil": "{{authority_deadline}}"
       },
       "webhookId": "26d40a40-b2e5-5d8b-a49a-8a0082a07bcc",
       "credentials": {

@@ -1,4 +1,7 @@
-"""Personal data breach response: the workflow, for bpmn8n's builder. workflow.json is the same, for n8n."""
+"""Personal data breach response: the workflow, for bpmn8n's builder. workflow.json is the same, for n8n.
+
+The notification to the Garante is due at the 72-hour deadline (due_at): the inbox marks it due soon from
+48 hours, the reminder the interview asks for, and overdue after 72."""
 from bpmn8n.workflows import Workflow
 
 SPEC = {'name': 'Personal data breach response',
@@ -80,6 +83,7 @@ SPEC = {'name': 'Personal data breach response',
             'lane': 'dpo',
             'name': 'Review and Send to Garante',
             'type': 'user_task',
+            'due_at': '{{authority_deadline}}',
             'title': 'Send the notification of {{incident_id}} before {{authority_deadline}}',
             'context': {'Draft (written by an AI model)': '{{draft_notification}}'}},
            {'kind': 'exclusive',
