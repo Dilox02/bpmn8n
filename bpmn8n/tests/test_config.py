@@ -32,8 +32,9 @@ class ConfigTest(SimpleTestCase):
         self.assertEqual(c.BPMN8N_PUBLIC_URL, "https://bpmn8n.example.org")
         self.assertEqual(c.N8N_PUBLIC_URL, "https://bpmn8n.example.org/n8n")
         self.assertEqual(c.N8N_PREVIEW_URL, "https://preview.bpmn8n.example.org")
-        self.assertEqual(c.compose_env(), {"BPMN8N_PUBLIC_URL": c.BPMN8N_PUBLIC_URL,
-                                           "N8N_PUBLIC_URL": c.N8N_PUBLIC_URL, "N8N_PREVIEW_URL": c.N8N_PREVIEW_URL})
+        self.assertEqual({k: c.compose_env()[k] for k in ("BPMN8N_PUBLIC_URL", "N8N_PUBLIC_URL", "N8N_PREVIEW_URL")},
+                         {"BPMN8N_PUBLIC_URL": c.BPMN8N_PUBLIC_URL, "N8N_PUBLIC_URL": c.N8N_PUBLIC_URL,
+                          "N8N_PREVIEW_URL": c.N8N_PREVIEW_URL})  # and the gateway's: test_one_origin
 
     def test_an_explicit_address_wins_and_an_empty_one_is_derived(self):
         c = Config.from_env({"PUBLIC_URL": "https://b.example.org", "N8N_PUBLIC_URL": "https://n8n.example.org",

@@ -1,11 +1,13 @@
 # One origin (docs/GUIDE.md, "One origin (optional)"): the `gateway` service of docker-compose.yml, profile
-# one-origin. Django at /, n8n's editor at /n8n/ (n8n runs with N8N_PATH=/n8n/ and serves at its root, so the
-# prefix is stripped), n8n's webhooks and forms at the root paths WEBHOOK_URL gives them, and the read-only
-# preview on its own host: sharing the origin, its anonymous session would clear the editor's cookie.
-# Addresses: SITE_ADDRESS (default :80, any host) and PREVIEW_ADDRESS (default http://preview.localhost); a real
-# domain there (bpmn8n.example.org, preview.bpmn8n.example.org) turns on Caddy's automatic HTTPS.
+# one-origin, which PUBLIC_URL turns on. Django at /, n8n's editor at /n8n/ (n8n runs with N8N_PATH=/n8n/ but
+# serves at its root, so the prefix is stripped), n8n's webhooks, resume URLs and forms at the root paths
+# N8N_WEBHOOK_URL gives them, and the read-only preview on its own host: on the same origin its anonymous
+# session would clear the editor's cookie. Plain HTTP: a TLS proxy in front terminates HTTPS for both hosts.
 {
 	admin off
+	servers {
+		trusted_proxies static private_ranges # keep the TLS proxy's X-Forwarded-Proto
+	}
 }
 
 {$PREVIEW_ADDRESS:http://preview.localhost} {
@@ -15,7 +17,7 @@
 	}
 }
 
-{$SITE_ADDRESS::80} {
+:80 {
 	redir /n8n /n8n/
 	handle_path /n8n/* {
 		reverse_proxy {$N8N_UPSTREAM:n8n:5678}

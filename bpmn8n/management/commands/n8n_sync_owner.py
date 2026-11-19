@@ -4,12 +4,12 @@ sides, is asked (or --password). A fresh n8n gets the user as its owner; once it
 (--owner-email/--owner-password, default N8N_EMAIL/N8N_PASSWORD) to create the user as a member or reset its
 password. bpmn8n's own password changes only after n8n accepted it."""
 import getpass
-import os
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from ...clients import n8n
+from ...conf import CONFIG
 from ...models import AuditEntry
 
 
@@ -19,8 +19,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("username")
         parser.add_argument("--password", help="default: asked (a password on the command line shows in ps)")
-        parser.add_argument("--owner-email", default=os.environ.get("N8N_EMAIL", ""))
-        parser.add_argument("--owner-password", default=os.environ.get("N8N_PASSWORD", ""))
+        parser.add_argument("--owner-email", default=CONFIG.N8N_EMAIL)
+        parser.add_argument("--owner-password", default=CONFIG.N8N_PASSWORD)
 
     def handle(self, *args, username, password, owner_email, owner_password, **options):
         user = get_user_model().objects.filter(username=username, is_staff=True).first()

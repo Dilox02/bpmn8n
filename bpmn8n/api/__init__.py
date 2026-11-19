@@ -78,7 +78,7 @@ def openapi_cors(get_response):
             return response
         patch_vary_headers(response, ["Origin"])
         origin = request.headers.get("Origin")
-        if origin not in editor_origins():
+        if origin not in editor_origins() or origin == f"{request.scheme}://{request.get_host()}":
             return response
         response["Access-Control-Allow-Origin"] = origin
         if evaluations_read:
