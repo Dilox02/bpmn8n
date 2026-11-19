@@ -245,9 +245,42 @@ The rules are classes in `bpmn8n/workflows/rules.py`, run in this order; `python
 | `implicit-join` | warning | structure | a step that is not a Merge, reached by branches that run at once: it runs once per arriving branch; the branches of an exclusive or event-based choice may meet anywhere |
 | `endless-loop` | error | structure | a loop no flow leaves (no output out of it, none left open): it never ends |
 | `loop` | warning | structure | a loop with nothing in it that chooses, waits or keeps time: it may spin without end |
+| `deadlock` | error | structure | playing every combination of choices on the token engine (up to 300 cases): a case that gets stuck (tokens wait for what never comes), a Merge that never fires, a loop no case leaves; an info when there were more cases to play |
 | `naming` | info | style | a task, or the process, named with a mushy verb (`handle`, `process`, `review`…) or as an event or a state (`Claim Received`, `Request is approved`); triggers and events may be past tense |
 
-These are structural checks, not PM4Py's *soundness*, which gives false negatives on n8n workflows (a Merge is an inclusive join, parallel branches need not rejoin): tried on the four examples, it rejected two correct ones. Implicit gateways ([AW] §2.3, §3.3) are judged by dominators: the branches reaching a step that is not a Merge run at once when their nearest common dominator is a parallel split, an inclusive gateway or one output leading to several steps. Loops are judged structurally (a loop with no way out, a loop nothing in it decides); a loop through an n8n node the registry does not know (If, Switch, Loop Over Items) is not judged. Studio runs the check on every build and treats the "without a person" warning as an error too (what its activities print goes to stderr, so the JSON report stays readable; a build or research whose process dies, killed or with its container restarted, is ended by the pages after 3 minutes without its heartbeat); a test checks that ACME's examples pass it (with that warning where they close a case on their own).
+These are structural checks, not PM4Py's *soundness*, which gives false negatives on n8n workflows (a Merge is an inclusive join, parallel branches need not rejoin): tried on the four examples, it rejected two correct ones. Implicit gateways ([AW] §2.3, §3.3) are judged by dominators: the branches reaching a step that is not a Merge run at once when their nearest common dominator is a parallel split, an inclusive gateway or one output leading to several steps. Loops are judged structurally (a loop with no way out, a loop nothing in it decides); a loop through an n8n node the registry does not know (If, Switch, Loop Over Items) is not judged. The `deadlock` rule then plays the workflow on the token engine, which sees what the structure cannot: Merges that wait for each other, a loop a parallel gateway keeps feeding (see *Scenario tests*). Studio runs the check on every build and treats the "without a person" warning as an error too (what its activities print goes to stderr, so the JSON report stays readable; a build or research whose process dies, killed or with its container restarted, is ended by the pages after 3 minutes without its heartbeat); a test checks that ACME's examples pass it (with that warning where they close a case on their own).
+
+### Scenario tests
+
+`examples.json` tests the activities one by one; `scenarios.json`, next to it, tests the process: a case played on the token engine (`bpmn8n/engine/`, n8n's semantics on a virtual clock) without n8n, given what people answer, which messages come and what Laya decides. It is a list of scenarios:
+
+```json
+[{"name": "a theft whose police report never comes is reviewed by a person",
+  "start": {"policy_number": "POL-3311", "event_type": "theft", "amount_claimed": 7000, "injured": false},
+  "decisions": {"Wait for Police Report": "timeout"},
+  "people": {"Review Missing Police Report": {"approved": false, "reason": "no report"}},
+  "expect": {"visits": ["Review Missing Police Report"], "not": ["Issue Payout"],
+             "ends": "Send Rejection Notification", "variables": {"approved": false}}}]
+```
+
+| Key | What it gives |
+|---|---|
+| `start` | the data that starts the case (the webhook's body) |
+| `decisions` | per gateway, the branch it takes (`"yes"`), the branches of an inclusive one (`["a", "b"]`), or `"timeout"` for an event-based gateway or a user task with a deadline. A Laya gateway must have one; on a conditions gateway it is checked against what its conditions take |
+| `people` | per user or manual task, the form answers (a field the form does not have fails) |
+| `messages` | per receive task or event-based gateway, `{"name": message, "payload": {...}}`; the payload adds only the variables the case does not have, as delivery does |
+| `tasks` | `"run"` (the default): the real `@task` functions run on the case's variables, their input bound by name and by `{{templates}}` as the n8n node binds it; `"stub"`: none runs |
+| `outputs` | per node, what it returns instead of running: an LLM agent's answer (its text), a task that calls the outside world or reads data the check's database does not have |
+| `workflow` | the workflow file, relative to the project folder (default `workflow.json`; ACME's are in `examples/workflows/`) |
+| `expect` | `path` (every step in order), `visits` (steps it passes), `not` (steps it must not pass), `ends` (a step where a token ends, or `"error:<code>"` for an error end event), `variables` (a subset of the variables at the end), `max_steps` |
+
+A list for a node gives one value per visit, for loops (`"people": {"Approve": [{...}, {...}]}`; per visit on an inclusive gateway: `[["a"], ["a", "b"]]`); running out of them fails the scenario, as does a missing decision, answer or message, naming the node. Conditions gateways are evaluated for real on the case's variables; Laya gateways, LLM agents and people never run. What the tasks write in the database is rolled back and their mail stays in memory, so a check leaves no trace and plays the same every time. A case that gets stuck, reaches the loop limit or ends with an error nobody expected fails too. Each scenario reports whether it passed, the first difference from what it expects, the path taken and the variables at the end. Out of scope: a user task with several items (one token is one item); a timer, a call activity and other n8n nodes pass the case on unchanged unless `outputs` says what they add; `{{vars.…}}` is not read.
+
+`python manage.py check_project projects/<name>` runs the scenarios after the examples (a failing one fails the project; the JSON report has them under `"scenarios"`), and so do Studio's verify step and the MCP `studio_check`, where a failing scenario is a workflow error sent back for a fix (and blocks `studio_publish`). `python manage.py test_scenarios projects/<name> [--json]` runs only them.
+
+**From a real case.** `python manage.py record_scenario <case id> projects/<name> [--name …] [--workflow …]` writes a scenario from the event log: the start data, the branches the gateways took, people's answers, the messages, what the tasks returned (as `outputs`: delete one to run that task for real) and, when the replay agrees, the exact path as the expectation. A bug seen in production becomes a regression test: record the case, change the expectation to what should have happened, fix the workflow until it passes. An LLM agent's answer and a timeout leave no event: the replay names what is missing.
+
+**Deadlock search.** The `deadlock` rule plays the workflow on the engine over every combination of choices (every output of every gateway, every set of an inclusive gateway's branches, timeout or not), loops up to three rounds, up to 300 cases (beyond that it says so, and judges only what it saw). It reports, with the path that leads there, a case that can get stuck (tokens waiting at Merges that wait for each other), a Merge that never fires and a loop no case can leave (a parallel gateway sending a token back every round): what a structural check cannot see. The tracked projects play in a few milliseconds each.
 
 ### BPMN coverage
 
@@ -637,8 +670,10 @@ The hypotheses were verified on the real stack (n8n 2.42, Apple M5) with the tes
 ## Tests
 
 ```bash
-python manage.py test bpmn8n                          # 111 tests: API, states, check, Studio (real build), mining, every project's examples
-python manage.py check_project projects/<name>        # one project: imports, examples, workflow
+python manage.py test bpmn8n --parallel 1             # 384 tests: API, states, check, Studio (real build), mining, every project's examples and scenarios
+python manage.py check_project projects/<name>        # one project: imports, examples, scenarios, workflow
+python manage.py test_scenarios projects/<name>       # only its scenarios (scenarios.json) on the token engine
+python manage.py record_scenario <case id> projects/<name>  # a real case becomes a scenario (regression test)
 cd n8n-nodes-bpmn8n && npm test                       # 12 tests: schema → fields, input, output, waits, errors
 .venv-models/bin/python -m unittest discover tools    # micro-batcher
 pip install -r requirements-dev.txt && playwright install chromium

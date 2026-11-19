@@ -8,11 +8,13 @@ flow), data (what steps read), people (who works and decides), metrics, style (t
 import json
 import re
 from dataclasses import asdict, dataclass
+from itertools import combinations
 
 from django.contrib.auth.models import Group
 
 from ..api.tasks import MUSHY_VERBS, TASKS
 from ..core.variables import Condition, ConditionError
+from ..engine import LOOP_LIMIT, STUCK, Outcome, Resolver, TokenEngine
 from .elements import element
 
 CATEGORIES = ("structure", "data", "people", "metrics", "style")
@@ -368,7 +370,7 @@ class ImplicitJoin(Rule):
                    for i, first in enumerate(leading) for second in leading[i + 1:] for a in first for b in second)
 
 
-# --- loops (D6-lite: structural; the engine's state search is the upgrade path) -------------------
+# --- loops (structural; the deadlock search below plays them on the engine) -----------------------
 
 def loops(ctx):
     """The loops a case can enter (a detached one is the `reachable` rule's)."""
@@ -413,6 +415,108 @@ class LoopGuard(Rule):
                 yield self.problem(head(ctx.graph, loop), "nothing in this loop chooses, waits or keeps time "
                                                           f"({', '.join(sorted(loop))}): a gateway should decide "
                                                           "when it ends")
+
+
+# --- deadlocks (D6, [AW] §3.3): the token engine plays every combination of choices -----------------
+
+SEARCH_CASES, SEARCH_VISITS = 300, 3  # a loop goes round up to 3 times: enough to see whether a case leaves it
+
+
+def ways(g, name):
+    """How a step can go on: each output of a choice (an inclusive gateway: every set of its branches, or
+    its default), "timeout" or "done" of a deadline, each connected output of an n8n node the registry does
+    not know (If, Switch); None for a step that does not choose."""
+    e, names = g.element(name), g.outputs(name)
+    if e.kind == "inclusiveGateway":
+        return [list(c) for n in range(1, len(names)) for c in combinations(names[:-1], n)] + [["default"]]
+    if e.chooses or names == ["timeout", "done"]:
+        return [[n] for n in names]
+    return [[port] for port in range(len(g.outs[name]))] if not e.splits and len(g.outs[name]) > 1 else None
+
+
+class Explore(Resolver):
+    """Takes the choices of `prefix`, then the first way of every further choice, noting how many it had."""
+
+    def restart(self, g, prefix):
+        self.g, self.prefix, self.taken, self.counts = g, prefix, [], []
+
+    def resolve(self, visit):
+        if (options := ways(self.g, visit.node)) is None:
+            return Outcome()
+        pick = self.prefix[len(self.taken)] if len(self.taken) < len(self.prefix) else 0
+        self.taken.append(pick)
+        self.counts.append(len(options))
+        return Outcome(outputs=options[pick])
+
+
+def explore(g, trigger, limit=SEARCH_CASES):
+    """The cases every combination of choices gives, depth first (one engine, a case at a time): (cases,
+    whether they are all of them)."""
+    explorer, prefix = Explore(), []
+    engine = TokenEngine(g, explorer, visit_limit=SEARCH_VISITS)
+    while len(engine.cases) < limit:
+        explorer.restart(g, prefix)
+        engine.start(trigger=trigger)
+        engine.run()
+        i = len(explorer.taken) - 1
+        while i >= 0 and explorer.taken[i] + 1 >= explorer.counts[i]:
+            i -= 1
+        if i < 0:
+            return engine.cases, True
+        prefix = explorer.taken[:i] + [explorer.taken[i] + 1]
+    return engine.cases, False
+
+
+def steps(case):
+    return " → ".join(v.node for v in case.trace)
+
+
+@rule
+class Deadlock(Rule):
+    """D6: a structural check cannot see that a Merge waits for a branch that waits for it. The engine (n8n's
+    semantics) plays each case the choices allow, every output of every gateway, and keeps the ones that
+    end badly, with the path that leads there. ponytail: bounded (SEARCH_CASES cases, loops up to
+    SEARCH_VISITS rounds; a step reached by more parallel branches than that stops a case early), and then
+    only what it saw is judged."""
+    id = "deadlock"
+    doc = (f"playing every combination of choices on the token engine (up to {SEARCH_CASES} cases): a case that gets "
+           "stuck (tokens wait for what never comes), a Merge that never fires, a loop no case leaves; an info "
+           "when there were more cases to play")
+
+    def check(self, ctx):
+        g, cases, complete = ctx.graph, [], True
+        for start in g.starts:
+            found, done = explore(g, start)
+            cases, complete = cases + found, complete and done
+        looping = set().union(*g.cycles)
+        if any(case.status == LOOP_LIMIT and max(case.visits, key=case.visits.get) not in looping for case in cases):
+            complete = False  # a step that many parallel branches reach stopped a case early
+        stuck = {}
+        for case in cases:
+            if case.status == STUCK:
+                stuck.setdefault(case.error.rpartition(": ")[2], case)
+        for where, case in stuck.items():
+            yield self.problem(where.split(", ")[0], f"a case can get stuck: tokens wait at {where} for what never "
+                                                     f"comes; path: {steps(case)}")
+        if not complete:
+            yield self.problem("", f"the deadlock search could not play every case (more than {SEARCH_CASES}, or a "
+                                   f"step more than {SEARCH_VISITS} parallel branches reach): a Merge that never fires "
+                                   "or a loop no case leaves is not judged", "info")
+            return
+        ran = {v.node for case in cases for v in case.trace}
+        for merge in g.of(joins=True):
+            if merge in g.reachable and merge not in ran:
+                witness = next((case for w, case in stuck.items() if merge in w.split(", ")), None)
+                yield self.problem(merge, "this Merge never fires: " + (f"a token waits here for one that never "
+                                   f"comes; path: {steps(witness)}" if witness else "no case gets here"))
+        for loop in loops(ctx):
+            if not any(leaves(g, name, loop) for name in loop):
+                continue  # endless-loop's
+            entered = [case for case in cases if any(v.node in loop for v in case.trace)]
+            if entered and all(case.status == LOOP_LIMIT and max(case.visits, key=case.visits.get) in loop
+                               for case in entered):
+                yield self.problem(head(g, loop), f"no case leaves this loop ({', '.join(sorted(loop))}): every "
+                                                  f"combination of choices goes round it; path: {steps(entered[0])}")
 
 
 # --- names ([WM] A06–A16, A59–A62) ----------------------------------------------------------------

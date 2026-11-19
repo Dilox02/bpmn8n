@@ -17,6 +17,7 @@ from ..clients import n8n
 from ..core.variables import TEMPLATE
 from .graph import ProcessGraph
 from .rules import RULES, Problem, Rule
+from .scenarios import run_scenarios
 
 __all__ = ["RULES", "VARS", "Problem", "ProjectCheck", "Rule", "WorkflowCheck", "is_trigger"]
 
@@ -215,8 +216,9 @@ class ProjectCheck:
     """A project folder (projects/<name>/) before it is loaded: every module that registers @tasks
     imports; each activity does what its examples say (examples.json: {task: [{"input": {...},
     "output": {the fields expected}}]}); the workflow (workflow.json) passes WorkflowCheck, with the
-    start data of process.py's SPEC. Until its modules import, the rest is not checked; another
-    project that fails to import is left out, as the server does (it is logged)."""
+    start data of process.py's SPEC; the process goes as its scenarios say (scenarios.json, see
+    scenarios.py). Until its modules import, the rest is not checked; another project that fails to
+    import is left out, as the server does (it is logged)."""
 
     def __init__(self, folder, fetch=n8n.workflow):
         self.folder = Path(folder)
@@ -224,14 +226,17 @@ class ProjectCheck:
         # module -> the end of its traceback, for the project's modules that fail
         self.imports = {module: error for module, error in discover().items() if module.startswith(package)}
         self.examples = {} if self.imports else self._run_examples()
+        self.scenarios = [] if self.imports else run_scenarios(self.folder)
         self.problems = [] if self.imports else self._check_workflow(fetch)
 
     @property
     def ok(self):
-        return not (self.imports or self.examples or any(p.level == "error" for p in self.problems))
+        return not (self.imports or self.examples or any(p.level == "error" for p in self.problems)
+                    or any(not s["passed"] for s in self.scenarios))
 
     def as_dict(self):
-        return {"imports": self.imports, "examples": self.examples, "problems": [p.as_dict() for p in self.problems]}
+        return {"imports": self.imports, "examples": self.examples, "scenarios": self.scenarios,
+                "problems": [p.as_dict() for p in self.problems]}
 
     def _run_examples(self):
         """task -> what its failing examples got wrong."""
