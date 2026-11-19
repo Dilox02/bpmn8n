@@ -16,7 +16,7 @@ PUBLIC_API = {"/api/health", "/api/elements", "/api/openapi.json", "/api/docs"}
 # pages anyone may open
 PUBLIC_PAGES = {"/", "/login/", "/logout/"}
 TOKEN = "s3cret-token"
-FRAMEWORK_PREFIXES = {"tasks", "gateways", "usertasks", "messages", "workflows", "evaluations", "executions", "analytics",
+FRAMEWORK_PREFIXES = {"contracts", "tasks", "gateways", "usertasks", "messages", "workflows", "evaluations", "executions", "analytics",
                       "variables", "history", "simulation", "events", "cases", "metrics", "eventlog.csv",
                       "processmining", "datasets", "health", "elements", "openapi.json", "docs", "audit"}
 EVIL = '<script>alert("x")</script>'

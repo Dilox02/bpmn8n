@@ -263,8 +263,13 @@ class ProjectCheck:
         path = self.folder / "workflow.json"
         if not path.exists():
             return []
-        try:
-            start_data = import_module(f"{self.folder.parent.name}.{self.folder.name}.process").SPEC.get("start_data")
-        except (ImportError, AttributeError):  # no process.py, or not a spec: the start data is unknown
-            start_data = None
-        return WorkflowCheck(json.loads(path.read_text()), fetch, start_data).problems
+        return WorkflowCheck(json.loads(path.read_text()), fetch, declared_start_data(self.folder)).problems
+
+
+def declared_start_data(folder):
+    """The start data a project declares (projects/<p>/process.py's SPEC["start_data"]), None when unknown."""
+    folder = Path(folder)
+    try:
+        return import_module(f"{folder.parent.name}.{folder.name}.process").SPEC.get("start_data")
+    except (ImportError, AttributeError):  # no process.py, or not a spec: the start data is unknown
+        return None
