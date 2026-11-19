@@ -73,9 +73,14 @@ services:
       QUEUE_BULL_REDIS_HOST: redis
       OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
       N8N_RUNNERS_ENABLED: "true"
+      # one origin (PUBLIC_URL, the gateway below): the editor under /n8n/, webhooks and resume URLs at the
+      # gateway's root; empty: n8n's defaults, the editor at the root of :5678
+      N8N_PATH: ${N8N_PATH:-/}
+      N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
       # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
-      # ?bpmn8n=); n8n caches /static for a day: bump v on edits
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-evaluations.js?v=9&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-executions.js?v=6&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};/static/bpmn8n-insights.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
+      # ?bpmn8n=); under N8N_PATH; n8n caches /static for a day: bump v on edits
+      EXTERNAL_FRONTEND_HOOKS_URLS: ${N8N_PATH:-/}static/bpmn8n-bpmn.js?v=7;${N8N_PATH:-/}static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-evaluations.js?v=10&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-executions.js?v=7&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};${N8N_PATH:-/}static/bpmn8n-insights.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
       N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
@@ -110,12 +115,28 @@ services:
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_CONTENT_SECURITY_POLICY: '{"frame-ancestors": ["''self''", "http://localhost:5678", "http://127.0.0.1:5678", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8080", "http://127.0.0.1:8080"]}'
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=5;/static/bpmn8n-theme.js?v=11  # bump v on edits
+      # over plain HTTP on a host other than localhost (preview.localhost behind the gateway) n8n's editor shows
+      # only a warning when its cookie is Secure; the preview signs nobody in
+      N8N_SECURE_COOKIE: ${N8N_PREVIEW_SECURE_COOKIE:-true}
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-theme.js?v=11  # bump v on edits
     volumes:
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro
       - ./bpmn8n/static/bpmn8n/tokens.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-tokens.css:ro  # bpmn8n's tokens, linked by bpmn.js
       - ./n8n-editor/preview.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-theme.js:ro
+
+  # One origin (docs/GUIDE.md, "One origin (optional)"), off by default: Caddy serves Django at /, the editor at
+  # /n8n/, the webhooks at the root and the preview on its own host (deploy/Caddyfile). PUBLIC_URL turns it on:
+  # `python -m bpmn8n up` passes the profile and n8n's variables (bpmn8n/config.py, compose_env)
+  gateway:
+    profiles: ["one-origin"]
+    image: caddy:2.11-alpine
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8090}:80"]
+    environment:
+      PREVIEW_ADDRESS: ${PREVIEW_ADDRESS:-http://preview.localhost}
+      BPMN8N_PUBLIC_URL: ${BPMN8N_PUBLIC_URL:-http://localhost:8090}  # the pages that may frame the preview
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    depends_on: [web, n8n, n8n-preview]
 
   # web search for Studio's domain research: SearXNG asks several search engines and answers in JSON, with
   # no API key; only the web container reaches it (no port on the host)

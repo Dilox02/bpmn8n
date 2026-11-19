@@ -10,7 +10,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
-from ..conf import settings
+from ..clients.n8n import editor_url
 
 
 class Project(models.Model):
@@ -78,7 +78,7 @@ class Project(models.Model):
 
     @property
     def n8n_url(self):
-        return f"{settings.N8N_PUBLIC_URL}/workflow/{self.n8n_id}" if self.n8n_id else ""
+        return editor_url(f"workflow/{self.n8n_id}") if self.n8n_id else ""
 
 
 class Card(models.Model):

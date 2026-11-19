@@ -8,19 +8,21 @@
 // handles move onto the shape's outline, where the flows then start and end.
 // ponytail: n8n's class names are hashed per build, so the CSS matches data-* attributes and
 // [class*=...]; an n8n upgrade that renames them only brings back n8n's own look.
-// Colours are bpmn8n's tokens (bpmn8n/static/bpmn8n/tokens.css, mounted as /static/bpmn8n-tokens.css and
+// Colours are bpmn8n's tokens (bpmn8n/static/bpmn8n/tokens.css, mounted as <base>static/bpmn8n-tokens.css and
 // linked here once for every hook), each with its old value as fallback. The canvas follows the user's n8n
 // theme: in dark mode it is flat and every node a tint from its name; in light mode n8n's own colours.
 (() => {
+  // n8n's base path: '/', or N8N_PATH behind the one-origin gateway ('/n8n/'); else from this file's own URL
+  const BASE = window.BASE_PATH || new URL('../', document.currentScript?.src || location.href).pathname;
   if (!document.querySelector('link[data-bpmn8n-tokens]')) {
-    const tokens = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: '/static/bpmn8n-tokens.css?v=1' });
+    const tokens = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: `${BASE}static/bpmn8n-tokens.css?v=1` });
     tokens.dataset.bpmn8nTokens = '';
     document.head.prepend(tokens);  // first: n8n's and the hooks' own styles come after it
   }
   // a page that embeds the preview forces its theme (?theme=dark|light); the editor follows n8n's
   const forced = new URLSearchParams(location.search).get('theme');
   const dark = forced === 'dark' ? ':root' : forced === 'light' ? null : 'body[data-theme=dark]';
-  const ICONS = '/icons/CUSTOM/nodes/icons/';
+  const ICONS = `${BASE}icons/CUSTOM/nodes/icons/`;
   const SIDE = 96, TASK = 120, DIAMOND = 64, CIRCLE = 44;  // px: BPMN's 100x80 task, 50 gateway, 36 event, scaled
   const type = t => `[data-test-id=canvas-node][data-node-type="${t}"]`;
   const bpmn = (...kinds) => kinds.map(k => type(`CUSTOM.bpmn8n${k}`));

@@ -1,8 +1,8 @@
 // Local evaluations: indexed data, conditional HTTP reads and stable DOM blocks.
 (async () => {
   const source = new URL(document.currentScript.src);
-  const { esc, number, measurement, date, metricKey, runKey, text, html, keyed, localURL, sessionURL, ApiClient, LiveUpdates, viewComponent, installRoute } =
-    await import(new URL('bpmn8n-live.mjs?v=5', source));
+  const { esc, number, measurement, date, metricKey, runKey, text, html, keyed, localURL, sessionURL, editorBase, ApiClient, LiveUpdates, viewComponent, installRoute } =
+    await import(new URL('bpmn8n-live.mjs?v=6', source));
   const backend = localURL(source.searchParams.get('bpmn8n') || 'http://localhost:8000');
   const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('bpmn8n-evaluations.css?v=4', source); document.head.append(css);
   const statuses = { passed: 'Thresholds met', failed: 'Thresholds not met', unscored: 'Measurements only' };
@@ -123,7 +123,7 @@
       const detail = this.root.querySelector('.evaluation-detail'); detail.hidden = false;
       text(detail.querySelector('h2'), `Results of run #${run.execution_id}`); text(detail.querySelector('.evaluation-label'), run.label);
       text(detail.querySelector('.evaluation-path'), run.path);
-      detail.querySelector('[data-action=execution]').href = `/workflow/${encodeURIComponent(this.workflowId)}/executions/${encodeURIComponent(run.execution_id)}`;
+      detail.querySelector('[data-action=execution]').href = `${editorBase(source)}workflow/${encodeURIComponent(this.workflowId)}/executions/${encodeURIComponent(run.execution_id)}`;
       detail.querySelector('[data-action=export]').href = sessionURL(`${this.api.base}/runs/${this.selectedKey.split('/').map(encodeURIComponent).join('/')}/export`);
       this.renderOverview();
       const comparison = new Map((this.baseline?.metrics || []).map(m => [metricKey(m), m]));

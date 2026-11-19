@@ -1,8 +1,8 @@
 // Live BPMN execution preview, with one token per invocation/input item and join queue.
 (async () => {
   const source = new URL(document.currentScript.src);
-  const { esc, date, text, html, keyed, localURL, previewURL, ApiClient, LiveUpdates, viewComponent, installRoute, decodeExecution, executionState } =
-    await import(new URL('bpmn8n-live.mjs?v=5', source));
+  const { esc, date, text, html, keyed, localURL, previewURL, editorBase, ApiClient, LiveUpdates, viewComponent, installRoute, decodeExecution, executionState } =
+    await import(new URL('bpmn8n-live.mjs?v=6', source));
   const backend = localURL(source.searchParams.get('bpmn8n') || 'http://localhost:8000');
   const preview = previewURL(source.searchParams.get('preview') || 'http://localhost:5679');
   const stylesheet = document.createElement('link'); stylesheet.rel = 'stylesheet'; stylesheet.href = new URL('bpmn8n-executions.css?v=4', source); document.head.append(stylesheet);
@@ -18,7 +18,7 @@
     constructor(workflowId, executionId, vm) {
       this.workflowId = workflowId; this.executionId = executionId; this.vm = vm;
       this.api = new ApiClient(`${backend}/api/executions/${encodeURIComponent(workflowId)}/${encodeURIComponent(executionId)}`);
-      this.native = new ApiClient('/rest');
+      this.native = new ApiClient(`${editorBase(source)}rest`);
       this.root = document.createElement('section'); this.root.className = 'bpmn8n-execution'; this.root.dataset.testId = 'live-execution'; this.root.lang = 'en'; this.root.translate = false;
       this.root.innerHTML = `<header class="execution-live-header"><div><h2>Execution #${esc(executionId)}</h2><p class="execution-status" role="status">Loading the state…</p></div>
         <div class="execution-live-actions"><button data-action="refresh">Refresh</button><button data-action="stop">Stop</button><a data-action="native" href="?native=1">n8n view / debug</a></div></header>

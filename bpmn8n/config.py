@@ -136,8 +136,18 @@ class Config(BaseModel):
         return {name: getattr(self, field) for name, field in APP_SETTINGS.items()}
 
     def compose_env(self):
-        """What docker compose cannot derive itself: the three public addresses."""
-        return {name: getattr(self, name) for name in LOCAL}
+        """What docker compose cannot derive itself: the three public addresses and, with PUBLIC_URL, the one-origin
+        gateway (compose profile one-origin, deploy/Caddyfile) with n8n under N8N_PATH behind it."""
+        env = {name: getattr(self, name) for name in LOCAL}
+        if not self.PUBLIC_URL:
+            return env
+        public, preview = urlsplit(self.BPMN8N_PUBLIC_URL), urlsplit(self.N8N_PREVIEW_URL)
+        port = public.port or (80 if public.scheme == "http" else None)  # https: a TLS proxy in front of the gateway
+        return {**env, "COMPOSE_PROFILES": "one-origin", "N8N_PATH": f"{N8N_PATH}/",
+                "N8N_EDITOR_BASE_URL": f"{self.N8N_PUBLIC_URL}/", "N8N_WEBHOOK_URL": f"{self.BPMN8N_PUBLIC_URL}/",
+                "PREVIEW_ADDRESS": f"http://{preview.hostname}", **({"GATEWAY_PORT": str(port)} if port else {}),
+                # n8n's editor refuses plain HTTP with a Secure cookie on any host but localhost
+                "N8N_PREVIEW_SECURE_COOKIE": "true" if preview.scheme == "https" else "false"}
 
     def shown(self):
         """name -> value as text, the secrets as "set" or "empty"."""
