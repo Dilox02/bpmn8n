@@ -32,12 +32,12 @@
     <section aria-labelledby="steps">
       <div class="section-head"><h2 id="steps">Steps</h2><span class="meta">open one for what it read and produced</span></div>
       {% if steps %}
-      <ol class="timeline">
+      <b8-timeline><ol class="timeline">
         {% for s in steps %}{% with e=s.event %}
-        <li class="s-{{ e.status }}">
+        <li data-status="{{ e.status }}">
           <details>
             <summary>
-              <span class="what"><span class="name">{{ e.activity }}</span>{% if s.prompt %}<span class="pill tone-warning">sent to an LLM</span>{% endif %}{% if s.by_llm %}<span class="pill tone-warning">reads an LLM's answer</span>{% endif %}
+              <span class="what"><span class="name">{{ e.activity }}</span>{% if s.prompt %}<b8-pill tone="warning">sent to an LLM</b8-pill>{% endif %}{% if s.by_llm %}<b8-pill tone="warning">reads an LLM's answer</b8-pill>{% endif %}
                 <span class="sub">{% if s.kind %}{{ s.kind }} · {% endif %}{% if e.resource == "system" %}automatic{% else %}{{ e.resource }}{% endif %}{% if e.status != "complete" %} · {{ e.status|status_label }}{% endif %}</span></span>
               <time class="num" datetime="{{ e.started|date:'c' }}">{{ e.started|date:"j M, H:i:s" }}</time>
               <span class="num dur">{% if e.status == "running" %}…{% else %}{{ e.duration_ms|duration }}{% endif %}</span>
@@ -52,7 +52,7 @@
           </details>
         </li>
         {% endwith %}{% endfor %}
-      </ol>
+      </ol></b8-timeline>
       {% if more_steps %}<p class="meta below">{{ more_steps }} later step{{ more_steps|pluralize }} not shown: the event log has every one (<a class="inline-link" href="/api/eventlog.csv">/api/eventlog.csv</a>).</p>{% endif %}
       {% else %}
       <p class="empty">No step recorded yet: the case has data, but no activity has run.</p>
@@ -68,7 +68,7 @@
         {% if d.question %}<p class="question">{{ d.question }}</p>{% endif %}
         <ul class="options">
           {% for o in d.options %}
-          <li{% if o.taken %} class="taken"{% endif %}><span class="branch">{{ o.name }}{% if o.taken %}<span class="pill tone-positive">taken</span>{% endif %}</span>{% if o.score is not None %}<span class="num score" title="Laya's confidence">{{ o.score|floatformat:2 }}</span>{% endif %}<span class="text">{% if d.conditions %}<code>{{ o.text }}</code>{% else %}{{ o.text }}{% endif %}</span></li>
+          <li{% if o.taken %} class="taken"{% endif %}><span class="branch">{{ o.name }}{% if o.taken %}<b8-pill tone="positive">taken</b8-pill>{% endif %}</span>{% if o.score is not None %}<span class="num score" title="Laya's confidence">{{ o.score|floatformat:2 }}</span>{% endif %}<span class="text">{% if d.conditions %}<code>{{ o.text }}</code>{% else %}{{ o.text }}{% endif %}</span></li>
           {% endfor %}
         </ul>
         {% if d.default %}<p class="meta">No branch held: the case took the default flow{% if not d.conditions %}, for a person to decide{% endif %}.</p>{% endif %}

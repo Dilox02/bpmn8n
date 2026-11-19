@@ -94,11 +94,11 @@ class VocabularyTest(TestCase):
 
     def test_a_status_has_its_words_and_tone_in_one_place(self):
         self.assertEqual(self.render("{{ s|status_pill }}", s="waiting_person"),
-                         '<span class="pill tone-accent">waiting for a person</span>')
-        self.assertEqual(self.render("{{ s|status_pill }}", s="completed"), '<span class="pill tone-positive">completed</span>')
+                         '<b8-pill tone="accent">waiting for a person</b8-pill>')
+        self.assertEqual(self.render("{{ s|status_pill }}", s="completed"), '<b8-pill tone="positive">completed</b8-pill>')
         self.assertEqual(self.render("{{ s|status_label }}", s="error"), "failed")
         self.assertEqual(self.render("{{ s|status_pill }}", s="<b>new</b>"),
-                         '<span class="pill tone-neutral">&lt;b&gt;new&lt;/b&gt;</span>')
+                         '<b8-pill tone="neutral">&lt;b&gt;new&lt;/b&gt;</b8-pill>')
 
     def test_durations_in_one_or_two_units(self):
         self.assertEqual([self.render("{{ ms|duration }}", ms=ms) for ms in (120, 3400, 250_000, 7_500_000, 300_000_000)],
@@ -110,7 +110,8 @@ class EveryTokenIsDefinedTest(TestCase):
         """A var(--x) nobody defines renders black or nothing (it happened when pages built in parallel kept the
         old token names): every custom property the pages use is defined in a stylesheet or set inline."""
         static, templates = Path(views.__file__).parents[1] / "static", Path(views.__file__).parents[1] / "templates"
-        sources = [*static.rglob("*.css"), *templates.rglob("*.html"), Path(views.__file__).with_name("charts.py")]
+        sources = [*static.rglob("*.css"), *static.rglob("*.js"), *templates.rglob("*.html"),  # components.js's styles
+                   Path(views.__file__).with_name("charts.py")]
         text = {path: re.sub(r"/\*.*?\*/", "", path.read_text(), flags=re.S) for path in sources if path.exists()}
         defined = {name for t in text.values() for name in re.findall(r"(--[\w-]+)\s*:", t)}
         used = {(path.name, name) for path, t in text.items() for name in re.findall(r"var\((--[\w-]+)", t)}

@@ -59,7 +59,8 @@ class Nav:
 NAV = (Nav("inbox", "Inbox", "inbox"), Nav("cases", "Cases", "cases"), Nav("insights", "Insights", "insights"),
        Nav("simulation", "Simulation", "simulation", staff=True), Nav("studio", "Studio", "studio", staff=True),
        Nav("activities", "Activities", "activities"),
-       Nav("workflows", "Workflows", "workflows"), Nav("variables", "Variables", "variables", staff=True),
+       Nav("workflows", "Workflows", "workflows"), Nav("landscape", "Landscape", "landscape"),
+       Nav("variables", "Variables", "variables", staff=True),
        Nav("docs", "Docs", "docs"))
 NAV_BOTTOM = (Nav("api-1:openapi-view", "API", "api"), Nav("N8N_PUBLIC_URL", "Editor", "editor", staff=True),
               Nav("admin:index", "Admin", "admin", staff=True))
