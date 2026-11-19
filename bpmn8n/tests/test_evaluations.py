@@ -79,7 +79,7 @@ class EvaluationsTest(SimpleTestCase):
         for query, headers in (("", {"HTTP_BROWSER_ID": "ui-browser-123"}), ("?browserId=ui-browser-123", {})):
             with patch("bpmn8n.api.evaluations.request_json", return_value={"data": {"id": "workflow1"}}) as remote, \
                     patch("bpmn8n.api.evaluations.EvaluationStore", return_value=self.store):
-                response = self.client.get(url + query, **headers)
+                response = self.client.get(url + query, HTTP_ORIGIN="http://localhost:5678", **headers)
             self.assertEqual(response.status_code, 200)
             self.assertIn("/rest/workflows/workflow1", remote.call_args.args[1])
             self.assertEqual(remote.call_args.kwargs["headers"], {"Cookie": "n8n-auth=session", "browser-id": "ui-browser-123"})

@@ -29,6 +29,8 @@ export function localURL(configured, locationURL = globalThis.location.href) {
   if (loopback.has(url.hostname) && loopback.has(location.hostname)) url.hostname = location.hostname;
   return url.href.replace(/\/$/, '');
 }
+/** n8n's base path: '/', or N8N_PATH behind the one-origin gateway ('/n8n/'); else from the hook's own URL (<base>static/…). */
+export const editorBase = (scriptURL, basePath = globalThis.BASE_PATH) => basePath || new URL('../', scriptURL).pathname;
 export function previewURL(configured) {
   const url = new URL(configured);
   // n8n permits local HTTP previews on localhost; the iframe isolates cookies with credentialless.

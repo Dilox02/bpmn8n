@@ -49,30 +49,42 @@ api.add_router("", workflows.elements)
 READ_PATHS = ("/api/evaluations/", "/api/executions/", "/api/analytics/", "/api/simulation/")
 
 
+def editor_origins():
+    """The origins of n8n's editor (N8N_PUBLIC_URL; on loopback both localhost and 127.0.0.1); none when it is a
+    path on this server's own origin ("/n8n" behind the one-origin gateway)."""
+    public = urlsplit(settings.N8N_PUBLIC_URL)
+    if not public.netloc:
+        return set()
+    origins = {f"{public.scheme}://{public.netloc}"}
+    if public.hostname in {"localhost", "127.0.0.1"}:
+        port = f":{public.port}" if public.port is not None else ""
+        origins.update(f"{public.scheme}://{host}{port}" for host in ("localhost", "127.0.0.1"))
+    return origins
+
+
 def openapi_cors(get_response):
-    """Middleware: n8n's editor (n8n-editor/node-panel.js) reads the tasks' OpenAPI from its own origin."""
+    """Middleware: n8n's editor (n8n-editor/panel.js and the other hooks) reads the tasks' OpenAPI, the elements
+    and, with its session, READ_PATHS from its own origin. A request with no Origin, or one that is not the
+    editor's (the same origin, as behind the one-origin gateway), gets no CORS header."""
     def middleware(request):
         read_path = request.path.startswith(READ_PATHS)
         preflight = read_path and request.method == "OPTIONS"
         response = HttpResponse(status=204) if preflight else get_response(request)
         evaluations_read = read_path and request.method in ("GET", "OPTIONS")
-        if request.path in ("/api/openapi.json", "/api/elements") or evaluations_read:
-            public = urlsplit(settings.N8N_PUBLIC_URL)
-            configured = f"{public.scheme}://{public.netloc}"
-            origins = {configured}
-            if public.hostname in {"localhost", "127.0.0.1"}:
-                port = f":{public.port}" if public.port is not None else ""
-                origins.update(f"{public.scheme}://{host}{port}" for host in ("localhost", "127.0.0.1"))
-            origin = request.headers.get("Origin", configured)
-            if origin in origins:
-                response["Access-Control-Allow-Origin"] = origin
-            patch_vary_headers(response, ["Origin"])
         if evaluations_read:
-            response["Access-Control-Allow-Credentials"] = "true"
             response["Cache-Control"] = "no-store"
             patch_vary_headers(response, ["Cookie"])
+        if not (evaluations_read or request.path in ("/api/openapi.json", "/api/elements")):
+            return response
+        patch_vary_headers(response, ["Origin"])
+        origin = request.headers.get("Origin")
+        if origin not in editor_origins():
+            return response
+        response["Access-Control-Allow-Origin"] = origin
+        if evaluations_read:
+            response["Access-Control-Allow-Credentials"] = "true"
             response["Access-Control-Expose-Headers"] = "ETag, Content-Disposition"
-        if request.method == "OPTIONS" and request.path.startswith(READ_PATHS):
+        if preflight:
             response["Access-Control-Allow-Headers"] = "If-None-Match, Last-Event-ID, browser-id"
             response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         return response

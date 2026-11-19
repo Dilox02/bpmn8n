@@ -172,5 +172,5 @@ def case(request, case_id):
         "audit": AuditEntry.objects.filter(case_id=case_id)[:AUDIT] if request.user.is_staff else [],
         "variables": tree(record.variables if record else {}, llm), "llm": sorted(llm),
         "workflow": workflow, "states": states, "preview_url": settings.N8N_PREVIEW_URL,
-        "n8n_url": f"{settings.N8N_PUBLIC_URL}/workflow/{workflow_id}/executions/{execution_id}" if workflow_id else "",
+        "n8n_url": n8n.editor_url(f"workflow/{workflow_id}/executions/{execution_id}") if workflow_id else "",
     })

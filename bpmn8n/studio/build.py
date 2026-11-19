@@ -266,7 +266,7 @@ class ProjectBuilder:
         self.project.save(update_fields=["n8n_id", "updated"])
         if created.get("draft"):
             note += "\nSaved as a draft of the active workflow: publish it in the n8n editor to run it"
-        return f"{settings.N8N_PUBLIC_URL}/workflow/{created['id']}{note}"
+        return n8n.editor_url(f"workflow/{created['id']}") + note
 
     def reload(self):
         """gunicorn reloads its workers on SIGHUP: they start with the new project's tasks."""
