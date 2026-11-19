@@ -120,7 +120,7 @@ class IdempotentRunTest(TestCase):
 
 
 class EncryptionTest(TestCase):
-    KEY = "sk-live-0123456789abcdef"
+    KEY = "fake-provider-key-0123456789abcdef"
 
     def raw(self, provider):
         with connection.cursor() as cursor:
