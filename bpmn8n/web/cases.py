@@ -13,13 +13,14 @@ from django.utils import timezone
 from ..api.executions import preview
 from ..clients import n8n
 from ..conf import settings
-from ..models import Case, Event, MessageSubscription, UserTask
+from ..models import AuditEntry, Case, Event, MessageSubscription, UserTask
 from ..workflows.elements import SET, element
 from ..workflows.graph import ProcessGraph
 
 # mining/log.py's SETTLE (not imported: that module loads PM4Py): nothing open and no new event for this long,
 # the case has ended
 SETTLE = timedelta(minutes=1)
+AUDIT = 50  # the newest audit entries the page shows (GET /api/audit?case_id= has them all)
 STEPS = 300  # ponytail: a case's first 300 steps; a longer one says how many more (upgrade: page the timeline)
 JSON_CHARS = 6000  # what a step's input or output shows, at most
 
@@ -168,6 +169,7 @@ def case(request, case_id):
         "steps": [step(e, graph, llm) for e in events], "more_steps": total - len(events),
         "decisions": [decision(e) for e in events if isinstance(e.data, dict) and e.data.get("decider")],
         "tasks": tasks, "subscriptions": messages,  # not "messages": the base template shows those
+        "audit": AuditEntry.objects.filter(case_id=case_id)[:AUDIT] if request.user.is_staff else [],
         "variables": tree(record.variables if record else {}, llm), "llm": sorted(llm),
         "workflow": workflow, "states": states, "preview_url": settings.N8N_PREVIEW_URL,
         "n8n_url": f"{settings.N8N_PUBLIC_URL}/workflow/{workflow_id}/executions/{execution_id}" if workflow_id else "",

@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin
 from django.shortcuts import redirect
 
-from .models import Card, LLMProvider, MessageSubscription, Project, Settings, TransitionError, UserTask
+from .models import AuditEntry, Card, LLMProvider, MessageSubscription, Project, Settings, TransitionError, UserTask
 
 
 @admin.action(description="Cancel the selected waiting activities")
@@ -61,6 +61,22 @@ class SettingsAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         return redirect("admin:bpmn8n_settings_change", Settings.load().pk)
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if form.changed_data:
+            AuditEntry.write("settings.change", obj, fields=form.changed_data)
+
+    def save_formset(self, request, form, formset, change):
+        """The providers added, changed (which fields: never a key's value) and deleted, in the audit log."""
+        deleted = [(f.instance.pk, f.instance.name) for f in formset.deleted_forms if f.instance.pk]
+        super().save_formset(request, form, formset, change)
+        for provider in formset.new_objects:
+            AuditEntry.write("llmprovider.add", provider, name=provider.name)
+        for provider, fields in formset.changed_objects:
+            AuditEntry.write("llmprovider.change", provider, name=provider.name, fields=fields)
+        for pk, name in deleted:
+            AuditEntry.write("llmprovider.delete", object_type="llmprovider", object_id=pk, name=name)
+
 
 class CardInline(admin.TabularInline):
     model = Card
@@ -76,3 +92,22 @@ class ProjectAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     readonly_fields = ("slug", "n8n_id")
     inlines = [CardInline]
+
+
+@admin.register(AuditEntry)
+class AuditEntryAdmin(admin.ModelAdmin):
+    """Read-only, for superusers too: nobody adds, changes or deletes an entry."""
+
+    list_display = ("at", "actor", "action", "object_type", "object_id", "case_id", "ip")
+    list_filter = ("action", "object_type")
+    search_fields = ("actor", "case_id", "object_id")
+    date_hierarchy = "at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -25,6 +25,7 @@ from ninja import Router, Schema
 from ..clients.extraction import Extractor, field_specs
 from ..core.cases import CaseData
 from ..core.observability import measure, profiled, record
+from ..models import TaskRun
 from ..workflows.builder import TASK_KINDS
 from .errors import upstream
 
@@ -157,10 +158,29 @@ class Task:
             return self.run_in_case(request, data)
 
         router.post(f"/{self.name}/run", operation_id=f"{self.name}_run", tags=[self.kind],
-                    response={200: RunOut, 422: dict})(run)
+                    response={200: RunOut, 409: dict, 422: dict})(run)
 
     def run_in_case(self, request, data: RunIn):
+        """Runs the task in the request's case. n8n repeating a run (retryOnFail, a worker restart: the same case,
+        node, run index and item index) gets the first answer back and the function does not run again, so a
+        send task never sends twice (TaskRun); a run that failed stored nothing, so its retry runs."""
         case = CaseData(request, data.item)
+        run, answer = TaskRun.claim(self.name, case.trace)
+        if answer is not None:
+            return answer
+        try:
+            status, body = self.run_with(request, case, data)
+        except BaseException:
+            if run:
+                run.delete()
+            raise
+        if run and status == 200:
+            run.done({"result": as_data(body["result"]), "extracted": body["extracted"]})
+        elif run:
+            run.delete()
+        return status, body
+
+    def run_with(self, request, case, data):
         extracted = {}
         if data.text is not None:
             with upstream(), measure(f"extract:{self.name}"):

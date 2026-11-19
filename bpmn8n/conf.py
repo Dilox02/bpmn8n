@@ -14,6 +14,8 @@ DEFAULTS = {
     "LAYA_TIMEOUT": float(os.environ.get("LAYA_TIMEOUT", 10)),  # per attempt; a decision takes ~20 ms on GPU
     "LAYA_BUSY_TIMEOUT": float(os.environ.get("LAYA_BUSY_TIMEOUT", 60)),  # total seconds of retries
     "API_TOKEN": os.environ.get("BPMN8N_API_TOKEN", ""),  # empty = API open (dev only)
+    # what the LLM providers' API keys are encrypted with (core/crypto.py); empty: derived from SECRET_KEY
+    "FIELD_ENCRYPTION_KEY": os.environ.get("FIELD_ENCRYPTION_KEY", ""),
     "N8N_URL": os.environ.get("N8N_URL", "http://localhost:5678"),  # where bpmn8n reaches n8n
     "N8N_PUBLIC_URL": os.environ.get("N8N_PUBLIC_URL", "http://localhost:5678"),  # where a browser does
     "N8N_PREVIEW_URL": os.environ.get("N8N_PREVIEW_URL", "http://localhost:5679"),  # read-only canvas, embedded

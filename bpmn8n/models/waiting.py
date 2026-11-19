@@ -28,6 +28,7 @@ from ..conf import settings
 from ..core.streaming import publish
 from ..workflows import builder
 from .cases import Case, Event
+from .safety import AuditEntry
 
 
 class TransitionError(Exception):
@@ -80,22 +81,29 @@ class WaitingActivity(models.Model):
         """The n8n execution (what n8n's executions list shows as its ID)."""
         return self.case_id.rpartition(":")[2]
 
-    def transition(self, action, **fields):
-        """Moves to the state `action` leads to, if the current state allows it."""
+    def transition(self, action, actor=None, **fields):
+        """Moves to the state `action` leads to, if the current state allows it, and writes it in the audit log:
+        `actor` (a user or a name) did it, or whoever the request being served is from (AuditEntry.write)."""
         sources, target = self.TRANSITIONS[action]
         moved = type(self).objects.filter(pk=self.pk, status__in=sources).update(status=target, **fields)
         self.refresh_from_db()
         if not moved:
             raise TransitionError(f"cannot {action} “{self}”: it is {self.status}")
+        details = {"activity": self.activity, "status": self.status}
+        if action in ("reassign", "delegate"):
+            details["assignee"] = getattr(self.assignee, "username", None)
+        if action == "cancel":
+            details["reason"] = self.reason
+        AuditEntry.write(f"{self._meta.model_name}.{action}", self, actor=actor, **details)
 
-    def cancel(self, reason):
-        self.transition("cancel", completed=timezone.now(), reason=reason[:500])
+    def cancel(self, reason, actor=None):
+        self.transition("cancel", actor=actor, completed=timezone.now(), reason=reason[:500])
 
     @staticmethod
     def registration_id(*parts):
         return uuid.uuid5(uuid.NAMESPACE_URL, json.dumps(parts)).hex
 
-    def finish(self, resource, **fields):
+    def finish(self, resource, actor=None, **fields):
         """Completes it and, once nothing else of the same wait is pending, resumes n8n. All in one
         transaction: if n8n does not take the resume nothing changes and it can be finished again;
         if n8n no longer waits, the whole wait is cancelled (raises Cancelled)."""
@@ -105,7 +113,7 @@ class WaitingActivity(models.Model):
                 list(self.group().select_for_update().order_by("pk"))  # one finisher at a time per wait
                 self.refresh_from_db()
                 fields = self.completion_fields(fields)
-                self.transition("complete", completed=now, **fields)
+                self.transition("complete", actor=actor, completed=now, **fields)
                 self.close_rivals(now)
                 if self.case_id:  # what the person or the message brought becomes process data
                     Case.merge(self.case_id, self.process, self.output())
@@ -181,8 +189,16 @@ class UserTaskQuerySet(WaitingQuerySet):
         """Marks expired the tasks whose interrupting deadline passed: lazily, whenever tasks are read,
         and by `manage.py expire_tasks`. One conditional update, so a completion cannot slip past it.
         Returns how many expired."""
-        return self.filter(status__in=UserTask.WAITING, deadline=True, due__lte=timezone.now()).update(
-            status=UserTask.EXPIRED, completed=F("due"), reason="deadline passed")
+        with transaction.atomic():
+            due = list(self.filter(status__in=UserTask.WAITING, deadline=True, due__lte=timezone.now())
+                       .select_for_update().values_list("pk", "case_id", "activity"))
+            if due:
+                UserTask.objects.filter(pk__in=[pk for pk, _, _ in due]).update(
+                    status=UserTask.EXPIRED, completed=F("due"), reason="deadline passed")
+            for pk, case_id, activity in due:
+                AuditEntry.write("usertask.expire", actor="system", object_type="usertask", object_id=pk,
+                                 case_id=case_id, activity=activity, status=UserTask.EXPIRED)
+        return len(due)
 
 
 class UserTask(WaitingActivity):
@@ -413,13 +429,13 @@ class UserTask(WaitingActivity):
                 if why := self.barred(to):
                     raise TransitionError(why)
                 fields |= {"assignee": to, "claimed": timezone.now()}
-            self.transition(action, **fields)
+            self.transition(action, actor=user, **fields)
 
     def complete(self, user, result):
         """`user` None: a system completes it through the API."""
         if self.past_deadline():
             self.expire_if_due()  # committed before finish(), whose transaction a refusal rolls back
-        self.finish(getattr(user, "username", None) or "api", result=result, assignee=user)
+        self.finish(getattr(user, "username", None) or "api", actor=user, result=result, assignee=user)
 
     def completion_fields(self, fields):
         self.check_action(fields.get("assignee"), "complete")

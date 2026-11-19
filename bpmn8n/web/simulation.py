@@ -20,6 +20,7 @@ from ..analytics import Log, Scope
 from ..analytics import stats as logstats
 from ..analytics.log import duration_text
 from ..api.simulation import MAX_CASES, STAFFING_BUDGET, cases, project_folder, source, sources
+from ..models import AuditEntry
 from ..simulation import analytic, des, optimise, scenarios
 from ..simulation.calibrate import calibrate
 from ..simulation.spec import UNITS, SimModel, SimSpec, SpecError, load
@@ -417,6 +418,7 @@ def simulation(request):
         text = request.POST.get("spec", "")
         try:
             path = save(folder, text)
+            AuditEntry.write("simulation.save", object_type="project", object_id=folder.name, path=str(path))
             messages.success(request, f"Saved {path}: the page now reads it.")
             return redirect(request.get_full_path())
         except ValueError as e:

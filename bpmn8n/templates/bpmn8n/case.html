@@ -95,6 +95,17 @@
       {% endif %}
     </section>
 
+    {% if audit %}
+    <section class="panel" aria-labelledby="audit">
+      <header><h2 id="audit">Audit</h2><span class="meta">who did what, newest first</span></header>
+      <ul class="rows">
+        {% for a in audit %}
+        <li class="row"><span class="grow"><span class="name"><code>{{ a.action }}</code></span><span class="sub">{{ a.actor }} · {{ a.at|date:"j M, H:i:s" }}{% if a.details.activity %} · {{ a.details.activity }}{% endif %}</span></span></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
     <section class="panel" aria-labelledby="variables">
       <header><h2 id="variables">Variables</h2><span class="meta">what the case knows now</span></header>
       {% if variables %}
