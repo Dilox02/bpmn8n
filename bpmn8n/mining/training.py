@@ -64,7 +64,7 @@ class TrainingData:
                 yield {"case_id": case_id, "process": e[PROCESS], "split": s, "gateway": e[ACTIVITY],
                        "decider": d["decider"], "question": d["input"].get("question"), "options": d["input"].get("options"),
                        "state": d["input"].get("state"), "taken": d["output"]["branches"], "scores": d["output"]["scores"],
-                       "outcome": self.outcome[case_id]}
+                       "outcome": self.outcome[case_id], "overridden": d.get("overridden"), "final": d.get("final")}
 
     DATASETS = ("prefixes", "decisions")
 

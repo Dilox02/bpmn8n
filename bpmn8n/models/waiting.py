@@ -117,6 +117,8 @@ class WaitingActivity(models.Model):
                 self.transition("complete", actor=actor, completed=now, **fields)
                 self.close_rivals(now)
                 if self.case_id:  # what the person or the message brought becomes process data
+                    from ..core.overrides import capture  # J6: a form that changes an automatic outcome is kept
+                    capture(self.case_id, self.output())
                     Case.merge(self.case_id, self.process, self.output())
                 publish(Event.objects.create(case_id=self.case_id, activity=self.activity, process=self.process,
                                      endpoint=self.bpmn_type, started=self.created, ended=now, status="complete",
