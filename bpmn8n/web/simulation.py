@@ -263,7 +263,7 @@ def simulate(model, state, a):
         label, kind = METRICS.get(key) or (f"Utilisation of {key.removeprefix('utilisation ')}", "share")
         half = m["ci"][level]
         rows.append({"label": label, "mean": show(kind, m["mean"], unit), "half": show(kind, half, unit),
-                     "low": show(kind, None if half is None else m["mean"] - half, unit),
+                     "low": show(kind, None if half is None else max(0.0, m["mean"] - half), unit),  # none is negative
                      "high": show(kind, None if half is None else m["mean"] + half, unit)})
     bins = result["cycle_time_histogram"]
     histogram = charts.bars(bins, label="Cycle time of the completed cases", value=lambda b: b["count"],
@@ -376,7 +376,9 @@ def simulation(request):
     state = {k: request.GET.get(k, "").strip() for k in (*LIGHT, *HEAVY)}
     state.update({k: v.strip() for k, v in request.GET.items() if k.startswith("c:")})
     catalogue, processes = sources(), logstats.processes()
-    if not state["project"] and state["process"]:  # a process run by a workflow we know: simulate it on that
+    # ponytail: a log's process is simulated on the project or example named like it, else only calibrated.
+    # Upgrade: read its workflow from n8n by the case ids' workflow id (clients.n8n.workflow), as /overlay does.
+    if not state["project"] and state["process"]:
         state["project"] = next((k for k, name in catalogue.items() if name == state["process"]), "")
     context = {"state": state, "sources": catalogue, "processes": processes, "levels": LEVELS, "unit": "minutes",
                "here": request.get_full_path()}

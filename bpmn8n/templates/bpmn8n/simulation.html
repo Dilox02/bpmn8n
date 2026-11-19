@@ -249,7 +249,7 @@
 
 {% if now %}
 <section class="block" aria-labelledby="spec">
-  <div class="section-head"><h2 id="spec">Spec</h2><span class="meta">what the simulation runs on: {% if spec.path %}<span class="mono">{{ spec.path }}</span>{% else %}the defaults{% endif %}, the elements' defaults{% if calibrated %}, the log{% endif %}{% if changed %} and the what-if{% endif %}</span></div>
+  <div class="section-head"><h2 id="spec">Spec</h2><span class="meta">what the simulation runs on: {% if spec.file %}<span class="mono">{{ spec.path }}</span>{% else %}no spec file yet{% endif %}, the elements' defaults{% if calibrated %}, the log{% endif %}{% if changed %} and the what-if{% endif %}</span></div>
   <p class="meta">Arrivals: {{ spec.arrivals.type }}{% if spec.arrivals.rate %} · {{ spec.arrivals.rate|per_hour:unit }}{% endif %}{% if spec.arrivals.count %} · {{ spec.arrivals.count }} cases{% endif %}.</p>
   <div class="table-wrap">
     <table>
