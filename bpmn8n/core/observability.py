@@ -18,14 +18,12 @@ from django.db.models import Avg, Count, Max, Q
 from django.utils import timezone
 
 from ..models import Event
+from .headers import HEADERS
 from .streaming import publish
 
 log = logging.getLogger("bpmn8n")
 
-PROFILE_HEADER = "X-Bpmn8n-Profile"  # "1" -> run the call under Profiler
-CASE_HEADER = "X-Bpmn8n-Case"  # n8n execution id = process instance (case) id
-ACTIVITY_HEADER = "X-Bpmn8n-Activity"  # n8n node name = activity label
-PROCESS_HEADER = "X-Bpmn8n-Process"  # n8n workflow name = the process the case belongs to
+PROFILE_HEADER, CASE_HEADER, ACTIVITY_HEADER, PROCESS_HEADER = (HEADERS[k] for k in ("profile", "case", "activity", "process"))
 
 
 @dataclass(frozen=True)
@@ -47,7 +45,8 @@ class Trace:
             value = h.get(header, "")
             return int(value) if value.isascii() and value.isdigit() and len(value) < 10 else None
         return cls(*(unquote(h.get(name, "")) for name in (CASE_HEADER, ACTIVITY_HEADER, PROCESS_HEADER)),
-                   node_id=unquote(h.get("X-Bpmn8n-Node", "")), run_index=index("X-Bpmn8n-Run"), item_index=index("X-Bpmn8n-Item"))
+                   node_id=unquote(h.get(HEADERS["node"], "")), run_index=index(HEADERS["run"]),
+                   item_index=index(HEADERS["item"]))
 
 _profiles = {}  # endpoint -> last profile report (a debugging aid: kept per worker process)
 _current = ContextVar("span", default=None)

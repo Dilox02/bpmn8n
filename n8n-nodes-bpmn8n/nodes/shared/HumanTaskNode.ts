@@ -1,4 +1,5 @@
 import type { IDataObject, IExecuteFunctions, INodeProperties, IWebhookFunctions } from 'n8n-workflow';
+import type { FormField, UserTaskIn } from './contract';
 import { deadline, durationProperties } from './duration';
 import { VARIABLES_HINT } from './input';
 import { WaitingNode } from './WaitingNode';
@@ -143,11 +144,11 @@ const PROPERTIES: INodeProperties[] = [
 ];
 
 /** What the node sends bpmn8n besides title, form and context: the SLA, priority and actor rules. */
-export function peopleRequest(ctx: IExecuteFunctions): IDataObject {
+export function peopleRequest(ctx: IExecuteFunctions): Partial<UserTaskIn> {
 	const mode = ctx.getNodeParameter('due', 0, 'none') as string;
-	const completion = ctx.getNodeParameter('completion', 0, 'all') as string;
+	const completion = ctx.getNodeParameter('completion', 0, 'all') as 'all' | 'any' | 'atLeast';
 	return {
-		priority: ctx.getNodeParameter('priority', 0, 'normal') as string,
+		priority: ctx.getNodeParameter('priority', 0, 'normal') as UserTaskIn['priority'],
 		// a time span ends from now; a date may be a {{variable}}, which bpmn8n fills in from the case
 		due: mode === 'none' ? '' : mode === 'until' ? String(ctx.getNodeParameter('dueUntil', 0, '')) : deadline(ctx, 0, 'due').toISOString(),
 		deadline: hasDeadline(ctx),
@@ -194,12 +195,12 @@ export abstract class HumanTaskNode extends WaitingNode {
 					title: ctx.getNodeParameter('title', 0) as string,
 					lane: ctx.getNodeParameter('lane', 0) as string,
 					description: ctx.getNodeParameter('description', 0) as string,
-					form: ((ctx.getNodeParameter('form', 0) as { fields?: IDataObject[] }).fields ?? []) as IDataObject[],
+					form: (ctx.getNodeParameter('form', 0) as { fields?: FormField[] }).fields ?? [],
 					context: typeof context === 'string' ? JSON.parse(context || '{}') : context ?? {},
 					resume_url: resumeUrl,
 					items,
 					...peopleRequest(ctx),
-				});
+				} satisfies UserTaskIn);
 			},
 		});
 	}

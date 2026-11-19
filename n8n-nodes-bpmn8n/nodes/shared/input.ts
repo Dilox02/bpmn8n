@@ -1,4 +1,5 @@
 import type { IDataObject, INodeProperties } from 'n8n-workflow';
+import type { RunIn, RunOut } from './contract';
 
 export type InputMode = 'fields' | 'text';
 
@@ -80,13 +81,13 @@ export function inputRequest(
 	text = '',
 	minConfidence = 0.5,
 	verify = false,
-) {
+): { path: string; body: RunIn } {
 	const filled = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null && v !== undefined && v !== ''));
 	const extraction = mode === 'text' ? { text, min_confidence: minConfidence, verify } : {};
 	return { path: `${path}/run`, body: { fields: filled, item, ...extraction } };
 }
 
 /** The task result and what GLiNER extracted (empty for field input). */
-export function unpackReply(reply: IDataObject) {
-	return { result: reply.result as IDataObject, extraction: reply.extracted as IDataObject };
+export function unpackReply(reply: RunOut) {
+	return { result: reply.result as IDataObject, extraction: reply.extracted as IDataObject | undefined };
 }

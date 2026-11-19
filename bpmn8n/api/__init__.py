@@ -24,6 +24,7 @@ from . import (
     variables,
     workflows,
 )
+from .contract import API_VERSION
 from .tasks import TASKS, Task, TaskError, discover, task, task_modules
 
 
@@ -33,7 +34,7 @@ def token_auth(request):
     )
 
 
-api = NinjaAPI(title="bpmn8n", version="1", auth=token_auth)
+api = NinjaAPI(title="bpmn8n", version=API_VERSION, auth=token_auth)
 for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks", usertasks),
                        ("/messages", messages), ("/workflows", workflows), ("/evaluations", evaluations),
                        ("/executions", executions), ("/analytics", analytics), ("/variables", variables), ("/history", history),

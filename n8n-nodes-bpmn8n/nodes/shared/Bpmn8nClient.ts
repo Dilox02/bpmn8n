@@ -8,6 +8,7 @@ import type {
 	INodeTypeDescription,
 	NodeConnectionType,
 } from 'n8n-workflow';
+import { CONTRACT_VERSION, HEADERS } from './contract';
 import { OpenApiSpec, type OpenApiDoc } from './OpenApiSpec';
 
 type Context = IExecuteFunctions | ILoadOptionsFunctions;
@@ -20,6 +21,8 @@ export const CREDENTIALS = 'bpmn8nApi';
 export const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
 
 export class Bpmn8nClient {
+	private warned = false;
+
 	constructor(private readonly ctx: Context) {}
 
 	async spec(): Promise<OpenApiSpec> {
@@ -29,37 +32,44 @@ export class Bpmn8nClient {
 	/** POSTs `body`; during an execution it also tells bpmn8n which process (workflow), case and
 	 * activity (node) the call belongs to, for the event log. The case is "<workflow id>:<execution
 	 * id>": execution ids alone repeat across workflows and after a database migration. Values
-	 * are URI-encoded, since node and workflow names need not be ASCII. */
-	async post(path: string, body: IDataObject, itemIndex = 0): Promise<IDataObject> {
+	 * are URI-encoded, since node and workflow names need not be ASCII. `body` is one of the server's request
+	 * shapes (./contract, generated from them), `T` its reply's. */
+	async post<T = IDataObject>(path: string, body: object, itemIndex = 0): Promise<T> {
 		const ctx = this.ctx;
-		const headers =
+		const headers: IDataObject =
 			'getExecutionId' in ctx
 				? {
-						'X-Bpmn8n-Case': encodeURIComponent(`${ctx.getWorkflow().id}:${ctx.getExecutionId()}`),
-						'X-Bpmn8n-Process': encodeURIComponent(ctx.getWorkflow().name ?? ''),
-						'X-Bpmn8n-Activity': encodeURIComponent(ctx.getNode().name),
-						'X-Bpmn8n-Node': encodeURIComponent(ctx.getNode().id),
-						'X-Bpmn8n-Item': String(itemIndex),
-						'X-Bpmn8n-Run': String('getWorkflowDataProxy' in ctx ? ctx.getWorkflowDataProxy(itemIndex).$runIndex ?? '' : ''),
+						[HEADERS.case]: encodeURIComponent(`${ctx.getWorkflow().id}:${ctx.getExecutionId()}`),
+						[HEADERS.process]: encodeURIComponent(ctx.getWorkflow().name ?? ''),
+						[HEADERS.activity]: encodeURIComponent(ctx.getNode().name),
+						[HEADERS.node]: encodeURIComponent(ctx.getNode().id),
+						[HEADERS.item]: String(itemIndex),
+						[HEADERS.run]: String('getWorkflowDataProxy' in ctx ? ctx.getWorkflowDataProxy(itemIndex).$runIndex ?? '' : ''),
 					}
 				: {};
-		return (await this.request('POST', path, body, headers)) as IDataObject;
+		return (await this.request('POST', path, body as IDataObject, headers)) as T;
 	}
 
 	/** The reply's body; an error reply fails with bpmn8n's own explanation (its `detail`), which
-	 * n8n's generic HTTP error would hide. */
+	 * n8n's generic HTTP error would hide. Every call says which contract the nodes were built for: a server
+	 * that speaks another one still answers, with a warning shown once in the node's output. */
 	async request(method: IHttpRequestMethods, path: string, body?: IDataObject, headers: IDataObject = {}): Promise<unknown> {
 		const { baseUrl } = await this.ctx.getCredentials(CREDENTIALS);
 		const reply = (await this.ctx.helpers.httpRequestWithAuthentication.call(this.ctx, CREDENTIALS, {
 			method,
 			url: String(baseUrl).replace(/\/$/, '') + path,
 			body,
-			headers,
+			headers: { ...headers, [HEADERS.contract]: CONTRACT_VERSION },
 			json: true,
 			timeout: REQUEST_TIMEOUT_MS,
 			returnFullResponse: true,
 			ignoreHttpStatusErrors: true,
-		})) as { statusCode: number; body: IDataObject | string };
+		})) as { statusCode: number; body: IDataObject | string; headers?: Record<string, string | undefined> };
+		const warning = reply.headers?.[HEADERS.warning.toLowerCase()];
+		if (warning && !this.warned && 'addExecutionHints' in this.ctx) {
+			this.warned = true;
+			this.ctx.addExecutionHints({ message: `bpmn8n: ${warning}`, type: 'warning', location: 'outputPane' });
+		}
 		if (reply.statusCode >= 400) {
 			const detail = typeof reply.body === 'object' ? (reply.body.detail ?? JSON.stringify(reply.body)) : reply.body;
 			throw new NodeOperationError(this.ctx.getNode(), `bpmn8n ${method} ${path}: ${reply.statusCode} ${detail}`);
