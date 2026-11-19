@@ -863,6 +863,68 @@ scrape_configs:
       - targets: ["web:8000"]
 ```
 
+### Configuration
+
+Every variable bpmn8n reads is a field of one model, `bpmn8n/config.py` (pydantic): typed, with its default and what it
+sets. Django's settings, `bpmn8n.conf.settings` and the CLI read it; nothing else reads the environment (a test says so).
+`python manage.py config` prints the configuration in effect, with secrets shown only as `set` or `empty`
+(`--env` as `NAME=value` lines, `--json`); inside the stack: `docker compose exec web python manage.py config`.
+
+**One public address.** Set `PUBLIC_URL` and the three addresses a browser uses follow from it: bpmn8n's pages at
+`PUBLIC_URL`, the n8n editor at `PUBLIC_URL/n8n`, the read-only preview at `preview.<host>` (the preview must stay on its
+own host: it would clear the editor's cookies on a shared origin). Any of the three set explicitly keeps priority, so
+setups that set them today change nothing; without `PUBLIC_URL` they stay on the local ports. `python -m bpmn8n up`
+hands the derived values to docker compose.
+
+This table is generated (`python manage.py config --md`; a test fails when it is stale):
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `PUBLIC_URL` | (empty) | The one address people open (e.g. `https://bpmn8n.example.org`): the three below derive from it when they are not set |
+| `BPMN8N_PUBLIC_URL` | derived | Where a browser opens bpmn8n's pages (the human task nodes link to them). Derived: `PUBLIC_URL`, else `http://localhost:8000` |
+| `N8N_PUBLIC_URL` | derived | Where a browser opens the n8n editor (links, CORS for the editor's hooks). Derived: `PUBLIC_URL` + `/n8n`, else `http://localhost:5678` |
+| `N8N_PREVIEW_URL` | derived | The read-only canvas Studio and the case page embed. Derived: `preview.` + `PUBLIC_URL`'s host, else `http://localhost:5679` |
+| `SECRET_KEY` | `dev-only-insecure-key` | Django's secret key; `DEBUG=0` refuses the default |
+| `DEBUG` | `1` | `1` development, `0` production (the web image sets it) |
+| `ALLOWED_HOSTS` | `*` | Host names this server answers to, comma-separated; `DEBUG=0` refuses `*` |
+| `CSRF_TRUSTED_ORIGINS` | (empty) | Origins allowed to post forms, e.g. `https://bpmn8n.example.org` |
+| `SECURE_PROXY_SSL_HEADER` | (empty) | The header a TLS proxy sets to `https`, e.g. `X-Forwarded-Proto` |
+| `SECURE_SSL_REDIRECT` | `0` | `1`: Django redirects to HTTPS (`/api/` exempt) |
+| `HSTS_SECONDS` | `31536000` | HSTS max-age with `DEBUG=0` |
+| `HSTS_INCLUDE_SUBDOMAINS` | `1` | HSTS covers subdomains |
+| `HSTS_PRELOAD` | `0` | `1`: ask for the browsers' preload lists |
+| `BPMN8N_API_TOKEN` | (empty) | Bearer token of the API (n8n's credential and Prometheus send it); empty: the API is open (development only) |
+| `FIELD_ENCRYPTION_KEY` | (empty) | Encrypts the LLM providers' keys at rest; empty: derived from `SECRET_KEY` |
+| `BPMN8N_DRAFT` | (empty) | Set by Studio's checks: the draft project loaded in place of its published version |
+| `POSTGRES_HOST` | (empty) | Postgres host; empty: SQLite at `DB_PATH` |
+| `POSTGRES_DB` | `bpmn8n` | Postgres database |
+| `POSTGRES_USER` | `bpmn8n` | Postgres user |
+| `POSTGRES_PASSWORD` | (empty) | Postgres password (compose: `bpmn8n-dev` unless set) |
+| `DB_PATH` | (empty) | SQLite file; empty: `db.sqlite3` in the checkout |
+| `N8N_URL` | `http://localhost:5678` | Where bpmn8n reaches n8n (compose: `http://n8n:5678`) |
+| `N8N_API_KEY` | (empty) | n8n's public API key (the CLI creates it): conformance, Studio and `workflows diff/push/pull` |
+| `N8N_CREDENTIAL` | (empty) | Id of the n8n credential bpmn8n's nodes use (the CLI creates it) |
+| `N8N_EMAIL` | (empty) | n8n owner login the CLI uses to create the credential and the API key |
+| `N8N_PASSWORD` | (empty) | Its password |
+| `LAYA_URL` | `http://localhost:8001/v1/systemone` | Laya, the decision model |
+| `LAYA_API_KEY` | (empty) | Laya's bearer token, if it needs one |
+| `LAYA_TIMEOUT` | `10.0` | Seconds per Laya attempt |
+| `LAYA_BUSY_TIMEOUT` | `60.0` | Seconds of retries while a model server is busy |
+| `EXTRACTOR_URL` | `http://localhost:8001/v1/extract` | GLiNER2.5 extraction |
+| `OCR_URL` | `http://localhost:8001/v1/ocr` | OCR (Vision, on a Mac) |
+| `MODELS_API_KEY` | (empty) | The models server's bearer token, if it needs one |
+| `SEARCH_URL` | (empty) | SearXNG, for Studio's domain research; empty: none |
+| `REDIS_URL` | (empty) | Global variables and the event stream; empty: the database |
+| `EVENT_STREAM_MAXLEN` | `100000` | Length of the Redis stream `bpmn8n:events` |
+| `EVENT_WEBHOOKS` | (empty) | URLs that receive every finished step, comma-separated |
+| `EMAIL_BACKEND` | `django.core.mail.backends.console.EmailBackend` | Django's e-mail backend |
+| `LOG_FORMAT` | (empty) | `json`: one JSON object per log line |
+| `STATIC_ROOT` | (empty) | Where collectstatic writes; empty: `staticfiles/` in the checkout |
+| `GUNICORN_PID` | `/tmp/gunicorn.pid` | gunicorn's pid file: Studio reloads it with new tasks |
+| `WEB_WORKERS` | `4` | gunicorn worker processes (compose) |
+| `SEARXNG_SECRET` | `bpmn8n-dev-searxng` | SearXNG's secret (compose) |
+| `BPMN8N_WEB_IMAGE` | `bpmn8n-web:latest` | The web image of `docker-compose.prod.yml` |
+
 ### Data safety
 
 - **A retried task runs once.** Every call an n8n node makes carries its run's identity (`X-Bpmn8n-Case`, `-Node`,
