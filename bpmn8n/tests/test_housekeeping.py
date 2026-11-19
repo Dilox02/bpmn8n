@@ -11,7 +11,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.management import call_command
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from .. import __version__, cli
@@ -102,7 +102,7 @@ class SchedulerTest(SimpleTestCase):
     def test_loop_sleeps_between_ticks(self):
         slept, ran = [], []
         scheduler.loop([scheduler.Job("a", 60)], ran.append, clock=lambda: len(slept) * 10, sleep=slept.append, ticks=7)
-        self.assertEqual((len(ran), slept), (2, [10] * 7))  # at 0 and 60
+        self.assertEqual((len(ran), slept), (2, [10] * 6))  # at 0 and 60
 
     def test_jobs_follow_the_checkout_and_prune_days(self):
         root = Path(tempfile.mkdtemp())
@@ -167,6 +167,23 @@ class StatusDotsTest(TestCase):
         html = self.client.get("/status/").content.decode()
         self.assertIn("database", html)
         self.assertIn("Hints", html)
+
+
+class WaitingCountTest(TestCase):
+    """What the strip in n8n's editor reads beside Inbox."""
+
+    @override_settings(API_TOKEN="secret", N8N_PUBLIC_URL="http://localhost:5678")
+    def test_the_count_takes_the_token_or_an_n8n_session_and_counts_workable_tasks(self):
+        UserTask.objects.create(activity="A", title="a", resume_url="x", due=timezone.now() - timedelta(days=1))
+        UserTask.objects.create(activity="B", title="b", resume_url="x")
+        UserTask.objects.create(activity="C", title="c", resume_url="x", status=UserTask.SUSPENDED)
+        UserTask.objects.create(activity="D", title="d", resume_url="x", status=UserTask.COMPLETED)
+        self.assertEqual(self.client.get("/api/executions/w/waiting").status_code, 401)
+        self.client.cookies["n8n-auth"] = "session"
+        with mock.patch("bpmn8n.api.evaluations.request_json"):
+            r = self.client.get("/api/executions/w/waiting", HTTP_ORIGIN="http://localhost:5678")
+        self.assertEqual(r.json(), {"waiting": 2, "overdue": 1})
+        self.assertEqual(r["Access-Control-Allow-Origin"], "http://localhost:5678")
 
 
 class PruneTest(TestCase):

@@ -44,4 +44,5 @@ def loop(todo, run, *, clock=time.monotonic, sleep=time.sleep, step=10, ticks=No
     while ticks is None or n < ticks:
         tick(todo, last, clock(), run)
         n += 1
-        sleep(step)
+        if ticks is None or n < ticks:
+            sleep(step)

@@ -4,13 +4,19 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from ..core.evaluations import EvaluationStore
-from ..models import Event
+from ..models import Event, UserTask
 from .conditional import conditional, revision
 from .evaluations import evaluation_read_auth
 from .tasks import TASKS
 from .stream import ChangeStream
 
 router = Router(tags=["executions"])
+
+
+@router.get("/{workflow_id}/waiting", auth=evaluation_read_auth)
+def waiting(request, workflow_id: str):
+    """How many tasks wait for people (the inbox's count): what the strip in n8n's editor shows beside Inbox."""
+    return {"waiting": UserTask.objects.workable().count(), "overdue": UserTask.objects.workable().overdue().count()}
 
 
 @router.get("/{workflow_id}/{execution_id}/stream", auth=evaluation_read_auth)
