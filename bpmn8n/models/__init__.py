@@ -1,3 +1,4 @@
+from .analysis import Snapshot
 from .cases import Case, Event
 from .config import LLMProvider, Settings
 from .history import WorkflowVersion
@@ -7,4 +8,4 @@ from .studio import Card, Project
 from .waiting import Cancelled, MessageSubscription, Reminder, TransitionError, UserTask
 
 __all__ = ["AppendOnly", "AuditEntry", "Cancelled", "Card", "Case", "Event", "GlobalVariable", "LLMProvider",
-           "MessageSubscription", "Project", "Reminder", "Settings", "TaskRun", "TransitionError", "UserTask", "WorkflowVersion"]
+           "MessageSubscription", "Project", "Reminder", "Settings", "Snapshot", "TaskRun", "TransitionError", "UserTask", "WorkflowVersion"]

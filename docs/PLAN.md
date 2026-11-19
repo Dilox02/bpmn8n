@@ -463,16 +463,16 @@ PM4Py does the maths; the gap is the **workbench** around it. One filter languag
 | ID | Feature | Source | Now | P | Size |
 |---|---|---|:--:|:--:|:--:|
 | **I1** | **Map overlay on the designed canvas**: frequency (absolute, case, max repetitions) and performance (total, mean, median, max, min) on nodes and edges, heat colours | [DI] §4.1.1, 4.1.4 · [OC] Fig. 22 | ❌ | P1 | M |
-| **I2** | Level-of-detail sliders (activities %, paths %) and search, on the *discovered* model | [DI] §4.1.2–4.1.3 | ❌ | P2 | M |
+| **I2** | Level-of-detail sliders (activities %, paths %) and search, on the *discovered* model | [DI] §4.1.2–4.1.3 | 🟡 | P2 | M |
 | **I3** | **`LogFilter` stack** (chainable classes): timeframe (contained / intersecting / started / ended), variants (top-N, coverage), performance (case duration, between two activities), endpoints, attribute (include/exclude), follower (eventually / directly follows with time bounds); API `filters=`; UI stack; *save as named dataset* | [DI] §5, 6.2.1 | ❌ | P1 | L |
-| **I4** | **Animation**: replay cases over the map with the live token view that `live.mjs` already draws | [DI] §4.1.6 | 🟡 | P2 | M |
+| **I4** | **Animation**: replay cases over the map with the live token view that `live.mjs` already draws | [DI] §4.1.6 | ✅ | P2 | M |
 | **I5** | **Statistics**: global, events and active cases over time, case-duration histogram, mean waiting time, per resource, per attribute | [DI] §4.2 | ❌ | P1 | M |
 | **I6** | **Cases view**: variants with coverage, one case as a timeline with *why this path* (gateway scores and conditions already in `Event.data`), search | [DI] §4.3 · [OC] | 🟡 | P1 | M |
 | **I7** | **Import wizard**: column roles, timestamp patterns, several timestamps (start/complete), combined columns, XES/MXML/Excel, a **data readiness report** (missing timestamps, ties, coverage) | [DI] §1.2–1.3, 3.1–3.3 | 🟡 | P2 | M |
 | **I8** | **Export** XES/MXML/CSV with **anonymisation**; charts and tables as CSV | [DI] §7 | 🟡 | P2 | S |
 | **I9** | **Cohort comparison**: gateway percentages and durations between two filters (specialist vs resident; this month vs last; variant A vs B), side by side | [OC] Table 7, §4.4 | ❌ | P2 | M |
 | **I10** | **Bottleneck ranking** joined with queueing: utilisation ρ per lane from the log plus an analytic waiting-time estimate | [QT] §3.4 · [WM] A64 | ❌ | P2 | S |
-| **I11** | Snapshot a mining analysis (filters + results) for sharing | [DI] §6.3 | ❌ | P3 | M |
+| **I11** | Snapshot a mining analysis (filters + results) for sharing | [DI] §6.3 | ✅ | P3 | M |
 | **I12** | Drift as a first-class step ("model drift?") with an action | [OC] Fig. 5, Table 7 j) | 🟡 | P3 | S |
 
 ### WS-J · Agentic patterns
@@ -630,7 +630,7 @@ OpenAPI document is public (the editor reads it) and carries the tasks' examples
 | F Testing | F3 scenario tests, F5 differential vs n8n (ACME, identical traces), F6 drift, F10 CI, F11 `seed_events` | F2, F4 (`record_scenario`; no model cassettes), F7 (token conservation), F9 (`eval_gate` in CI; no LLM judge or dataset versions), F12 | F1, F8 |
 | G Production | G1 image + prod override + pinned n8n, G2 secure settings, G3 `workflows diff/push/pull`, G4 process version + history, G6 LLM keys encrypted at rest + `rotate_keys`, append-only audit log of human actions, erasure by case (`erase_case`), G7 Prometheus + JSON logs, G8 idempotent task runs (`TaskRun`: a retried run executes once) | G5 (scenarios gate Studio; no PR flow), G6 (no per-client scoped tokens, rate limits or anonymised export), G8 (no backup drill, Redis persistence or drain) | G9, G10, G11 |
 | H People | H1 SLA/priority, H2 suspend/resume/reassign/delegate, H3 assignee + four-eyes, H4 quorum, H5 form types, H6 case page, H10 HITL/HOTL | H12 | H7, H8, H9, H11 |
-| I Intelligence | I1 heatmap, I3 filter stack, I5 statistics, I6 cases/variants, I9 cohorts, I10 queueing on the log | | I2, I4, I7, I8, I11, I12 |
+| I Intelligence | I1 heatmap, I2 process map with activity and path sliders (frequency or performance, server-drawn SVG), I3 filter stack, I4 replay on the canvas (`/api/analytics/replay`, compressed clock, step mode for reduced motion), I5 statistics, I6 cases/variants, I7 import wizard `/insights/import/` (CSV, XES, column roles, timestamp detection, readiness report; `import_eventlog --map`), I8 CSV/XES export with HMAC pseudonyms (`/api/analytics/export`, audited), I9 cohorts, I10 queueing on the log, I11 snapshots (`Snapshot`, listed and reopened by URL) | I2 (no activity search box), I7 (no MXML or Excel, no combined columns), I8 (no MXML; charts and tables not as CSV) | I12 |
 | J Agents | J1 pattern macros, J3 guardrails, J4 budgets, J7 error paths and retries | | J2, J5, J6, J8, J9, J10–J13 |
 | n8n's paid features | Variables → global variables on Redis; workflow history → versions, diff, restore; log streaming → Redis stream, webhooks, SSE; advanced execution search → `/api/cases`, `/cases/`; Insights → `/insights/`; source control and environments → `workflows diff/push/pull` | | SSO, project RBAC, external secrets |
 

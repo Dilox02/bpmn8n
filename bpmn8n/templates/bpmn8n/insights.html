@@ -73,6 +73,13 @@
 
 {% if processes %}
 <details class="export">
+  <summary class="btn">Snapshots{% if snapshots %} · {{ snapshots|length }}{% endif %}</summary>
+  <p class="meta">Save this analysis (process, window, filters, cohort, level of detail) under a name and reopen it by its link.</p>
+  <form method="post" action="{% url 'save_snapshot' %}" class="inline-form">{% csrf_token %}{% for key, value in state.items %}{% if value %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+    <label>Name <input class="input" name="name" maxlength="120" required></label><button class="btn" type="submit">Save</button></form>
+  {% if snapshots %}<ul class="snapshots">{% for s in snapshots %}<li><a href="{{ s.url }}">{{ s.name }}</a> <span class="meta">{{ s.author }}, {{ s.created|date:"Y-m-d" }}</span></li>{% endfor %}</ul>{% endif %}
+</details>
+<details class="export">
   <summary class="btn">Export this log</summary>
   <p class="meta">The filtered log as CSV or XES, with the API token; <code>anonymise=1</code> replaces case ids, resources and text values with stable pseudonyms.</p>
   <pre><code>curl -H "Authorization: Bearer $API_TOKEN" -o log.csv "{{ request.scheme }}://{{ request.get_host }}/api/analytics/export?format=csv&amp;anonymise=1&amp;process={{ process|urlencode }}{% if state.since %}&amp;since={{ state.since|urlencode }}{% endif %}{% if state.filters %}&amp;filters={{ state.filters|urlencode }}{% endif %}"</code></pre>
