@@ -83,7 +83,7 @@ projects/                    one app per folder, discovered automatically
   acme/         the example processes: tasks.py (the activities), processes.py (the workflows),
                 examples.json (the activities' tests)
   <name>/       what Studio creates: tasks/<activity>.py, one module per activity, and examples.json
-n8n-nodes-bpmn8n/            the 14 BPMN nodes (TypeScript); nodes/icons/bpmn/: every BPMN 2.0 symbol
+n8n-nodes-bpmn8n/            the 18 n8n nodes (TypeScript: 16 BPMN elements, Metrics, Global Variable); nodes/icons/bpmn/: every BPMN 2.0 symbol
 n8n-editor/                  n8n editor hooks: bpmn.js (the BPMN notation on the canvas), preview.js
 searxng/                     the web search's settings, for Studio's research
 tools/                       models server, benchmark, icons
@@ -847,15 +847,15 @@ The hypotheses were verified on the real stack (n8n 2.42, Apple M5) with the tes
 ## Tests
 
 ```bash
-python manage.py test bpmn8n --parallel 1             # 447 tests: API, states, check, Studio (real build), mining, every project's examples and scenarios
+python manage.py test bpmn8n --parallel 1             # 578 tests: API, states, check, Studio (real build), mining, simulation, security, every project's examples and scenarios
 python manage.py check_project projects/<name>        # one project: imports, examples, scenarios, workflow
 python manage.py test_scenarios projects/<name>       # only its scenarios (scenarios.json) on the token engine
 python manage.py record_scenario <case id> projects/<name>  # a real case becomes a scenario (regression test)
 python manage.py eval_gate                            # the newest evaluation runs meet their thresholds (exit 1 if not)
-cd n8n-nodes-bpmn8n && npm test                       # 12 tests: schema → fields, input, output, waits, errors
+cd n8n-nodes-bpmn8n && npm test                       # 36 tests: schema → fields, input, output, waits, deadlines, errors, contract, drift
 .venv-models/bin/python -m unittest discover tools    # micro-batcher
 pip install -r requirements-dev.txt && playwright install chromium
-pytest e2e                                            # 37 E2E tests on the ./start.sh stack (UI included)
+pytest e2e                                            # 44 E2E tests on the running stack (UI included; the engine vs n8n differential)
 pytest e2e/test_differential.py                       # engine vs n8n: ACME's real cases replayed on the engine
 python tools/bench.py                                 # throughput of an endpoint
 ```
