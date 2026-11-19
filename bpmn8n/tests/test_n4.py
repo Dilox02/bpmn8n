@@ -228,6 +228,81 @@ class SimulatedCostTest(TestCase):
         self.assertAlmostEqual(report["llm_cost_per_call"]["Draft"], 0.02)
 
 
+class FunctionalSimulationTest(TestCase):
+    """E10: ACME's expense policy decides the branches, not probabilities in the spec."""
+
+    def setUp(self):
+        from ..api import discover
+        discover()
+
+    def workflow(self):
+        from ..workflows import Workflow
+        return (Workflow("Expense").start("Submitted", "expense")
+                .task("Check Expense Policy", "businessRuleTask", "check_expense_policy")
+                .condition_gateway("Within Policy?", "exclusive", {"within": "{{within_policy}}", "over": "{{excess}} > 0"})
+                .task("Record Expense", "serviceTask", "record_expense")
+                .manual_task("Approve Excess", "Approve {{excess}} over the limit", "managers")
+                .flow("Submitted", "Check Expense Policy", "Within Policy?")
+                .flow("Within Policy?", "Record Expense", output="within")
+                .flow("Within Policy?", "Approve Excess", output="over")).as_json()
+
+    def spec(self, start, **extra):
+        from ..simulation.spec import SimSpec
+        return SimSpec.model_validate({
+            "arrivals": {"type": "peak", "count": 150}, "replications": 2, "resources": {"managers": {"capacity": 2}},
+            "tasks": {"Approve Excess": {"duration": 5}},
+            "gateways": {"Within Policy?": {"within": 0.99, "over": 0.01}},  # what a fixed-probability run would use
+            "functional": {"start": {"employee": "ann@acme.test", "category": "meal", **start}}, **extra})
+
+    def shares(self, start, **extra):
+        from ..simulation import des
+        from ..simulation.spec import SimModel
+        result = des.simulate(SimModel(self.workflow(), self.spec(start, **extra)), functional=True)
+        counts = {label: row["count"] for label, row in result["scenarios"].items()}
+        return {label: n / sum(counts.values()) for label, n in counts.items()}, result
+
+    def test_the_branch_shares_follow_the_policy_rule_not_the_spec_probabilities(self):
+        # meals cost 0..120 for one person against a limit of 60: half of them are within policy
+        shares, result = self.shares({"amount": {"type": "uniform", "min": 0, "max": 120}})
+        self.assertAlmostEqual(shares["within"], 0.5, delta=0.1)  # the spec's 0.99 is not used
+        self.assertAlmostEqual(shares["over"], 0.5, delta=0.1)
+        self.assertEqual(result["functional"]["cases"], 300)
+        self.assertEqual((result["functional"]["task_failures"], result["functional"]["condition_fallbacks"]), ({}, {}))
+        # the same amounts for two people: the limit doubles, nobody is over
+        self.assertEqual(self.shares({"amount": {"type": "uniform", "min": 0, "max": 120}, "attendees": 2})[0],
+                         {"within": 1.0})
+        # a different rule for the category moves the shares: hotels have a limit of 180
+        hotel, _ = self.shares({"category": "hotel", "amount": {"type": "uniform", "min": 0, "max": 120}})
+        self.assertEqual(hotel, {"within": 1.0})
+
+    def test_a_condition_that_cannot_be_evaluated_falls_back_to_the_spec_and_is_counted(self):
+        from ..simulation import des
+        from ..simulation.spec import SimModel
+        spec = self.spec({"amount": 10}, tasks={"Approve Excess": {"duration": 5}})
+        spec.functional.outputs["Check Expense Policy"] = {}  # the task does not run: nothing says if it is within
+        result = des.simulate(SimModel(self.workflow(), spec), functional=True)
+        self.assertEqual(result["functional"]["condition_fallbacks"], {"Within Policy?": 300})
+        self.assertGreater(result["scenarios"]["within"]["count"], result["scenarios"].get("over", {"count": 0})["count"])
+
+    def test_the_command_runs_it(self):
+        out = StringIO()
+        call_command("simulate", "projects/acme", "--functional", "--replications", "1", "--json", stdout=out)
+        import json
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["functional"]["cases"], 500)  # ACME's spec: 500 arrivals
+        self.assertEqual(result["functional"]["task_failures"], {})  # the person's `approved` is drawn from the form
+
+    def test_it_is_capped_and_a_plain_run_is_unchanged(self):
+        from ..simulation import des
+        from ..simulation.spec import SimModel, SpecError
+        big = SimModel(self.workflow(), self.spec({"amount": 10}, replications=20, arrivals={"type": "peak", "count": 500}))
+        with self.assertRaisesRegex(SpecError, "2000"):
+            des.simulate(big, functional=True)
+        plain = des.simulate(SimModel(self.workflow(), self.spec({"amount": 10})))
+        self.assertNotIn("functional", plain)
+        self.assertGreater(plain["scenarios"]["within"]["count"], 140)  # the spec's probabilities decide
+
+
 class MiningOverridesTest(TestCase):
     def test_the_decisions_dataset_and_mining_know_the_overrides(self):
         from ..mining import Mining

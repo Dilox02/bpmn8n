@@ -17,7 +17,7 @@ import json
 import math
 import re
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -227,6 +227,18 @@ class Task(Strict):
     priority: int = 0
 
 
+class FunctionalSpec(Strict):
+    """E10, what a functional simulation (`simulate(..., functional=True)`) needs besides the workflow. `start`:
+    a generator per start-data field: a constant, a list of choices, or a distribution (`{"type": "lognormal",
+    "mean": 80, "sd": 120}`); the fields it leaves out are generated from the process contract's types.
+    `cases`: recorded start data to draw from instead (calibrate.recorded_cases). `outputs`: what a step adds
+    instead of running (a person's answers, a Laya gateway's or an LLM agent's result, a task not to run)."""
+
+    start: dict[str, Any] = {}
+    cases: list[dict[str, Any]] = []
+    outputs: dict[str, dict[str, Any]] = {}
+
+
 class SimSpec(Strict):
     unit: Literal[tuple(UNITS)] = "minutes"
     workflow: str | None = None  # relative to the project folder; default workflow.json
@@ -235,6 +247,7 @@ class SimSpec(Strict):
     schedules: dict[str, WorkSchedule] = {}
     tasks: dict[str, Task] = {}
     gateways: dict[str, dict[str, float]] = {}  # node -> {output: probability}
+    functional: FunctionalSpec | None = None  # E10: start data and stubs of a functional simulation
     replications: int = Field(10, ge=1)
     seed: int = 0
     horizon: float | None = Field(None, gt=0)  # stop the clock here; unfinished cases are not counted
@@ -276,7 +289,8 @@ class SimModel:
         self.graph = workflow if isinstance(workflow, ProcessGraph) else ProcessGraph(workflow)
         self.spec = spec = spec or SimSpec()
         g = self.graph
-        if unknown := (set(spec.tasks) | set(spec.gateways)) - set(g.flow_nodes):
+        if unknown := (set(spec.tasks) | set(spec.gateways) | set(spec.functional.outputs if spec.functional else ())) \
+                - set(g.flow_nodes):
             raise SpecError(f"the workflow has no step named {', '.join(sorted(unknown))}")
         self.warnings, self.duration, self.cost, self.resource, self.priority = [], {}, {}, {}, {}
         self.model_cost = {}  # per call of an LLM agent: what the model costs, apart from people and fixed costs

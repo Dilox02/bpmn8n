@@ -37,10 +37,12 @@ class Command(BaseCommand):
         parser.add_argument("--staffing", type=float, metavar="TARGET", help="find the fewest people that meet it")
         parser.add_argument("--metric", choices=sorted(optimise.METRICS), default="mean", help="what --staffing bounds")
         parser.add_argument("--max-per-resource", type=int, default=20)
+        parser.add_argument("--functional", action="store_true",
+                            help="cases carry data and tasks run for real, so conditions take real branches (E10; capped)")
         parser.add_argument("--json", dest="as_json", action="store_true", help="the result as JSON on stdout")
 
     def handle(self, folder, analytic, replications, seed, tokens, calibrate, process, since, staffing, metric,
-               max_per_resource, as_json, **options):
+               max_per_resource, as_json, functional=False, **options):
         try:
             workflow, spec = load(folder)
             report = None
@@ -57,7 +59,7 @@ class Command(BaseCommand):
                 result = optimise.staffing(model, staffing, metric, max_per_resource, replications=replications or 5,
                                            seed=seed)
             else:
-                result = des.simulate(model, replications, seed)
+                result = des.simulate(model, replications, seed, functional=functional)
         except SpecError as e:
             raise CommandError(str(e)) from e
         if report is not None:
@@ -115,6 +117,9 @@ class Command(BaseCommand):
         self.stdout.write(f"{result['replications']} replications, seed {result['seed']}\n")
         for warning in result["warnings"]:
             self.stdout.write(f"warning: {warning}")
+        if f := result.get("functional"):
+            self.stdout.write(f"functional: {f['cases']} cases with data; tasks failed {f['task_failures'] or 'never'}, "
+                              f"conditions not evaluable {f['condition_fallbacks'] or 'never'}\n")
         self.table(["metric", "mean", "±90%", "±95%", "±99%"],
                    [[k, m["mean"], *m["ci"].values()] for k, m in result["metrics"].items()])
         self.table(["step", "visits", "queue", "work", "cost"],

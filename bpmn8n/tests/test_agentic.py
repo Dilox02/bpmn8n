@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from django.contrib.auth.models import Group
 from django.test import RequestFactory, TestCase
 
+from ..api import discover
 from ..api.tasks import TASKS
 from ..core.observability import CASE_HEADER
 from ..studio.prompts import Prompts
@@ -275,6 +276,9 @@ class OversightTest(TestCase):
 
 class AgentToolsTest(TestCase):
     """J2: an agent's tools are @tasks, as n8n's HTTP Request Tool sub-nodes."""
+
+    def setUp(self):
+        discover()
 
     def agent(self, tool, review=True):
         w = Workflow("Tools", credential={"id": "1", "name": "bpmn8n"}).start("In", "in")

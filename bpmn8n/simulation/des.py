@@ -12,6 +12,7 @@ numpy, no Django."""
 import itertools
 import math
 import zlib
+from collections import Counter
 from functools import cached_property
 
 import numpy as np
@@ -81,13 +82,15 @@ class Sampled(Resolver):
 class Run:
     """One replication."""
 
-    def __init__(self, model: SimModel, replication=0, seed=None):
+    def __init__(self, model: SimModel, replication=0, seed=None, resolver=Sampled):
+        """resolver: Sampled, or functional.Functional (cases with data: E10)."""
         spec = model.spec
         self.model, self.seed = model, spec.seed if seed is None else seed
         self.resources = Resources(model.capacity, model.resource, model.priority, model.schedules)
-        self.engine = TokenEngine(model.graph, Sampled(model, self.seed, replication), self.resources, spec.visit_limit)
+        self.resolver = resolver(model, self.seed, replication)
+        self.engine = TokenEngine(model.graph, self.resolver, self.resources, spec.visit_limit)
         for t in spec.arrivals.arrival_times(_rng(self.seed, replication, "arrivals"), spec.horizon):
-            self.engine.start(at=t)
+            self.engine.start(at=t, data=self.resolver.new_case() if hasattr(self.resolver, "new_case") else None)
         self.engine.run(spec.horizon or math.inf)
         everything = self.engine.cases
         self.cases = [c for c in everything if c.started >= spec.warmup]
@@ -180,10 +183,28 @@ def _average(tables, count=("visits", "count", "cost")):
                   for f in rs[0] if not isinstance(rs[0][f], list)} for key, rs in rows.items()}
 
 
-def simulate(model: SimModel, replications=None, seed=None):
+def simulate(model: SimModel, replications=None, seed=None, functional=False):
+    """functional=True (E10): cases carry data and the steps work on it, so gateways decided by conditions take
+    real branches (functional.py: the real tasks run, then their writes are rolled back); capped."""
     spec = model.spec
     seed = spec.seed if seed is None else seed
-    runs = [Run(model, r, seed) for r in range(replications or spec.replications)]
+    if not functional:
+        return _simulate(model, [Run(model, r, seed) for r in range(replications or spec.replications)], seed)
+    from . import functional as f  # needs Django and the task registry
+    f.check(model, replications or spec.replications)
+    with f.sandbox():
+        runs = [Run(model, r, seed, f.Functional) for r in range(replications or spec.replications)]
+    result = _simulate(model, runs, seed)
+    reports = [r.resolver.report() for r in runs]
+    result["functional"] = {"cases": sum(r["cases"] for r in reports),
+                            **{k: dict(sum((Counter(r[k]) for r in reports), Counter()))
+                               for k in ("task_failures", "condition_fallbacks")},
+                            "errors": {n: e for r in reports for n, e in r["errors"].items()}}
+    return result
+
+
+def _simulate(model, runs, seed):
+    spec = model.spec
     tables = [run.tables() for run in runs]
     resources = _average([t["resources"] for t in tables])
     for r, row in resources.items():
