@@ -36,6 +36,17 @@ class BuilderTest(SimpleTestCase):
                   {"from": "Join", "to": ["Decide"]},
                   {"from": "Decide", "branch": "default", "to": ["Review"]}]}
 
+    def test_the_same_spec_builds_the_same_ids_and_another_workflow_other_ids(self):
+        spec = {**self.SPEC, "steps": [*self.SPEC["steps"], {"type": "llm_agent", "name": "Draft", "prompt": "{{item}}",
+                                                            "output": "draft"}]}
+        first, again = Workflow.from_spec(spec).as_json(), Workflow.from_spec(spec).as_json()
+        self.assertEqual(first, again)  # a regenerated workflow.json diffs only where the spec changed
+        ids = [n["id"] for n in first["nodes"]]
+        self.assertEqual(len(set(ids)), len(ids))
+        other = Workflow.from_spec({**spec, "name": "Other purchases"}).as_json()
+        self.assertFalse(set(ids) & {n["id"] for n in other["nodes"]})
+        self.assertNotEqual(first["nodes"][0]["webhookId"], other["nodes"][0]["webhookId"])
+
     def test_only_explicit_technical_condition_gateways_run_without_a_person(self):
         def human_rules(workflow):
             check = WorkflowCheck(workflow, fetch=lambda _: None)

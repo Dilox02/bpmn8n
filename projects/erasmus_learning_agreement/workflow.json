@@ -2,7 +2,7 @@
   "name": "Erasmus learning agreement",
   "nodes": [
     {
-      "id": "60685782-0b31-4f8a-a0b9-3c0d9fc26172",
+      "id": "a200133d-eb57-5787-a017-3eb2984a4d0a",
       "name": "Agreement Submitted",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,10 +16,10 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "webhookId": "ab14de39-e208-4f73-9e93-c0d1bef7b71b"
+      "webhookId": "271916fc-8628-570d-8e37-086a4f6f2c34"
     },
     {
-      "id": "9d7ddbfe-8a53-4c9e-b93e-aef626b2b677",
+      "id": "26d7ae6b-9c8f-5eca-aa78-c773235f5feb",
       "name": "Compute Signature Deadline",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
@@ -45,7 +45,7 @@
       }
     },
     {
-      "id": "3184d357-6cae-48c5-ad43-76d15741d45e",
+      "id": "4d3a13d2-4367-592a-a0c8-ef83533ebdd0",
       "name": "Check Agreement",
       "type": "CUSTOM.bpmn8nBusinessRuleTask",
       "typeVersion": 1,
@@ -71,7 +71,7 @@
       }
     },
     {
-      "id": "359c85f0-f3a1-4d2b-966b-2dfa273c023e",
+      "id": "de6402e0-8a9f-5c3b-8fe8-e349ab5c3708",
       "name": "ECTS Within Limits?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -102,12 +102,12 @@
       }
     },
     {
-      "id": "ff89fa34-f4ac-44fa-8952-a2a23adc8200",
+      "id": "566ee98d-fdd3-5cc1-8a34-953bf8bf7ce4",
       "name": "Resubmission Allowed?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        2520,
+        2240,
         0
       ],
       "parameters": {
@@ -133,22 +133,19 @@
       }
     },
     {
-      "id": "ae81f5dc-d170-4d03-81d6-97ccd1570437",
+      "id": "ce5c8122-f122-58ed-8faa-f0a895b314f2",
       "name": "Revise Agreement",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        2800,
-        800
+        2520,
+        200
       ],
       "parameters": {
         "title": "Revise your learning agreement ({{host_university}})",
         "lane": "students",
         "description": "",
-        "context": {
-          "What to fix": "{{check_report}}",
-          "Coordinator feedback": "{{coordinator_feedback}}"
-        },
+        "context": "{\"What to fix\": \"{{check_report}}\", \"Coordinator feedback\": \"{{coordinator_feedback}}\"}",
         "form": {
           "fields": [
             {
@@ -159,7 +156,7 @@
           ]
         }
       },
-      "webhookId": "e77ca17a-5a25-47d1-9723-b6b0a61973cf",
+      "webhookId": "1f07a6a2-4f11-56e6-8030-6f548e35e917",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -168,21 +165,19 @@
       }
     },
     {
-      "id": "e55668d9-7f42-40b2-b58a-0b7c85e4fb23",
+      "id": "69db17ea-b704-5f31-a096-c64274af25e0",
       "name": "Close Agreement",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3080,
+        2800,
         0
       ],
       "parameters": {
         "title": "Close the learning agreement of {{student_name}}",
         "lane": "international-office",
         "description": "",
-        "context": {
-          "Last check": "{{check_report}}"
-        },
+        "context": "{\"Last check\": \"{{check_report}}\"}",
         "form": {
           "fields": [
             {
@@ -193,7 +188,7 @@
           ]
         }
       },
-      "webhookId": "50df5b68-0d26-4eaa-98cc-fdedc13f230e",
+      "webhookId": "f5f5792a-ff61-5e62-a046-adeada773ffd",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -202,12 +197,12 @@
       }
     },
     {
-      "id": "1d3ef54a-0398-4deb-b1c8-710cfafa7947",
+      "id": "e95399de-4026-5fff-babb-99cc0a3673ac",
       "name": "Notify Closure",
       "type": "CUSTOM.bpmn8nSendTask",
       "typeVersion": 1,
       "position": [
-        3360,
+        3080,
         0
       ],
       "parameters": {
@@ -232,13 +227,13 @@
       }
     },
     {
-      "id": "d138b208-29af-4579-9ceb-62bb47a759e1",
+      "id": "4beb6322-62df-5f61-bac9-a011b23d8b53",
       "name": "Opinions Needed?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
         1120,
-        0
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -263,21 +258,19 @@
       }
     },
     {
-      "id": "b04bf222-eddb-49a1-a4f7-cb4d4feea60b",
+      "id": "f4a4f439-97b9-5210-9f2f-63ba7b02e02d",
       "name": "Professor Opinions",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
         1400,
-        0
+        400
       ],
       "parameters": {
         "title": "Opinion on {{unmatched_count}} course mappings of {{student_name}}",
         "lane": "professors",
         "description": "",
-        "context": {
-          "Mappings outside the table": "{{unmatched_mappings}}"
-        },
+        "context": "{\"Mappings outside the table\": \"{{unmatched_mappings}}\"}",
         "form": {
           "fields": [
             {
@@ -293,7 +286,7 @@
           ]
         }
       },
-      "webhookId": "e02c23f1-7451-429d-a2b2-a6e24201edbb",
+      "webhookId": "d03df182-1a46-5a21-8a3c-45b18a9b52a9",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -302,36 +295,19 @@
       }
     },
     {
-      "id": "125dc671-5a71-46ff-b736-75b3d764d674",
-      "name": "Opinions In",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [
-        1680,
-        0
-      ],
-      "parameters": {
-        "numberInputs": 2
-      }
-    },
-    {
-      "id": "0ace2d39-47be-4544-98cd-07c14bd6783b",
+      "id": "33ddc156-943f-58dc-a00b-7aca2cc379d4",
       "name": "Coordinator Decision",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        1960,
-        0
+        1680,
+        200
       ],
       "parameters": {
         "title": "Learning agreement of {{student_name}} ({{total_ects}} ECTS)",
         "lane": "coordinators",
         "description": "",
-        "context": {
-          "Check": "{{check_report}}",
-          "Courses": "{{courses}}",
-          "Professors' opinion": "{{opinion_notes}}"
-        },
+        "context": "{\"Check\": \"{{check_report}}\", \"Courses\": \"{{courses}}\", \"Professors' opinion\": \"{{opinion_notes}}\"}",
         "form": {
           "fields": [
             {
@@ -347,7 +323,7 @@
           ]
         }
       },
-      "webhookId": "0c0ad6a5-2be3-4ccc-b8bd-68a108770c8b",
+      "webhookId": "a08c4fad-c20f-589f-92c9-e8ff7d65bf4e",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -356,13 +332,13 @@
       }
     },
     {
-      "id": "a22b4c4c-2a97-400c-a7cd-8eb6a30dbd25",
+      "id": "f4dd89a4-3723-509a-947d-81432081c5d5",
       "name": "Coordinator Approved?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        2240,
-        0
+        1960,
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -387,21 +363,19 @@
       }
     },
     {
-      "id": "25a62041-b9fa-4082-9dbc-584f3fd3e3bb",
+      "id": "0d55742d-8b8d-5812-8eda-e7d9325a21a3",
       "name": "Office Signature",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        2520,
-        600
+        2240,
+        400
       ],
       "parameters": {
         "title": "Sign the learning agreement of {{student_name}}",
         "lane": "international-office",
         "description": "",
-        "context": {
-          "Courses": "{{courses}}"
-        },
+        "context": "{\"Courses\": \"{{courses}}\"}",
         "form": {
           "fields": [
             {
@@ -417,7 +391,7 @@
           ]
         }
       },
-      "webhookId": "0861b664-388a-4350-8551-4e96b4f18b0d",
+      "webhookId": "26b20e8d-ab2f-5c77-92c6-814a6ccb5400",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -426,13 +400,13 @@
       }
     },
     {
-      "id": "3d7857c7-4d8a-4ae1-8797-c7f105723836",
+      "id": "05e7f2ce-9584-538d-a5db-9e66115450ab",
       "name": "Signed?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        2800,
-        600
+        2520,
+        400
       ],
       "parameters": {
         "decider": "conditions",
@@ -457,13 +431,13 @@
       }
     },
     {
-      "id": "a7a16f7e-e6f8-4aa9-9e36-6c42c9a77024",
+      "id": "edb2f175-404b-5a08-9765-2ce1633f91d7",
       "name": "Notify Signature",
       "type": "CUSTOM.bpmn8nSendTask",
       "typeVersion": 1,
       "position": [
-        3080,
-        800
+        2800,
+        600
       ],
       "parameters": {
         "task": "/api/tasks/send_notification",
@@ -583,9 +557,9 @@
       "main": [
         [
           {
-            "node": "Opinions In",
+            "node": "Coordinator Decision",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ],
         [
@@ -598,17 +572,6 @@
       ]
     },
     "Professor Opinions": {
-      "main": [
-        [
-          {
-            "node": "Opinions In",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Opinions In": {
       "main": [
         [
           {

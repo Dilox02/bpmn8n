@@ -10,7 +10,7 @@ from ..api.tasks import TASKS
 from ..core.observability import CASE_HEADER
 from ..studio.prompts import Prompts
 from ..tasks import (AuditInput, CritiqueInput, GuardrailInput, audit_share, check_guardrails, draw_audit_sample,
-                     read_critique)
+                     read_critique, redact)
 from ..workflows import SpecError, Workflow
 from ..workflows.check import WorkflowCheck
 from ..workflows.graph import ProcessGraph
@@ -172,6 +172,13 @@ class GuardrailTaskTest(TestCase):
         result = self.check("reply to anna@example.org", checks="length")
         self.assertTrue(result.passed)
         self.assertEqual(result.redacted, "reply to [EMAIL]")
+
+    def test_redact_is_the_guardrail_s_redaction_for_any_task(self):
+        text = "anna@example.org, +39 333 123 4567, RSSMRA85T10A562S, born 1985-12-10"
+        redacted, spans = redact(text)
+        self.assertEqual(redacted, "[EMAIL], [PHONE], [FISCAL_CODE], born 1985-12-10")
+        self.assertEqual([kind for kind, _, _ in spans], ["email", "phone", "fiscal_code"])
+        self.assertEqual(self.check(text).redacted, redacted)
 
     def test_length_blocklist_and_schema(self):
         self.assertEqual([f.check for f in self.check("x" * 11, "length", max_length=10).findings], ["length"])

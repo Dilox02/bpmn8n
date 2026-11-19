@@ -126,12 +126,17 @@ class Workflow:
             self._column, row = at
         else:
             self._column += 0 if same_column else 1
-        node = {"id": str(uuid.uuid4()), "name": name, "type": type_, "typeVersion": version,
+        node = {"id": self.stable_id(name), "name": name, "type": type_, "typeVersion": version,
                 "position": [self._column * 280, row * 200], "parameters": parameters, **extra}
         if bpmn and self.credential:
             node["credentials"] = {"bpmn8nApi": self.credential}
         self.nodes.append(node)
         return self
+
+    def stable_id(self, *parts):
+        """A node's id (or a part's: its webhook, an assignment) from the workflow's name and the node's: the
+        same workflow built again has the same ids, so a regenerated workflow.json diffs only where it changed."""
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, json.dumps([self.name, *parts])))
 
     def column(self, n):
         """The next node goes in column `n` (to lay an alternative branch beside another)."""
@@ -144,7 +149,7 @@ class Workflow:
         return self.add(name, "n8n-nodes-base.webhook",
                         {"httpMethod": "POST", "path": path, "responseMode": respond, "options": {},
                          **({"responseData": "allEntries"} if respond == "lastNode" else {})},
-                        bpmn=False, version=2, webhookId=str(uuid.uuid4()))
+                        bpmn=False, version=2, webhookId=self.stable_id(name, "webhook"))
 
     def subprocess_start(self, name):
         """The start of a reusable sub-process: n8n's "When Executed by Another Workflow" trigger, which
@@ -225,13 +230,13 @@ class Workflow:
     def receive_task(self, name, message, correlation_key, row=0, same_column=False):
         return self.add(name, node_type("receiveTask"),
                         {"message": message, "correlationKey": correlation_key}, row,
-                        same_column=same_column, webhookId=str(uuid.uuid4()))
+                        same_column=same_column, webhookId=self.stable_id(name, "webhook"))
 
     def event_gateway(self, name, messages, correlation_key, timeout, row=0):
         """Event-based gateway: output 0 is "timeout", then one per message. timeout: (amount, unit)."""
         return self.add(name, node_type("eventBasedGateway"), {
             "branches": {"values": [{"name": m} for m in messages]}, "correlationKey": correlation_key,
-            "mode": "for", "amount": timeout[0], "unit": timeout[1]}, row, webhookId=str(uuid.uuid4()))
+            "mode": "for", "amount": timeout[0], "unit": timeout[1]}, row, webhookId=self.stable_id(name, "webhook"))
 
     def error_end(self, name, code, message="", row=0, same_column=False):
         return self.add(name, node_type("errorEndEvent"), {"code": code, "message": message}, row,
@@ -288,7 +293,7 @@ class Workflow:
             "title": title, "lane": lane, "description": description, "context": context,
             "form": {"fields": [form_field(f) for f in form]},
             **people_parameters(name, due_in, due_at, deadline, priority, assignee, not_same_as, completion),
-        }, row, same_column=same_column, webhookId=str(uuid.uuid4()))
+        }, row, same_column=same_column, webhookId=self.stable_id(name, "webhook"))
 
     def merge(self, name, inputs=2, row=0):
         """Join (n8n's Merge): waits for the inputs that can still deliver, then runs once."""
@@ -320,7 +325,7 @@ class Workflow:
             self.connections[f"{name}: model"] = {"ai_languageModel": [[{"node": name, "type": "ai_languageModel",
                                                                          "index": 0}]]}
         self.add(last, SET, {"mode": "manual", "assignments": {"assignments": [
-            {"id": str(uuid.uuid4()), "name": output, "type": "string", "value":
+            {"id": self.stable_id(last, output), "name": output, "type": "string", "value":
              "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"}]},
             "includeOtherFields": False, "options": {}}, bpmn=False, version=3.4)
         self.flow(first, name, last)
@@ -405,7 +410,7 @@ class Workflow:
             self.flow(name, f"{name}: {key}", join, output=key)
         answers = ", ".join(f'"{key}": $json.{output}_{key}' for key in prompts)
         self.add(collect, SET, {"mode": "manual", "assignments": {"assignments": [
-            {"id": str(uuid.uuid4()), "name": output, "type": "object", "value": f"={{{{ ({{ {answers} }}) }}}}"}]},
+            {"id": self.stable_id(collect, output), "name": output, "type": "object", "value": f"={{{{ ({{ {answers} }}) }}}}"}]},
             "includeOtherFields": True, "options": {}}, bpmn=False, version=3.4)
         self.flow(join, collect)
         self.steps[name] = (name, collect)
@@ -428,7 +433,7 @@ class Workflow:
         start, critic, verdict, gate = (f"{name}: {part}" for part in ("first round", "critic", "verdict", "again?"))
         draft, feedback = f"{{{{{output}}}}}", f"{{{{{output}_critique}}}}"
         self.add(start, SET, {"mode": "manual", "assignments": {"assignments": [  # the loop's variables, empty
-            {"id": str(uuid.uuid4()), "name": n, "type": t, "value": v}
+            {"id": self.stable_id(start, n), "name": n, "type": t, "value": v}
             for n, t, v in ((output, "string", ""), (f"{output}_critique", "string", ""), ("reflection_round", "number", 0))]},
             "includeOtherFields": True, "options": {}}, bpmn=False, version=3.4)
         self.llm_agent(name, f"{prompt}\n\nYour previous draft, if any:\n{draft}\n\nThe critique of it, to address:\n{feedback}",

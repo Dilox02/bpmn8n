@@ -10,8 +10,8 @@
     },
     "expect": {
       "path": ["Agreement Submitted", "Compute Signature Deadline", "Check Agreement", "ECTS Within Limits?",
-               "Opinions Needed?", "Opinions In", "Coordinator Decision", "Coordinator Approved?", "Office Signature",
-               "Signed?", "Notify Signature"],
+               "Opinions Needed?", "Coordinator Decision", "Coordinator Approved?", "Office Signature", "Signed?",
+               "Notify Signature"],
       "not": ["Professor Opinions"],
       "variables": {"total_ects": 30, "submission": 1, "alert_date": "2027-01-17T09:00:00+00:00",
                     "subject": "Learning agreement signed"}
@@ -32,8 +32,8 @@
     "expect": {
       "path": ["Agreement Submitted", "Compute Signature Deadline", "Check Agreement", "ECTS Within Limits?",
                "Resubmission Allowed?", "Revise Agreement", "Check Agreement", "ECTS Within Limits?",
-               "Opinions Needed?", "Professor Opinions", "Opinions In", "Coordinator Decision",
-               "Coordinator Approved?", "Office Signature", "Signed?", "Close Agreement", "Notify Closure"],
+               "Opinions Needed?", "Professor Opinions", "Coordinator Decision", "Coordinator Approved?",
+               "Office Signature", "Signed?", "Close Agreement", "Notify Closure"],
       "variables": {"total_ects": 27, "submission": 2, "unmatched_count": 1, "needs_opinions": true,
                     "subject": "Learning agreement closed"}
     }

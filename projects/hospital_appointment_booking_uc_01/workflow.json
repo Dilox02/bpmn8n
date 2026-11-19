@@ -2,7 +2,7 @@
   "name": "Hospital appointment booking UC-01",
   "nodes": [
     {
-      "id": "1c816337-95c5-4c61-8206-00dcafdf6524",
+      "id": "3a107a8e-5030-5e64-9f51-74b299e24562",
       "name": "Patient requests an appointment",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,10 +16,10 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "webhookId": "d86652ae-5c92-46b5-9d87-c66c10fd1c13"
+      "webhookId": "ae3bcbfb-cd80-5e8d-9441-b3d18741779e"
     },
     {
-      "id": "16305d01-225f-4c2a-bedc-667e84634a01",
+      "id": "32e4b609-60a7-5a80-ae78-387235b62b26",
       "name": "Pseudonymise patient data",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
@@ -46,7 +46,7 @@
       }
     },
     {
-      "id": "a6fb4523-2919-446b-98b9-f4d5a447826a",
+      "id": "fba84430-217f-5652-ae94-f1ee2ad44dca",
       "name": "AI Agent collects patient information and preferences: prompt",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
@@ -74,7 +74,7 @@
       }
     },
     {
-      "id": "743c6d69-1b8f-430a-9206-1b784f1f302b",
+      "id": "b23dc664-00dc-5758-bd46-5c4f7d855cac",
       "name": "AI Agent collects patient information and preferences",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
@@ -95,7 +95,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "739d7c61-794b-4f49-a1aa-4a6dea69ae04",
+      "id": "89ef1ab0-f5c2-58d7-8b21-b86a6ac76c12",
       "name": "AI Agent collects patient information and preferences: model",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1.2,
@@ -115,7 +115,7 @@
       }
     },
     {
-      "id": "b7356123-374a-4101-a0f7-c52346bc9bcd",
+      "id": "8f5ca3de-d74e-5004-a6a0-9392b3239313",
       "name": "AI Agent collects patient information and preferences: answer",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -128,7 +128,7 @@
         "assignments": {
           "assignments": [
             {
-              "id": "1c99ce1c-99fa-47bb-a283-a296d5ed4838",
+              "id": "948ea7d0-7966-5d57-8028-74ca55f491fc",
               "name": "agent_reply",
               "type": "string",
               "value": "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"
@@ -140,7 +140,7 @@
       }
     },
     {
-      "id": "54f797db-c5f2-4d14-aa67-1476fce975ef",
+      "id": "7e7a332b-7e5a-5ca9-8b5e-875ced89bdaf",
       "name": "Read booking preferences",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
@@ -167,7 +167,7 @@
       }
     },
     {
-      "id": "8cc0b857-6041-47be-9032-4ab526092866",
+      "id": "e979a443-ca54-51db-b8e3-7de11543ec18",
       "name": "Information complete?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -198,7 +198,7 @@
       }
     },
     {
-      "id": "18fc99b2-168b-4728-a4c7-d2ee6544c141",
+      "id": "76ab6721-fd34-5e7e-ac3c-fde8b6b5c607",
       "name": "Ask patient for missing information",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -221,7 +221,7 @@
           ]
         }
       },
-      "webhookId": "19bad5e7-4142-4f38-9967-52fac16c4fa1",
+      "webhookId": "8bc5cd28-71b8-56ff-9829-03ad9a9960a3",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -230,7 +230,7 @@
       }
     },
     {
-      "id": "e5e9934e-2bf6-4090-b9b4-b6a960bf371c",
+      "id": "6f13c57e-aac6-50ff-9e75-8e8adfb7d441",
       "name": "Validate request and hospital requirements",
       "type": "CUSTOM.bpmn8nBusinessRuleTask",
       "typeVersion": 1,
@@ -257,7 +257,7 @@
       }
     },
     {
-      "id": "726c1c2a-ea41-4633-ac89-8006778710f7",
+      "id": "fec58c57-e39c-549f-82c3-665f66794de8",
       "name": "Request valid?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -291,7 +291,7 @@
       }
     },
     {
-      "id": "0dc7a655-f627-42e5-942c-5f0e85798957",
+      "id": "7fedab5f-f856-5dd8-879a-c8429e557f7f",
       "name": "Escalate to hospital staff",
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
@@ -318,7 +318,7 @@
       }
     },
     {
-      "id": "959e5b46-60a4-437c-bbe1-628dc60293fe",
+      "id": "0233860d-cd19-5986-a0ec-6a61f96f3b67",
       "name": "Request closed or referred to staff",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -346,7 +346,7 @@
           ]
         }
       },
-      "webhookId": "e899355b-65a7-470c-b5ec-f4a2e63e12c5",
+      "webhookId": "d49f1f54-9df4-5cb7-aca9-32ab3a045e74",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -355,7 +355,7 @@
       }
     },
     {
-      "id": "0b2c6230-93ae-4a22-8582-11b436f98b1e",
+      "id": "d9303275-011d-57f8-8cf0-0e9fe1eb15e4",
       "name": "Search doctors and available slots",
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
@@ -382,7 +382,7 @@
       }
     },
     {
-      "id": "f1662d61-e556-4084-a5e8-8969aa034eda",
+      "id": "4532ff6b-92de-5611-b285-eb880ea498b4",
       "name": "Slots available?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -413,7 +413,7 @@
       }
     },
     {
-      "id": "1f5c550e-432e-4b6c-84cc-dee2eaf4f877",
+      "id": "f6b0acdf-95ee-55b0-8704-c4ac49bb5da8",
       "name": "Present appointment options",
       "type": "CUSTOM.bpmn8nSendTask",
       "typeVersion": 1,
@@ -440,7 +440,7 @@
       }
     },
     {
-      "id": "82d6f276-52bf-4b2a-9248-811a210e1836",
+      "id": "a7fa1804-77f0-585d-b2d8-8c83f6556b88",
       "name": "Patient selects appointment",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -463,7 +463,7 @@
           ]
         }
       },
-      "webhookId": "c533a906-f4b6-4c44-9895-e8515e4e7f7b",
+      "webhookId": "f43e308d-dd62-5ad1-9f62-b835b55c3855",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -472,7 +472,7 @@
       }
     },
     {
-      "id": "d983b977-f7cb-4038-aeae-c1eede9ba60b",
+      "id": "0bcb787f-b133-5511-b122-ee387d01d64b",
       "name": "Booking service rechecks and reserves slot",
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
@@ -502,7 +502,7 @@
       }
     },
     {
-      "id": "96895cd2-8510-4237-9b84-2aeff04ce0ef",
+      "id": "46b32c66-e5fa-504f-93dc-52dbe5d51497",
       "name": "Booking successful?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -533,7 +533,7 @@
       }
     },
     {
-      "id": "c4f4ad93-91e9-492f-be18-8bf73b3ca26e",
+      "id": "c95fb964-7126-508f-9c43-3a7cbfbfafdc",
       "name": "Send confirmation to patient",
       "type": "CUSTOM.bpmn8nSendTask",
       "typeVersion": 1,
@@ -564,7 +564,7 @@
       }
     },
     {
-      "id": "419a2eee-5a3d-48a6-87f0-7f2b8b62441d",
+      "id": "628e2bfd-cbd5-5f3b-86d4-6c0cf2b9b091",
       "name": "Appointment confirmed",
       "type": "CUSTOM.bpmn8nManualTask",
       "typeVersion": 1,
@@ -581,7 +581,7 @@
           "fields": []
         }
       },
-      "webhookId": "00f1e947-91ec-4382-90cd-42cc846ecba9",
+      "webhookId": "22bc1000-d6a0-5fe5-84bf-cbe6ea17fb0e",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -590,7 +590,7 @@
       }
     },
     {
-      "id": "fa5fbd44-8f60-41d6-afea-802dbecd10b4",
+      "id": "df66d3ca-134f-5947-9d20-b10ab3fafad9",
       "name": "Suggest alternative dates or doctors",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -633,7 +633,7 @@
           ]
         }
       },
-      "webhookId": "d6c29d48-9339-4cd5-a097-79530e11c6f6",
+      "webhookId": "3b6220fa-c623-54ff-94ba-dd0631d40272",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -642,7 +642,7 @@
       }
     },
     {
-      "id": "5215310c-8db4-49ce-b12e-683cdaf25a73",
+      "id": "c9f8dba7-cceb-5f2c-ac23-da172b1e1e0d",
       "name": "Patient searches again?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,

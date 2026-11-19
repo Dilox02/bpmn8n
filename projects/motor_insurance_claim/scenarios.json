@@ -7,10 +7,9 @@
               "report_photo": ""},
     "people": {"Fast-Track Claim Review": {"approved": true, "reason": "clear liability"}},
     "expect": {
-      "path": ["Claim Submitted", "Has Joint Report Photo", "Merge Photo Branch", "Check Policy Status",
-               "Calculate Fraud Indicators", "Verify Policy Validity", "Check Theft Event", "Merge Police Report",
-               "Route Claim Decision", "Fast-Track Claim Review", "Merge Decision Outcome", "Is Claim Approved",
-               "Issue Payout", "Send Approval Notification"],
+      "path": ["Claim Submitted", "Has Joint Report Photo", "Check Policy Status", "Calculate Fraud Indicators",
+               "Verify Policy Validity", "Check Theft Event", "Route Claim Decision", "Fast-Track Claim Review",
+               "Is Claim Approved", "Issue Payout", "Send Approval Notification"],
       "variables": {"policy_valid": true, "fraud_signal": false, "payout_status": "submitted",
                     "subject": "Motor Insurance Claim Approved"}
     }
@@ -26,10 +25,9 @@
                                             "payload": {"police_report": "report 2026/4411", "name": "someone else"}}},
     "people": {"Investigate Fraud Claim": {"approved": false, "reason": "reported 45 days late"}},
     "expect": {
-      "path": ["Claim Submitted", "Has Joint Report Photo", "Read Joint Report Photo", "Merge Photo Branch",
-               "Check Policy Status", "Calculate Fraud Indicators", "Verify Policy Validity", "Check Theft Event",
-               "Wait for Police Report", "Merge Police Report", "Route Claim Decision", "Investigate Fraud Claim",
-               "Merge Decision Outcome", "Is Claim Approved", "Send Rejection Notification"],
+      "path": ["Claim Submitted", "Has Joint Report Photo", "Read Joint Report Photo", "Check Policy Status",
+               "Calculate Fraud Indicators", "Verify Policy Validity", "Check Theft Event", "Wait for Police Report",
+               "Route Claim Decision", "Investigate Fraud Claim", "Is Claim Approved", "Send Rejection Notification"],
       "not": ["Issue Payout"],
       "variables": {"fraud_signal": true, "days_since_event": 45, "police_report": "report 2026/4411",
                     "name": "Paolo Russo", "subject": "Motor Insurance Claim Outcome"}
@@ -43,8 +41,8 @@
     "decisions": {"Wait for Police Report": "timeout"},
     "people": {"Review Missing Police Report": {"approved": false, "reason": "no police report after the deadline"}},
     "expect": {
-      "visits": ["Review Missing Police Report", "Merge Decision Outcome", "Send Rejection Notification"],
-      "not": ["Merge Police Report", "Route Claim Decision", "Issue Payout"],
+      "visits": ["Review Missing Police Report", "Is Claim Approved", "Send Rejection Notification"],
+      "not": ["Route Claim Decision", "Issue Payout"],
       "ends": "Send Rejection Notification"
     }
   },
@@ -55,9 +53,9 @@
               "amount_claimed": 2500, "injured": true, "text_description": "side collision", "report_photo": ""},
     "people": {"Review Inactive Policy Claim": {"approved": true, "reason": "renewal paid late, goodwill"}},
     "expect": {
-      "path": ["Claim Submitted", "Has Joint Report Photo", "Merge Photo Branch", "Check Policy Status",
-               "Calculate Fraud Indicators", "Verify Policy Validity", "Review Inactive Policy Claim",
-               "Merge Decision Outcome", "Is Claim Approved", "Issue Payout", "Send Approval Notification"],
+      "path": ["Claim Submitted", "Has Joint Report Photo", "Check Policy Status", "Calculate Fraud Indicators",
+               "Verify Policy Validity", "Review Inactive Policy Claim", "Is Claim Approved", "Issue Payout",
+               "Send Approval Notification"],
       "variables": {"policy_valid": false, "approved": true}
     }
   }
