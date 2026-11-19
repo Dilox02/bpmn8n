@@ -103,3 +103,15 @@ class VocabularyTest(TestCase):
     def test_durations_in_one_or_two_units(self):
         self.assertEqual([self.render("{{ ms|duration }}", ms=ms) for ms in (120, 3400, 250_000, 7_500_000, 300_000_000)],
                          ["120 ms", "3.4 s", "4 min", "2 h 5 min", "3 days"])
+
+
+class EveryTokenIsDefinedTest(TestCase):
+    def test_pages_use_only_defined_custom_properties(self):
+        """A var(--x) nobody defines renders black or nothing (it happened when pages built in parallel kept the
+        old token names): every custom property the pages use is defined in a stylesheet or set inline."""
+        static, templates = Path(views.__file__).parents[1] / "static", Path(views.__file__).parents[1] / "templates"
+        sources = [*static.rglob("*.css"), *templates.rglob("*.html"), Path(views.__file__).with_name("charts.py")]
+        text = {path: re.sub(r"/\*.*?\*/", "", path.read_text(), flags=re.S) for path in sources if path.exists()}
+        defined = {name for t in text.values() for name in re.findall(r"(--[\w-]+)\s*:", t)}
+        used = {(path.name, name) for path, t in text.items() for name in re.findall(r"var\((--[\w-]+)", t)}
+        self.assertEqual(sorted((f, n) for f, n in used if n not in defined), [])
