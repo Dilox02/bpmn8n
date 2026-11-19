@@ -183,6 +183,25 @@ Process variables belong to one case; **global variables** belong to every workf
 - **In Python**: `from bpmn8n.core.shared import store`: `get`, `set(key, value, ttl)`, `delete`, `list(prefix)`, `increment`, `compare_and_set`, and `with store().lock("nightly-export", ttl=30):`, a short lock that a crashed holder releases after `ttl` seconds.
 - **The page** `/variables/` (staff): filter by prefix, add, edit and delete, with the last update and the expiry.
 
+### The process contract: what the outside world sees of a workflow
+
+The workflow is the *private* process, what runs; its **contract** is the *public* one ([AW] §5.4): how a case starts and with which data, which messages it waits for and sends, who works in it, when it gives up, what it ends with. bpmn8n derives it from the workflow and the `@task` registry (`bpmn8n/workflows/contract.py`), so it cannot drift from what runs.
+
+| Part | Derived from |
+|---|---|
+| **start** | the trigger: a webhook's method and path, a form, a schedule, a Call Activity (`call`) |
+| **start data** | every `{{variable}}` and every task input bound by name that a step reads before any step produces it, typed from the task's input Schema (a field that is one `{{variable}}`, `amount="{{amount_claimed}}"`, types `amount_claimed` too); merged with the names `SPEC["start_data"]` declares; a field no task types is `"x-bpmn8n-type": "unknown"`; a field only read after a step whose task declares no output says `unless <step> produces it` and is not required |
+| **messages it waits for** | receive tasks and event-based gateways: name, correlation key, timeout, and the payload fields the steps after the message read that nothing else provides (a message only adds variables) |
+| **messages it sends** | send tasks (a node that sets `message` names what it sends) and HTTP Request nodes that post to bpmn8n's `/api/messages/<name>` |
+| **lanes, deadlines** | human tasks' lanes; a human task's due time (interrupting with a deadline) and an event-based gateway's timeout |
+| **results, calls** | what the last steps produce (what a Call Activity gets back), an error end's code; the sub-processes it calls |
+
+It comes out three ways: the **JSON Schema** of the start body (`start_schema()`), an **OpenAPI 3.1 fragment** with the start webhook (on n8n) and one `POST /api/messages/<name>` per awaited message (on bpmn8n, with the token, `process` fixed to the workflow), and a **summary** in words.
+
+- `python manage.py process_contract projects/motor_insurance_claim` prints the summary (not `manage.py contract`, which is the API's contract with the n8n nodes); `--json` the contract with its schema; `--openapi` the fragment. A project with `processes.py` (ACME) has one contract per process.
+- `GET /api/contracts/<id>` (token): `<id>` is an n8n workflow id (read through n8n's API; a Studio project published as it adds its declared start data, and is read from its folder when n8n cannot give it), a project (`motor_insurance_claim`) or one process of one (`acme/library-lending`).
+- What it does not know, it says: a variable read only after a message and produced by nothing counts as that message's payload (it might be start data nobody reads earlier); availability is on *some* path, where the workflow check judges on *every* path.
+
 ## People: inbox, task page and states
 
 Every User or Manual Task has its own page, `/inbox/<id>/`, generated from the node's form: the case's context, the fields, the actions allowed in its current state. Only people in the lane see the task (a Django group; without a lane, anyone). Opening the node in n8n:
@@ -358,6 +377,7 @@ Django (`:8000`) and n8n (`:5678`, its preview on `:5679`) are one product with 
 - **Theme**: the sidebar's *System / Light / Dark* switch is kept in the `b8-theme` cookie and sets `data-theme` on the page; embedded canvases are drawn in it. n8n keeps its own theme setting (`bpmn.js` no longer overrides it): in dark mode its canvas is flat and each node a tint from its name, in light mode n8n's own colours.
 - **Navigation**: the sidebar is the `NAV` list in `bpmn8n/web/views.py` (URL name, label, icon, staff only). An entry shows once its URL name resolves, so a new page appears by adding its route; *Editor* (staff) opens n8n.
 - **Vocabulary**: `bpmn8n/web/vocab.py` names every status once, with its colour family; templates write `{{ status|status_pill }}`. Everything is in English.
+- **Shared components**: `bpmn8n/static/bpmn8n/components.js`, three vanilla custom elements with their own styles (only `--b8-*` tokens): `<b8-pill tone="positive|negative|warning|accent|neutral">` (what `status_pill` writes), `<b8-timeline>` (around an `<ol>` of `<li data-status>`, as the case page's steps, or from an `items` JSON attribute) and `<b8-process-map>` (the landscape). A classic script, loaded in the head of every page; an n8n hook on another origin loads it with a `<script src>` (the evaluations view does, for its run statuses: without it the words stay, uncoloured). `n8n-editor/test/components.test.mjs` tests its logic.
 - **The case page**, `/cases/<workflow id>:<execution id>/`: its status (running, waiting for a person or a message, completed, failed: inferred from its events and waits), every step with its input and output (bounded), what an LLM was sent or wrote, each decision (the question, the options, the branch taken, Laya's scores or the conditions), its tasks and messages, its variables, and the workflow read from n8n, drawn by the preview with the steps passed, the ones the case is at and the ones not reached (the page posts `{"command": "bpmn8nStates", "states": {"<node>": "waiting" | "active" | "done"}}`). Without n8n the page says so and shows the event log. Staff see every case; a person sees the cases that have a task in their lanes.
 - **Deep links**: the case page opens its execution in n8n and Studio's project opens its workflow; in n8n, the node card links **Open the case** while an execution is open, and a User Task's node links its task page.
 
@@ -704,6 +724,15 @@ Endpoints:
 - **Heatmap on the canvas**: on a workflow with bpmn8n nodes the editor shows a *Heat* switch (Off · Frequency · Duration · Capacity, the last from [the simulation page](#the-simulation-page)'s closed forms). It reads `/api/analytics/overlay?workflow_id=<id>` with the browser's n8n session (bpmn8n checks that session may open the workflow, as for evaluations) and rings each node from cold to hot with a badge, how many times it ran or its mean duration, and a legend; nodes no case reached are dimmed.
 - **A demo without n8n**: `python manage.py seed_events [--process "Claim Handling"] [--cases 300] [--seed 0] [--workflow <id>] [--replace]` writes a synthetic log: Poisson arrivals, a Laya gateway whose unsure decisions go to a person, a loop, errors, two lanes of people with real queues (the lanes become groups of users who cannot sign in), and the last cases still open. With `--workflow` set to a real workflow id whose node names match, the heatmap shows on its canvas.
 - Limits: the cases in scope are read in one pass (about 1 GB per 5 million events, as mining): narrow by process and window beyond that. The window counts the cases that *started* in it.
+
+### The landscape
+
+**http://localhost:8000/landscape/** (signed-in users) draws every workflow bpmn8n knows and how they meet: a derived conversation diagram ([AW] §11–12), not an executable one (`bpmn8n/web/landscape.py`).
+
+- **Nodes**: the projects (`projects/*/workflow.json`, every process of a `processes.py`), n8n's workflows when its API answers (`N8N_API_KEY`; their contract is read from what runs, with the project's declared start data), and the processes of the event log, with their cases. One name is one workflow.
+- **Edges**: a Call Activity (or n8n's Execute Workflow) to the workflow it calls, by n8n id; a message from the workflow that sends it (its contract) to every workflow that waits for it (its contract, and the message subscriptions seen, with their process). A message nobody here sends comes from **Outside**, drawn dashed in the warning colour.
+- **Findings**: a message some process waits for that no known process sends (it must come from outside, through `POST /api/messages/<name>`; with how many times it was delivered so far); a sub-process that is not published (n8n refuses to run it) or that neither n8n nor a project has; a workflow nothing calls and nothing starts (a sub-process nobody calls, or no trigger).
+- **Drawing**: SVG drawn on the server in layers (a workflow one column right of what calls or messages it; workflows with no link in a grid below), inside `<b8-process-map>`: pointing at a workflow, or focusing it with the keyboard, lights its links and dims the rest. The same content is a table below, for screen readers and for search; each box links to its row.
 
 ## bpmn8n inside another Django project
 
