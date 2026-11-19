@@ -159,6 +159,75 @@ class GoalsTest(TestCase):
         self.assertEqual(self.client.get("/api/goals").status_code, 422)
 
 
+class LLMCostTest(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+
+        from ..models import LLMProvider, Settings
+        provider = LLMProvider.objects.create(name="paid", preset="openai", model="m", cost_per_1k_input=Decimal("0.5"),
+                                              cost_per_1k_output=Decimal("1.5"))
+        Settings.objects.update_or_create(pk=1, defaults={"llm": provider})
+
+    def call(self, case, **body):
+        r = self.client.post("/api/tasks/record_llm_call/run", {"fields": {"agent": "Draft", "variable": "draft", **body}},
+                             content_type="application/json", headers={"X-Bpmn8n-Case": case, "X-Bpmn8n-Activity": "Draft: usage",
+                                                                       "X-Bpmn8n-Process": "P"})
+        self.assertEqual(r.status_code, 200, r.content)
+        return Event.objects.get(case_id=case, activity="Draft: usage").data["llm"]
+
+    def test_the_usage_is_estimated_from_the_text_or_taken_from_n8n_and_priced(self):
+        estimated = self.call("w:1", prompt="x" * 400, answer="y" * 81)
+        self.assertEqual((estimated["input_tokens"], estimated["output_tokens"], estimated["estimated"]), (100, 21, True))
+        self.assertAlmostEqual(estimated["cost"], 0.5 * 100 / 1000 + 1.5 * 21 / 1000)
+        reported = self.call("w:2", prompt="x", answer="y", tokens={"promptTokens": 1000, "completionTokens": 200})
+        self.assertEqual((reported["input_tokens"], reported["output_tokens"], reported["estimated"]), (1000, 200, False))
+        self.assertAlmostEqual(reported["cost"], 0.8)
+        self.assertEqual(reported["draft"], "y")  # what a person's edit is compared with
+        junk = self.call("w:3", prompt="abcd", answer="", tokens="={{ unresolved }}")  # not usage: estimated
+        self.assertEqual((junk["input_tokens"], junk["output_tokens"], junk["estimated"]), (1, 0, True))
+
+    def test_no_provider_costs_nothing(self):
+        from ..models import Settings
+        Settings.objects.update(llm=None)
+        self.assertEqual(self.call("w:4", prompt="x" * 400, answer="y")["cost"], 0)
+
+
+class SimulatedCostTest(TestCase):
+    def workflow(self):
+        from ..workflows import Workflow
+        return (Workflow("Reply").start("In", "in").llm_agent("Draft", "Reply to {{message}}", "draft", instructions="Be kind")
+                .user_task("Review", "Check", "staff", [("ok", "OK", "boolean")]).flow("In", "Draft", "Review").as_json())
+
+    def spec(self, **task):
+        from ..simulation.spec import SimSpec
+        return SimSpec.model_validate({"arrivals": {"type": "peak", "count": 4}, "replications": 2,
+                                       "resources": {"staff": {"capacity": 4, "cost_per_hour": 60}},
+                                       "tasks": {"Review": {"duration": 30}, **task}})
+
+    def test_an_agent_costs_the_providers_prices_and_people_cost_apart(self):
+        from ..simulation import des
+        from ..simulation.spec import SimModel
+        llm = {"cost_per_1k_input": 1.0, "cost_per_1k_output": 2.0}
+        model = SimModel(self.workflow(), self.spec(), llm=llm)
+        prompt = len("Reply to {{message}}") + len(model.graph.nodes["Draft"]["parameters"]["options"]["systemMessage"])
+        self.assertAlmostEqual(model.model_cost["Draft"], (prompt / 4 * 1.0 + 300 * 2.0) / 1000)
+        metrics = des.simulate(model)["metrics"]
+        self.assertAlmostEqual(metrics["cost_models_per_case"]["mean"], model.model_cost["Draft"])
+        self.assertAlmostEqual(metrics["cost_people_per_case"]["mean"], 30.0)  # half an hour of someone at 60 an hour
+        self.assertAlmostEqual(metrics["cost_per_case"]["mean"], 30.0 + model.model_cost["Draft"])
+        self.assertEqual(SimModel(self.workflow(), self.spec()).model_cost["Draft"], 0.0)  # no provider prices: free
+        explicit = SimModel(self.workflow(), self.spec(Draft={"cost_per_call": 0.25}), llm=llm)
+        self.assertEqual(explicit.model_cost["Draft"], 0.25)  # the spec wins
+
+    def test_calibration_reads_the_observed_cost_of_calls(self):
+        from ..simulation.calibrate import calibrate
+        add_events(*((f"w:{i}", "Reply", [step("Draft: usage", i, data={"llm": {"agent": "Draft", "cost": 0.01 * (i + 1)}}),
+                                          step("Review", i + 1)]) for i in range(3)))
+        spec, report = calibrate("Reply", workflow=self.workflow())
+        self.assertAlmostEqual(spec.tasks["Draft"].cost_per_call, 0.02)
+        self.assertAlmostEqual(report["llm_cost_per_call"]["Draft"], 0.02)
+
+
 class MiningOverridesTest(TestCase):
     def test_the_decisions_dataset_and_mining_know_the_overrides(self):
         from ..mining import Mining

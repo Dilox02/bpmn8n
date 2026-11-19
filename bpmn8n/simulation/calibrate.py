@@ -17,11 +17,26 @@ from scipy import stats
 
 from ..models import Event
 from ..workflows.graph import ProcessGraph
-from .spec import UNITS, Arrivals, Distribution, Resource, SimSpec, SpecError, Task
+from .spec import UNITS, Arrivals, Distribution, Resource, SimModel, SimSpec, SpecError, Task
 
 MIN_FIT = 10
 GATEWAYS = ("exclusive_gateway", "inclusive_gateway", "conditions_gateway")  # api/gateways.py
 HUMAN = ("userTask", "manualTask")
+
+
+def provider_rates():
+    """The default LLM provider's prices (E9), None when there is none or it is free."""
+    from ..models import Settings
+    provider = Settings.load().llm
+    if not provider or not (provider.cost_per_1k_input or provider.cost_per_1k_output):
+        return None
+    return {"cost_per_1k_input": float(provider.cost_per_1k_input), "cost_per_1k_output": float(provider.cost_per_1k_output)}
+
+
+def sim_model(workflow, spec=None):
+    """A SimModel with the default LLM provider's prices (what an LLM agent's call costs when the spec says
+    nothing); SimModel itself reads no database."""
+    return SimModel(workflow, spec, llm=provider_rates())
 
 
 def fit(values):
@@ -96,6 +111,16 @@ def calibrate(process, since=None, until=None, workflow=None, unit="minutes"):
             lane = params.get("lane") or activity
             people.setdefault(lane, set()).update(e["resource"] for e in human if e["resource"] not in ("", "api"))
         tasks[activity] = Task(duration=duration, **({"resource": lane} if lane else {}))
+    # E9: what the LLM agents' calls really cost, from the usage records of "<agent>: usage" (core: record_llm_call)
+    paid = {}
+    for e in rows:
+        llm = (e["data"] or {}).get("llm")
+        if isinstance(llm, dict) and isinstance(llm.get("cost"), int | float) \
+                and (known is None or llm.get("agent") in known):
+            paid.setdefault(llm["agent"], []).append(llm["cost"])
+    for agent, costs in paid.items():
+        tasks[agent] = tasks.get(agent, Task()).model_copy(update={"cost_per_call": float(np.mean(costs))})
+    report["llm_cost_per_call"] = {a: float(np.mean(c)) for a, c in paid.items()}
     resources = {lane: Resource(capacity=max(1, len(names))) for lane, names in people.items()}
     report["people"] = {lane: sorted(names) for lane, names in people.items()}
 

@@ -46,8 +46,8 @@ class PatternsTest(TestCase):
     def test_a_prompt_chain_runs_its_agents_in_order_each_on_the_answer_before(self):
         w = reviewed("prompt_chain", prompts=["List the claims in {{message}}", "Draft a reply to {{previous}}"],
                      output="reply")
-        self.assertIn(("Pattern 1: answer", "main", "Pattern 2: prompt"), hops(w))
-        self.assertIn(("Pattern 2: answer", "main", "Approve Reply"), hops(w))
+        self.assertIn(("Pattern 1: usage", "main", "Pattern 2: prompt"), hops(w))
+        self.assertIn(("Pattern 2: usage", "main", "Approve Reply"), hops(w))
         self.assertEqual(w.node("Pattern 2: prompt")["parameters"]["input"]["value"]["prompt"],
                          "Draft a reply to {{reply_1}}")
         self.assertEqual(w.node("Pattern 2: answer")["parameters"]["assignments"]["assignments"][0]["name"], "reply")
@@ -74,8 +74,8 @@ class PatternsTest(TestCase):
     def test_reflection_loops_back_with_the_critique_until_it_passes_or_the_budget_ends(self):
         w = reviewed("reflection", prompt="Draft a reply to {{message}}", critique="Polite, under 100 words",
                      output="reply", max_rounds=3)
-        self.assertTrue({("Pattern: first round", "main", "Pattern: prompt"), ("Pattern: answer", "main", "Pattern: critic: prompt"),
-                         ("Pattern: critic: answer", "main", "Pattern: verdict"), ("Pattern: verdict", "main", "Pattern: again?"),
+        self.assertTrue({("Pattern: first round", "main", "Pattern: prompt"), ("Pattern: usage", "main", "Pattern: critic: prompt"),
+                         ("Pattern: critic: usage", "main", "Pattern: verdict"), ("Pattern: verdict", "main", "Pattern: again?"),
                          ("Pattern: again?", "again", "Pattern: prompt"), ("Pattern: again?", "done", "Approve Reply")}
                         <= hops(w))
         self.assertIn("{{reply_critique}}", w.node("Pattern: prompt")["parameters"]["input"]["value"]["prompt"])
@@ -99,7 +99,7 @@ class PatternsTest(TestCase):
                      output_checks={"pii": True, "schema": ["reply"]})
         self.assertTrue({("Pattern: input check: passed?", "passed", "Pattern: prompt"),
                          ("Pattern: input check: passed?", "blocked", "Pattern: blocked"),
-                         ("Pattern: answer", "main", "Pattern: output check"),
+                         ("Pattern: usage", "main", "Pattern: output check"),
                          ("Pattern: output check: passed?", "blocked", "Pattern: blocked"),
                          ("Pattern: output check: passed?", "passed", "Approve Reply")} <= hops(w))
         self.assertEqual(w.node("Pattern: prompt")["parameters"]["input"]["value"]["prompt"], "{{redacted}}")
@@ -250,14 +250,14 @@ class OversightTest(TestCase):
     def test_audit_draws_a_sample_and_the_rest_go_on(self):
         w = self.audited(risk="low", audit_rate=0.2)
         self.assertEqual(w.node("Draft: audit sample")["parameters"]["input"]["value"], {"rate": 0.2, "risk": "low"})
-        self.assertTrue({("Draft: answer", "main", "Draft: audit sample"), ("Draft: audit?", "continue", "Send Reply"),
+        self.assertTrue({("Draft: usage", "main", "Draft: audit sample"), ("Draft: audit?", "continue", "Send Reply"),
                          ("Draft: audit?", "audit", "Audit Reply")} <= hops(w))
 
     def test_a_low_risk_audited_agent_is_an_info_any_other_an_error(self):
         self.assertEqual(problems(self.audited(risk="low"), "human"), {("Draft", "human", "info")})
         self.assertEqual(problems(self.audited(), "human"), {("Draft", "human", "error")})
         bypass = self.audited(risk="low")  # a path that skips the sample is never audited
-        bypass.flow("Draft: answer", "Send Reply")
+        bypass.flow("Draft: usage", "Send Reply")
         self.assertEqual(problems(bypass, "human"), {("Draft", "human", "error")})
         with self.assertRaises(SpecError):
             self.audited(risk="medium")

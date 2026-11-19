@@ -99,16 +99,23 @@ class Run:
     def length(self):
         return self.end - self.begin
 
-    def cost(self, visit):
-        """What one visit cost: per execution, plus the worker's time at the resource's hourly cost."""
+    def costs(self, visit):
+        """(people, models, other) of one visit: the worker's time at the resource's hourly cost, an LLM agent's
+        call at the model's price, and the per-execution cost of the step."""
         if visit.started is None or visit.ended is None:
-            return 0.0
+            return 0.0, 0.0, 0.0
         hours = (visit.ended - visit.started) * UNITS[self.model.unit] / 60
-        return self.model.cost[visit.node] + (self.model.cost_per_hour.get(visit.resource, 0.0) * hours
-                                              if visit.resource else 0.0)
+        return (self.model.cost_per_hour.get(visit.resource, 0.0) * hours if visit.resource else 0.0,
+                self.model.model_cost[visit.node], self.model.cost[visit.node])
+
+    def cost(self, visit):
+        return sum(self.costs(visit))
 
     def case_cost(self, case):
         return sum(self.cost(v) for v in case.trace)
+
+    def case_costs(self, case):
+        return tuple(map(sum, zip(*(self.costs(v) for v in case.trace), strict=False))) or (0.0, 0.0, 0.0)
 
     def utilisation(self, resource, begin=None, end=None):
         begin, end = self.begin if begin is None else begin, self.end if end is None else end
@@ -127,6 +134,8 @@ class Run:
         return {"completed": len(self.done), "unfinished": len(self.cases) - len(self.done),
                 "simulated_time": t, "total_cost": sum(self.case_cost(c) for c in self.cases),
                 "cost_per_case": float(np.mean([self.case_cost(c) for c in self.done])) if self.done else None,
+                "cost_people_per_case": float(np.mean([self.case_costs(c)[0] for c in self.done])) if self.done else None,
+                "cost_models_per_case": float(np.mean([self.case_costs(c)[1] for c in self.done])) if self.done else None,
                 "cycle_time": p["mean"], "cycle_time_p90": p["p90"], "cycle_time_max": p["max"],
                 "waiting_time": stats.summary([c.waiting_time for c in self.done])["mean"],
                 "throughput": len(self.done) / t if t > 0 else None, "in_system": in_system / t if t > 0 else None,

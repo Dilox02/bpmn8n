@@ -29,6 +29,7 @@ UNITS = {"seconds": 1 / 60, "minutes": 1.0, "hours": 60.0, "days": 1440.0, "week
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # what an element takes when the spec says nothing, in minutes (an exponential: people vary)
 HUMAN_MINUTES, MESSAGE_MINUTES = 10.0, 60.0
+OUTPUT_TOKENS = 300  # an LLM agent's answer, when nothing observed says otherwise
 
 
 class SpecError(ValueError):
@@ -221,6 +222,7 @@ class Task(Strict):
 
     duration: Distribution | None = None
     cost: float = Field(0.0, ge=0)
+    cost_per_call: float | None = Field(None, ge=0)  # an LLM agent's model cost per call; empty: the provider's prices
     resource: str | None = None
     priority: int = 0
 
@@ -268,13 +270,16 @@ class SimModel:
     """A SimSpec applied to a workflow: for every step its duration, cost, resource and, for a choice, its
     options [(outputs taken, probability)]. Defaults by element kind fill what the spec leaves out."""
 
-    def __init__(self, workflow, spec=None):
+    def __init__(self, workflow, spec=None, llm=None):
+        """llm: the default LLM provider's prices, {"cost_per_1k_input", "cost_per_1k_output"} (E9): what an
+        LLM agent's call costs when its task gives no cost_per_call."""
         self.graph = workflow if isinstance(workflow, ProcessGraph) else ProcessGraph(workflow)
         self.spec = spec = spec or SimSpec()
         g = self.graph
         if unknown := (set(spec.tasks) | set(spec.gateways)) - set(g.flow_nodes):
             raise SpecError(f"the workflow has no step named {', '.join(sorted(unknown))}")
         self.warnings, self.duration, self.cost, self.resource, self.priority = [], {}, {}, {}, {}
+        self.model_cost = {}  # per call of an LLM agent: what the model costs, apart from people and fixed costs
         self.options, self.timeout = {}, {}
         for node in g.flow_nodes:
             element, params, task = g.element(node), g.nodes[node].get("parameters") or {}, spec.tasks.get(node)
@@ -282,6 +287,7 @@ class SimModel:
                 self.timeout[node] = self._wait(node, params)
             self.duration[node] = task.duration if task and task.duration else self._default(node, element, params)
             self.cost[node] = task.cost if task else 0.0
+            self.model_cost[node] = self._call_cost(node, element, task, llm)
             self.priority[node] = task.priority if task else 0
             lane = (params.get("lane") or "people") if element.human else None
             self.resource[node] = (task.resource if task and task.resource is not None else lane) or None
@@ -297,6 +303,19 @@ class SimModel:
         self.schedules = {r: Schedule(frozenset(DAYS.index(d) for d in ws.days), ws.start, ws.end, day)
                           for r, res in spec.resources.items() if res.schedule
                           for ws in [spec.schedules[res.schedule]]}
+
+    def _call_cost(self, node, element, task, llm):
+        if element.kind != "llmAgent":
+            return 0.0
+        if task and task.cost_per_call is not None:
+            return task.cost_per_call
+        if not llm:
+            return 0.0
+        g = self.graph  # ponytail: the prompt's length over 4 characters a token; the answer is OUTPUT_TOKENS
+        prompt = (((g.nodes.get(f"{node}: prompt") or {}).get("parameters") or {}).get("input") or {}).get("value") or {}
+        system = ((g.nodes[node].get("parameters") or {}).get("options") or {}).get("systemMessage") or ""
+        sent = (len(str(prompt.get("prompt", ""))) + len(system)) / 4
+        return (float(llm.get("cost_per_1k_input", 0)) * sent + float(llm.get("cost_per_1k_output", 0)) * OUTPUT_TOKENS) / 1000
 
     def _wait(self, node, params):
         if params.get("mode", "for") == "until":

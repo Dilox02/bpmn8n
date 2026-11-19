@@ -123,7 +123,7 @@ class Workflow:
     # the @tasks (bpmn8n/tasks.py) that steps place on their own: llm_agent's prompt and audit, the patterns',
     # the loop's count
     STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique", "count_round",
-                  "throw_signal", "compensate_case")
+                  "throw_signal", "compensate_case", "record_llm_call")
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -421,7 +421,7 @@ class Workflow:
         only those (it sees nothing else: data minimisation); output: the variable its answer becomes;
         instructions: its role and constraints. It never decides: a person reviews its answer (a user_task
         after it). Four nodes: the prompt (filled in bpmn8n, so the event log keeps what the LLM was sent),
-        the agent with its chat model, and the answer as `output`. Retried 3 times, 5 s apart: up to 3 paid
+        the agent with its chat model, the answer as `output` and its usage record (tokens, cost: E9). Retried 3 times, 5 s apart: up to 3 paid
         calls per answer. oversight="audit" (human-on-the-loop, H10) only for a step declared risk="low", with
         no legal or similar effect on a person: a fixed share (audit_rate) of the cases, drawn from the case
         id, goes out of the step's "audit" output to a person; the others go on (its first output).
@@ -450,13 +450,18 @@ class Workflow:
             {"id": self.stable_id(last, output), "name": output, "type": "string", "value":
              "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"}]},
             "includeOtherFields": False, "options": {}}, bpmn=False, version=3.4)
-        self.flow(first, name, last)
+        usage = f"{name}: usage"  # E9: tokens (n8n's, else estimated), cost and the draft, kept in the event log
+        self.task(usage, "scriptTask", "record_llm_call", output="merge", fields={
+            "agent": name, "variable": output, "prompt": f"={{{{ $('{first}').item.json.prompt }}}}",
+            "answer": f"={{{{ $json[{json.dumps(output)}] }}}}", "tokens": f"={{{{ $('{name}').item.json.tokenUsage ?? '' }}}}"})
+        self.flow(first, name, last, usage)
+        last = usage
         if oversight == "audit":  # the sample is a task, so the event log keeps which cases a person audits
             sample, last = f"{name}: audit sample", f"{name}: audit?"
             self.task(sample, "scriptTask", "draw_audit_sample", fields={"rate": audit_rate, "risk": risk or "not declared"})
             self.condition_gateway(last, "exclusive", {"continue": "not {{audited}}", "audit": "{{audited}}"},
                                    decision_scope="technical")
-            self.flow(f"{name}: answer", sample, last)
+            self.flow(usage, sample, last)
         self.steps[name] = (first, last)  # after its own flow: other steps' flows reach its first and leave its last
         return self
 

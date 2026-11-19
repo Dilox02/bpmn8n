@@ -10,7 +10,8 @@ from django.core.management.base import BaseCommand, CommandError
 
 from bpmn8n.simulation import des, optimise, scenarios
 from bpmn8n.simulation.analytic import analyse
-from bpmn8n.simulation.spec import SimModel, SpecError, load
+from bpmn8n.simulation.calibrate import sim_model
+from bpmn8n.simulation.spec import SpecError, load
 
 
 def number(value, digits=2):
@@ -49,7 +50,7 @@ class Command(BaseCommand):
                 from bpmn8n.simulation.calibrate import calibrate as read_log
                 calibrated, report = read_log(process, since, workflow=workflow, unit=spec.unit)
                 spec = calibrated.model_copy(update={"replications": spec.replications, "seed": spec.seed})
-            model = SimModel(workflow, spec)
+            model = sim_model(workflow, spec)
             if analytic:
                 result = {"analytic": analyse(model), "scenarios": scenarios.scenarios(model, tokens)}
             elif staffing is not None:

@@ -36,7 +36,7 @@ class MessageSubscriptionAdmin(admin.ModelAdmin):
 class LLMProviderForm(forms.ModelForm):
     class Meta:
         model = LLMProvider
-        fields = ("name", "preset", "model", "base_url", "api_key", "timeout")
+        fields = ("name", "preset", "model", "base_url", "api_key", "timeout", "cost_per_1k_input", "cost_per_1k_output")
         widgets = {"api_key": forms.PasswordInput(render_value=True)}
 
 

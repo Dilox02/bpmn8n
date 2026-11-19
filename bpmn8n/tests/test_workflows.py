@@ -170,7 +170,7 @@ class BuilderTest(SimpleTestCase):
         self.assertEqual(workflow.connections["In"]["main"][0][0]["node"], "Wait")  # null branch, a single "to"
 
 
-    def test_an_llm_agent_is_four_nodes_with_its_chat_model(self):
+    def test_an_llm_agent_is_five_nodes_with_its_chat_model(self):
         model = {"type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini", "typeVersion": 1.2,
                  "parameters": {"modelName": "models/gemini-3.5-flash"}, "credentials": {"googlePalmApi": {"id": "7"}}}
         workflow = Workflow.from_spec({"steps": [
@@ -179,8 +179,8 @@ class BuilderTest(SimpleTestCase):
             {"type": "user_task", "name": "Review", "title": "Review", "lane": "managers", "form": []}],
             "flows": [{"from": "In", "to": ["Draft", "Review"]}]}, chat_model=model).as_json()
         nodes, links = {n["name"]: n for n in workflow["nodes"]}, workflow["connections"]
-        self.assertEqual([links[n]["main"][0][0]["node"] for n in ("In", "Draft: prompt", "Draft", "Draft: answer")],
-                         ["Draft: prompt", "Draft", "Draft: answer", "Review"])
+        self.assertEqual([links[n]["main"][0][0]["node"] for n in ("In", "Draft: prompt", "Draft", "Draft: answer", "Draft: usage")],
+                         ["Draft: prompt", "Draft", "Draft: answer", "Draft: usage", "Review"])
         self.assertEqual(links["Draft: model"], {"ai_languageModel": [[{"node": "Draft", "type": "ai_languageModel", "index": 0}]]})
         self.assertEqual(nodes["Draft: model"]["credentials"], {"googlePalmApi": {"id": "7"}})
         self.assertEqual(nodes["Draft: prompt"]["parameters"]["input"]["value"], {"prompt": "Reply to {{message}}"})

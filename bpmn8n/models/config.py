@@ -59,6 +59,10 @@ class LLMProvider(models.Model):
     model = models.CharField(max_length=100, blank=True, help_text="Empty: the preset's, e.g. gemini-3.5-flash")
     api_key = EncryptedText(blank=True, help_text="Empty for local models; stored encrypted")
     timeout = models.PositiveIntegerField(default=120, help_text="Seconds per reply: more for large local models")
+    cost_per_1k_input = models.DecimalField(max_digits=10, decimal_places=5, default=0, blank=True,
+                                            help_text="Price of 1000 input tokens (cost per call, in the simulation); 0 for a local model")
+    cost_per_1k_output = models.DecimalField(max_digits=10, decimal_places=5, default=0, blank=True,
+                                             help_text="Price of 1000 output tokens")
 
     class Meta:
         verbose_name = "LLM provider"
