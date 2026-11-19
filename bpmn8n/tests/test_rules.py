@@ -4,6 +4,7 @@ import json
 from io import StringIO
 from pathlib import Path
 
+from django.contrib.auth.models import Group, User
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
@@ -109,6 +110,49 @@ class NamingTest(TestCase):
         self.assertEqual(set(problems), {"", "Process Claim", "Claim Registered", "Request is approved", "Payment Done"})
         self.assertIn("'handle' is a mushy verb", problems[""])  # the process too; its trigger may be past tense
         self.assertIn("verb + noun", problems["Claim Registered"])
+
+
+class SeparationOfDutiesTest(TestCase):
+    """D7: who asks for something should not be who approves it."""
+
+    def setUp(self):
+        Group.objects.create(name="staff")
+        Group.objects.create(name="managers")
+
+    @staticmethod
+    def purchase(lane="staff", name="Approve Purchase", title="Purchase {{item}}", form=(("ok", "OK", "string"),),
+                 **approval):
+        return (Workflow("Buy Item").start("In", "in")
+                .user_task("Submit Purchase", "Submit a purchase", "staff", [("item", "Item", "string")])
+                .user_task(name, title, lane, list(form), **approval)
+                .flow("In", "Submit Purchase", name)).as_json()
+
+    def duties(self, workflow):
+        return {(p.node, p.level, p.message) for p in WorkflowCheck(workflow, fetch=lambda _: None).problems
+                if p.rule == "separation-of-duties"}
+
+    def test_an_approval_after_a_task_the_same_person_may_work_is_noted(self):
+        message = 'separation of duties: add not_same_as=["Submit Purchase"] so one person cannot request and approve'
+        self.assertEqual(self.duties(self.purchase()), {("Approve Purchase", "info", message)})
+        for decides in ({"name": "Sign-off Purchase"}, {"name": "Accept Order"}, {"name": "Settle Bill", "title": "Decide on {{item}}"},
+                        {"name": "Check Purchase", "form": [("is_approved", "Approved", "boolean")]}):
+            self.assertEqual({node for node, _, _ in self.duties(self.purchase(**decides))}, {decides["name"]}, decides)
+        self.assertTrue(self.duties(self.purchase(lane="")))  # no lane: superusers do both
+
+    def test_lanes_are_one_person_only_with_a_member_in_common(self):
+        self.assertEqual(self.duties(self.purchase(lane="managers")), set())
+        both = User.objects.create(username="both")
+        both.groups.add(*Group.objects.all())
+        self.assertEqual({node for node, _, _ in self.duties(self.purchase(lane="managers"))}, {"Approve Purchase"})
+
+    def test_four_eyes_declared_or_nothing_to_approve_is_quiet(self):
+        self.assertEqual(self.duties(self.purchase(not_same_as=["Submit Purchase"])), set())
+        for plain in ({"name": "Ship Purchase"}, {"name": "Assign Owner", "title": "Design the {{item}} form"},
+                      {"name": "Ship Purchase", "form": [("approved", "Approved", "string")]}):  # a yes/no only
+            self.assertEqual(self.duties(self.purchase(**plain)), set(), plain)
+        first = (Workflow("Buy Item").start("In", "in").user_task("Approve Purchase", "t", "staff", [("ok", "OK", "boolean")])
+                 .manual_task("Order Item", "Order it", "staff").flow("In", "Approve Purchase", "Order Item")).as_json()
+        self.assertEqual(self.duties(first), set())  # nobody asked before it
 
 
 class VariablesTest(TestCase):

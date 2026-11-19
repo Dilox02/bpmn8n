@@ -242,6 +242,7 @@ The rules are classes in `bpmn8n/workflows/rules.py`, run in this order; `python
 | `wait` | error | structure | branches that run at once (a parallel or inclusive gateway, one output leading to several steps) where more than one waits (a person, a message, a timer over a minute) |
 | `metrics` | warning | metrics | a Metrics node with nothing produced before it, or without a threshold; an info when missing the threshold changes nothing (no conditions gateway after it) |
 | `error-path` | info | people | a step n8n retries whose last failure reaches no person: it stops the case (no `on_error`), or its error path ends without a User or Manual Task (an `error` output leading nowhere is the `output` rule's) |
+| `separation-of-duties` | info | people | a human task that approves or decides (approve, authorise, sign, decide, accept or reject in its name or title, or a yes/no field such as `approved`) after another human task one person may also work (the same lane, no lane, or lanes with a member in common), that task not in its `not_same_as` |
 | `implicit-split` | info | structure | one output leading to several steps (not a Parallel Gateway's): they all run, a split nobody drew |
 | `implicit-join` | warning | structure | a step that is not a Merge, reached by branches that run at once: it runs once per arriving branch; the branches of an exclusive or event-based choice may meet anywhere |
 | `endless-loop` | error | structure | a loop no flow leaves (no output out of it, none left open): it never ends |
