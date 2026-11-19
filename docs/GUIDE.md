@@ -457,6 +457,7 @@ python manage.py simulate projects/acme --staffing 20 --metric mean   # the fewe
 `/staffing`, and `GET /api/simulation/calibrate?process=&since=&until=&project=`. A workflow comes inline
 (`{"workflow": …}`) or as a project (`{"project": "acme"}`), with an optional `spec`. Runs are synchronous,
 capped at 200 000 simulated cases per request; bigger ones go through the command.
+`GET /api/simulation/overlay?workflow_id=` gives the canvas its *Capacity* mode (below).
 
 **What the outputs mean**
 - **Scenario table** (`--analytic`): the paths a case can take (the outputs of its choices, in order), with
@@ -492,6 +493,64 @@ at a time, but people work in parallel and automated steps take milliseconds).
 and need a redundant "emulation" model, allocate few resources unevenly, and fake inter-arrival times with a
 timer in a one-instance lane to subtract afterwards: here parallel branches, joins, loops and arrivals are
 native, and the analytic tables, the simulation and the running workflow read the same JSON.
+
+### The simulation page
+
+**http://localhost:8000/simulation/** (staff) puts all of the above in front of people. Pick a workflow
+(every project of `projects/` with one, and the ACME examples of `examples/workflows/`, simulated on the
+defaults) or a process of the event log: a process named like a project's workflow opens that project. The
+whole page is its query string (`?project=acme&c:managers=3&load=1.2&run=1&level=99`), so a view is a link
+to bookmark, or to open next to another and compare; every form is a plain GET.
+
+- **Capacity now** answers at once, in closed form, who the bottleneck is and how long work waits there: per
+  lane its people, the work arriving per hour, the mean work, the utilisation ρ (the share of time each
+  person works: arrivals × work ÷ people), the expected wait and response; per step its visits per case and
+  expected wait. Reading ρ: up to about 70 % queues stay short; from 85 % (drawn red) every extra case adds
+  a lot of waiting, as Wq grows like ρ ⁄ (1 − ρ); at 100 % or more the lane cannot keep up and its queue grows
+  without bound. A peak of cases at once has no steady state: the page says so, with the least time the
+  work needs.
+- **What if**: a number per lane (people) and a multiplier of the arrivals. *Recompute* answers in closed
+  form at once, now → then, with the change in wait and in mean cycle time (green shorter, red longer).
+  *Simulate* below then runs on the what-if, to confirm it.
+- **Find the staffing**: the fewest people for a mean or p90 cycle time, at most N per lane and optionally
+  in all. The closed forms choose where to start and replications confirm each candidate (5 each, at most
+  40 configurations on the server); the sensitivity table says what one person less in each lane would
+  cost; *Try it in the what-if* carries the answer up.
+- **Scenarios**: the token table for N start tokens (100 by default): each path, its probability, its
+  tokens and where it ends; the Σ row checks that the ending tokens are N.
+- **Simulate**: replications and seed. Every metric is the mean of the replications with its Student t
+  interval at the confidence you pick (90, 95 or 99 %): the range that holds the true mean that often if the
+  experiment were repeated. Two configurations differ only when their intervals do not overlap (the API's
+  `compare` gives the sharper paired interval); more replications narrow them. The histogram counts the
+  cycle time of every completed case (the tail a mean hides); a line per lane draws its utilisation over
+  the first replication; per step the queue and work time. When the closed form's mean cycle time falls
+  outside the interval, the page says so and lists what the closed form assumes that this model does not
+  do: no propagation of variability from one lane to the next, Allen–Cunneen's approximation, parallel
+  branches as the longest of their means, people always at work, a steady state the simulated cases may not
+  reach, a lane so close to capacity that its wait is slow to settle. When a lane cannot keep up, it says
+  the simulation's means describe that run, not a steady state. Runs go on the server within the API's cap
+  and say how long they took; bigger ones go through `manage.py simulate`.
+- **From the log**: the calibration of the chosen process and window: arrival rate and variability, per
+  activity the distribution AIC chose with its parameters (and the other candidates' AIC), branch shares,
+  people per lane. *Simulate with these parameters* runs the whole page on them (`source=log`). With a
+  simulation and a log, **Model and reality** sets per activity the observed mean duration and wait
+  (`bpmn8n.analytics`) beside the simulated queue + work, with the relative error and the visits per case,
+  the mean cycle time on both sides, and a fit: how far the steps' simulated time is off, over the time they
+  take in the log. A human task's logged time holds its queue (there is no claim time), which the simulation
+  adds again on a busy lane: the table shows that error where it is. A what-if is not compared with reality.
+- **Spec**: the spec the page runs on, every default written out: each step's time, lane and cost and where
+  it came from (the spec, the element's default, the log), each lane's people, each choice's shares, the
+  what-if included. *Download JSON*, or *Save* it to `projects/<p>/simulation.json`: it is read by
+  `SimSpec`, checked against the workflow it names, and written only in that project's folder. An example
+  has no folder: download its spec and put it next to a workflow.
+- **On the canvas**: the editor's *Heat* switch has a *Capacity* mode: every step of a lane coloured by the
+  lane's ρ in closed form (a cool ramp, red from 85 %) with a badge; its title says the people, the wait
+  and the visits per case; the legend names the bottleneck and links to the page. It reads
+  `/api/simulation/overlay` with the browser's n8n session, as the heatmap does, for the Studio project
+  imported as that workflow, else for the workflow read from n8n with the spec of the project or example of
+  the same name. Steps nobody waits for are dimmed.
+- **In Studio**: a project with a workflow has a *Capacity* card: the bottleneck, its ρ and the mean cycle
+  time, linking to the page.
 
 ## Observability and process mining
 
@@ -546,7 +605,7 @@ Endpoints:
 - **Compare**: add filters to *cohort B* and the page sets the same figures, activities and branch shares side by side with the filtered cases (A), with B − A: specialists against residents, this month against last.
 - **Bottlenecks: queueing on what really happened.** Each lane is a station: its people (the active members of the lane's Django group, else the people seen) serve its tasks first come, first served. From the log: arrivals per hour λ and their variability ca², mean work E[S] and its cs², utilisation ρ = λE[S]/c, the observed wait against the G/G/c prediction (`bpmn8n.simulation.queueing`), the wait with one person less and one more, the people a **target wait** needs, and Little's law (the time-average work in progress from the events against λW: a large gap means work still open at the window's edges, or a log that is not steady). Activities are ranked by utilisation and share of the cycle time.
   - What the log cannot separate, it says: a User Task's event spans its creation to its completion. With a claim time on the task, waiting and work separate exactly; without one, work is estimated from each person's previous completion (exact when people take the next task as soon as they finish one, otherwise an upper bound on work); a task completed through the API names no person, so only its response time is known and utilisation is an upper bound. System steps are delays (software scales with its workers). Rates are per calendar hour: there are no working hours yet.
-- **Heatmap on the canvas**: on a workflow with bpmn8n nodes the editor shows a *Heat* switch (Off · Frequency · Duration). It reads `/api/analytics/overlay?workflow_id=<id>` with the browser's n8n session (bpmn8n checks that session may open the workflow, as for evaluations) and rings each node from cold to hot with a badge, how many times it ran or its mean duration, and a legend; nodes no case reached are dimmed.
+- **Heatmap on the canvas**: on a workflow with bpmn8n nodes the editor shows a *Heat* switch (Off · Frequency · Duration · Capacity, the last from [the simulation page](#the-simulation-page)'s closed forms). It reads `/api/analytics/overlay?workflow_id=<id>` with the browser's n8n session (bpmn8n checks that session may open the workflow, as for evaluations) and rings each node from cold to hot with a badge, how many times it ran or its mean duration, and a legend; nodes no case reached are dimmed.
 - **A demo without n8n**: `python manage.py seed_events [--process "Claim Handling"] [--cases 300] [--seed 0] [--workflow <id>] [--replace]` writes a synthetic log: Poisson arrivals, a Laya gateway whose unsure decisions go to a person, a loop, errors, two lanes of people with real queues (the lanes become groups of users who cannot sign in), and the last cases still open. With `--workflow` set to a real workflow id whose node names match, the heatmap shows on its canvas.
 - Limits: the cases in scope are read in one pass (about 1 GB per 5 million events, as mining): narrow by process and window beyond that. The window counts the cases that *started* in it.
 
