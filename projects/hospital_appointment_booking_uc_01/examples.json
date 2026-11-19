@@ -37,6 +37,16 @@
         "redactions": 0,
         "redacted_conversation": "Patient: I need a dermatology visit in December."
       }
+    },
+    {
+      "input": {
+        "message": "Cardiology in May. Bill my IBAN IT60X0542811101000000123456 and copy anna.b@example.org.",
+        "patient_id": "PAT-004"
+      },
+      "output": {
+        "redactions": 2,
+        "redacted_conversation": "Patient: Cardiology in May. Bill my IBAN [IBAN] and copy [EMAIL]."
+      }
     }
   ],
   "read_booking_preferences": [
