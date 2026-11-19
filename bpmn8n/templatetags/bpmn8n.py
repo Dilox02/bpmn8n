@@ -62,3 +62,9 @@ def span(moment):
     if abs((moment - now).total_seconds()) < 60:
         return "a moment"
     return timesince(moment, now, depth=1) if moment < now else timeuntil(moment, now, depth=1)
+
+
+@register.filter
+def get(mapping, key):
+    """mapping[key], "" when there is none: a form's submitted value or error by field name."""
+    return mapping.get(key, "") if hasattr(mapping, "get") else ""

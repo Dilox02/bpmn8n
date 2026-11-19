@@ -1,0 +1,16 @@
+{% extends "bpmn8n/base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block crumbs %}<a href="{% url 'workload' %}">Workload</a><span aria-hidden="true">/</span><span>Notifications</span>{% endblock %}
+{% block main %}
+<div class="title-row"><div><h1>Notifications</h1>
+  <p class="sub">bpmn8n e-mails you at {{ user.email|default:"(you have no e-mail address: ask an administrator to add one)" }} when a task is assigned to you, due soon, overdue or escalated; for a task nobody holds, the members of its lane.</p></div></div>
+<section class="panel" aria-labelledby="prefs">
+  <header><h2 id="prefs">What you receive</h2></header>
+  <form class="fields" method="post">
+    {% csrf_token %}
+    <div class="field"><label class="check"><input type="checkbox" name="email"{% if pref.email %} checked{% endif %}> An e-mail for each of these events</label></div>
+    <div class="field"><label class="check"><input type="checkbox" name="digest"{% if pref.digest %} checked{% endif %}> A daily digest of what waits for you</label></div>
+    <div class="form-actions"><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</section>
+{% endblock %}

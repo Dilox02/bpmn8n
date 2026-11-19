@@ -13,7 +13,7 @@ from pydantic import Field, field_validator, model_validator
 
 from ..clients.http import ServiceUnavailable
 from ..core.cases import CaseData
-from ..models import Cancelled, Reminder, TransitionError, UserTask
+from ..models import Cancelled, Notification, Reminder, TransitionError, UserTask
 
 router = Router(tags=["userTask"])
 
@@ -120,6 +120,9 @@ def create_user_tasks(request, data: UserTaskIn):
         "priority": data.priority, "due": due, "deadline": data.deadline, "not_same_as": data.not_same_as,
         "quorum": quorum}, str(case.text(data.assignee))) for case, due in zip(cases, dues)]
     tasks = UserTask.register(data.resume_url, cases[0].trace.activity or data.title, instances)
+    for task in tasks:
+        if task.assignee_id:  # created already claimed: its person is told (once, also when n8n retries)
+            Notification.notify(task, "assigned")
     if data.remind_at:
         try:
             at = UserTask.parse_due(data.remind_at)

@@ -85,6 +85,19 @@
       </ol>
     </section>
     {% endif %}
+    {% if similar %}
+    <section class="panel" aria-labelledby="similar">
+      <header><h2 id="similar">Similar past cases</h2><span class="meta">by {{ similar_how }}, on what this page shows of the case</span></header>
+      <ol class="trail">
+        {% for c in similar %}
+        <li>
+          <span>{% if c.link %}<a class="inline-link" href="/cases/{{ c.case_id|urlencode:'' }}/">case #{{ c.execution }}</a>{% else %}case #{{ c.execution }}{% endif %}{% if c.end %} · ended at {{ c.end }}{% endif %}{% if c.decision %} · {% for k, v in c.decision.items %}{{ k }}: {{ v|default_if_none:"—" }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}</span>
+          <span class="who-when num">{{ c.score }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
   </div>
   <div class="stack">
     <section class="panel" aria-labelledby="about">
