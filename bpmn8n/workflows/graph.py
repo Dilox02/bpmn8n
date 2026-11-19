@@ -13,6 +13,15 @@ from functools import cached_property
 
 from .elements import NOOP, STICKY, Element, element
 
+ERROR_OUTPUT = "continueErrorOutput"  # n8n's On Error: "Continue (using error output)", a node setting
+
+
+def outputs(node):
+    """A node's outputs in order: its element's (a gateway's branches with "default" or "timeout", a human
+    task's with a deadline; else ["main"]), then "error" when n8n's On Error setting gives it one (C3)."""
+    labels = element(node).outputs(node.get("parameters"))
+    return [*labels, "error"] if node.get("onError") == ERROR_OUTPUT else labels
+
 
 class ProcessGraph:
     def __init__(self, workflow):
@@ -53,8 +62,14 @@ class ProcessGraph:
         return [name for name in self.nodes if all(getattr(self.element(name), k) == v for k, v in traits.items())]
 
     def outputs(self, name):
-        """Its output labels, in order (a gateway's branches with "default" or "timeout"; else ["main"])."""
-        return self.element(name).outputs(self.nodes[name].get("parameters"))
+        """Its output labels, in order (a gateway's branches with "default" or "timeout"; else ["main"]; then
+        "error" for a node with an error output). A disabled node passes through output 0 only."""
+        return ["main"] if name in self.disabled else outputs(self.nodes[name])
+
+    def error_port(self, name):
+        """The index of its "error" output, or None."""
+        has_one = name not in self.disabled and self.nodes[name].get("onError") == ERROR_OUTPUT
+        return len(self.outputs(name)) - 1 if has_one else None
 
     def successors(self, name):
         return {n for port in self.outs[name] for n in port}
@@ -223,3 +238,4 @@ def demo():
     assert ("Again?", "Do") in g.back_edges and g.cycles == [{"Do", "Off", "Again?"}]
     assert g.dominators["Again?"] == {"Start", "Do", "Off", "Again?"}
     assert g.order[0] == "Start" and g.of(trigger=True) == ["Start"]
+    assert outputs({"type": node_type("serviceTask"), "onError": ERROR_OUTPUT}) == ["main", "error"]

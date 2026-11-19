@@ -6,21 +6,20 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime
 
-from .elements import AGENT, MERGE, NODE, SET, TASK_KINDS, element, node_type, types
-from .graph import ProcessGraph
+from .elements import AGENT, MERGE, NODE, SET, TASK_KINDS, node_type, types
+from .graph import ERROR_OUTPUT, ProcessGraph
+from .graph import outputs as output_names
 
-__all__ = ["AGENT", "BRANCHING", "DEFAULT_LAST", "MERGE", "NODE", "SET", "TASK_KINDS", "TIMEOUT_FIRST", "SpecError",
-           "Workflow", "node_type", "output_names"]
+__all__ = ["AGENT", "BRANCHING", "DEFAULT_LAST", "GUARDRAIL_CHECKS", "MERGE", "NODE", "SET", "TASK_KINDS",
+           "TIMEOUT_FIRST", "SpecError", "Workflow", "node_type", "output_names"]
 
 DEFAULT_LAST = types(default_last=True)  # their last output: "default"
 (TIMEOUT_FIRST,) = types(timeout_first=True)  # its first output: "timeout"
 BRANCHING = types(chooses=True) | types(splits=True)  # their outputs are the configured branches
-
-
-def output_names(node):
-    """A node's outputs in order: a gateway's branches (with "default" or "timeout"), a human task's
-    "timeout" and "done" when it has a deadline, else ["main"] (the element registry says which)."""
-    return element(node).outputs(node.get("parameters"))
+GUARDRAIL_CHECKS = ("pii", "length", "blocklist", "schema")  # what the check_guardrails task can check
+ON_ERROR = {"branch": ERROR_OUTPUT, "continue": "continueRegularOutput"}  # task(on_error=...) -> n8n's On Error
+PREVIOUS = re.compile(r"\{\{\s*previous\s*\}\}")  # in a prompt_chain's prompt: the answer before
+MAX_LLM_STEPS = 5  # J4: the most links of a prompt_chain, branches of a parallel_llm, rounds of a reflection
 
 
 class SpecError(ValueError):
@@ -104,7 +103,10 @@ class Workflow:
 
     STEPS = ("start", "subprocess_start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
              "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics",
-             "global_variable")  # a spec's steps
+             "global_variable", "guardrail", "prompt_chain", "parallel_llm", "reflection",
+             "guardrailed_agent")  # a spec's steps
+    # the @tasks (bpmn8n/tasks.py) that steps place on their own: llm_agent's prompt and audit, the patterns'
+    STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique")
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -151,18 +153,27 @@ class Workflow:
                         bpmn=False, version=1.1)
 
     def task(self, name, kind, endpoint, row=0, same_column=False, output="result", text=None, at=None, extra=None,
-             fields=None, **inputs):
+             fields=None, on_error=None, retry=0, retry_wait_ms=1000, **inputs):
         """kind: serviceTask | scriptTask | businessRuleTask | sendTask; endpoint: @task function name;
         output: result | merge | key (what the node passes on); text: extract the input from this
         text with GLiNER (then `inputs` are overrides). `fields`: the inputs as a dict, for names
-        that clash with these parameters; `extra`: more node keys (e.g. notes)."""
+        that clash with these parameters; `extra`: more node keys (e.g. notes). When it fails: retry=1..4
+        tries again, retry_wait_ms apart (at most 5000), for a system that may be briefly down; then
+        on_error=None stops the case, "branch" takes the task's "error" output (an error boundary: flow it
+        to a person, flow(name, person, output="error")), "continue" goes on with an `error` field."""
         parameters = {"task": f"/api/tasks/{endpoint}", "output": output,
                       "input": {"mappingMode": "defineBelow", "value": {**(fields or {}), **inputs},
                                 "matchingColumns": [], "schema": []}}
         if text is not None:
             parameters |= {"inputFrom": "text", "text": text, "includeExtraction": True}
+        if on_error not in (None, *ON_ERROR):
+            raise SpecError(f"{name}: on_error must be 'branch', 'continue' or omitted, not {on_error!r}")
+        if retry and not (1 <= retry <= 4 and 0 <= retry_wait_ms <= 5000):  # n8n's limits: 5 tries, 5 s apart
+            raise SpecError(f"{name}: retry is 1 to 4 (n8n tries at most 5 times), retry_wait_ms 0 to 5000")
+        settings = ({"onError": ON_ERROR[on_error]} if on_error else {}) | (
+            {"retryOnFail": True, "maxTries": retry + 1, "waitBetweenTries": retry_wait_ms} if retry else {})
         return self.add(name, node_type(kind), parameters, row, same_column=same_column,
-                        at=at, **(extra or {}))
+                        at=at, **settings, **(extra or {}))
 
     def metrics(self, name, project, metrics, label=""):
         """Record local evaluations without changing the input. project: folder under projects/;
@@ -283,13 +294,18 @@ class Workflow:
         """Join (n8n's Merge): waits for the inputs that can still deliver, then runs once."""
         return self.add(name, MERGE, {"numberInputs": inputs}, row, bpmn=False, version=3)
 
-    def llm_agent(self, name, prompt, output, instructions=""):
+    def llm_agent(self, name, prompt, output, instructions="", oversight="review", audit_rate=0.1, risk=None):
         """An LLM (n8n's AI Agent, with the chat model of admin → Settings) drafts text that needs judgement:
         a summary, a reply, a proposal with its reasons. prompt: the task, with the {{variables}} it needs and
         only those (it sees nothing else: data minimisation); output: the variable its answer becomes;
         instructions: its role and constraints. It never decides: a person reviews its answer (a user_task
         after it). Four nodes: the prompt (filled in bpmn8n, so the event log keeps what the LLM was sent),
-        the agent with its chat model, and the answer as `output`."""
+        the agent with its chat model, and the answer as `output`. Retried 3 times, 5 s apart: up to 3 paid
+        calls per answer. oversight="audit" (human-on-the-loop, H10) only for a step declared risk="low", with
+        no legal or similar effect on a person: a fixed share (audit_rate) of the cases, drawn from the case
+        id, goes out of the step's "audit" output to a person; the others go on (its first output)."""
+        if oversight not in ("review", "audit") or risk not in (None, "low") or not 0 < audit_rate <= 1:
+            raise SpecError(f"{name}: oversight is 'review' or 'audit', risk 'low' or omitted, audit_rate in (0, 1]")
         first, last = f"{name}: prompt", f"{name}: answer"
         self.task(first, "scriptTask", "compose_prompt", fields={"prompt": prompt})
         self.add(name, AGENT, {"promptType": "define", "text": "={{ $json.prompt }}",
@@ -308,7 +324,138 @@ class Workflow:
              "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"}]},
             "includeOtherFields": False, "options": {}}, bpmn=False, version=3.4)
         self.flow(first, name, last)
+        if oversight == "audit":  # the sample is a task, so the event log keeps which cases a person audits
+            sample, last = f"{name}: audit sample", f"{name}: audit?"
+            self.task(sample, "scriptTask", "draw_audit_sample", fields={"rate": audit_rate, "risk": risk or "not declared"})
+            self.condition_gateway(last, "exclusive", {"continue": "not {{audited}}", "audit": "{{audited}}"},
+                                   decision_scope="technical")
+            self.flow(f"{name}: answer", sample, last)
         self.steps[name] = (first, last)  # after its own flow: other steps' flows reach its first and leave its last
+        return self
+
+    # --- agentic patterns (J1, [AE] Cimino, Agentic Engineering 2026): vetted templates of the steps above ----
+
+    def guardrail(self, name, text, checks, on_block=None):
+        """Guardrails and safety [AE]: checks a text before it goes on, e.g. before an external LLM reads text
+        that may hold personal data, or an LLM's answer before it is used. text: with {{variables}}; checks:
+        names, or {name: setting}: "pii" (emails, phone numbers, IBANs, Italian fiscal codes, card numbers),
+        "length" (the most characters, 4000 by default), "blocklist" (its words), "schema" (the keys the text,
+        a JSON object, must have). The check task gives {{passed}}, {{findings}} and {{redacted}} (the text
+        with personal data replaced by placeholders, whatever the checks), then its first output "passed"
+        goes on and "blocked" goes to a person: a user task in the lane on_block, or, without on_block,
+        wherever you flow it (flow(name, step, output="blocked"))."""
+        settings = dict.fromkeys(checks, True) if isinstance(checks, (list, tuple)) else dict(checks)
+        if not settings or set(settings) - set(GUARDRAIL_CHECKS):
+            raise SpecError(f"{name}: checks are some of {', '.join(GUARDRAIL_CHECKS)}, not {list(settings)}")
+        if settings.get("blocklist") is True:
+            raise SpecError(f"{name}: give the blocklist its words, {{\"blocklist\": [\"word\", ...]}}")
+        fields = {"text": text, "checks": ",".join(settings)}
+        for check, field in (("length", "max_length"), ("blocklist", "blocklist"), ("schema", "keys")):
+            if settings.get(check) not in (None, True):
+                value = settings[check]
+                fields[field] = ",".join(value) if isinstance(value, (list, tuple)) else value
+        gate = f"{name}: passed?"
+        self.task(name, "scriptTask", "check_guardrails", fields=fields)
+        self.condition_gateway(gate, "exclusive", {"passed": "{{passed}}", "blocked": "not {{passed}}"},
+                               decision_scope="technical")  # a check of the text, no decision about a person
+        self.flow(name, gate)
+        if on_block is not None:
+            self._blocked(f"{name}: blocked", on_block, name).flow(gate, f"{name}: blocked", output="blocked")
+        self.steps[name] = (name, gate)
+        return self
+
+    def _blocked(self, name, lane, what):
+        """The person who takes over a text a guardrail blocked."""
+        return self.user_task(name, f"Text blocked by a guardrail: {what}", lane, [("resolution", "What you did", "string")],
+                              context={"Findings": "{{findings}}", "The text, personal data redacted": "{{redacted}}"},
+                              description="A guardrail stopped this text before it went on. Take the case over.")
+
+    def prompt_chain(self, name, prompts, output, instructions=""):
+        """Prompt chaining [AE 20-28]: LLM agents in sequence, each prompt on the answer before it, written
+        {{previous}} (the agents are "<name> 1", "<name> 2"…; link i answers {{<output>_<i>}}, the last one
+        {{output}}). For work in steps that build on each other: list the complaint's claims, then draft the
+        reply to them. 2-5 prompts, each an LLM call (3 tries at most), so the cost grows with them. The
+        caller puts a user_task after it, where a person reviews {{output}}."""
+        if not 2 <= len(prompts) <= MAX_LLM_STEPS:
+            raise SpecError(f"{name}: a chain has 2 to {MAX_LLM_STEPS} prompts (one is an llm_agent)")
+        if PREVIOUS.search(prompts[0]):
+            raise SpecError(f"{name}: the first prompt has no {{{{previous}}}} answer")
+        for i, prompt in enumerate(prompts, 1):
+            answer = output if i == len(prompts) else f"{output}_{i}"
+            self.llm_agent(f"{name} {i}", PREVIOUS.sub(f"{{{{{output}_{i - 1}}}}}", prompt), answer, instructions)
+            if i > 1:
+                self.flow(f"{name} {i - 1}", f"{name} {i}")
+        self.steps[name] = (self.steps[f"{name} 1"][0], self.steps[f"{name} {len(prompts)}"][1])
+        return self
+
+    def parallel_llm(self, name, prompts, output, instructions=""):
+        """Parallelisation [AE 34-35]: independent LLM agents on the same case at once, one per key of prompts
+        ({key: prompt}), joined by a Merge: {{output}} holds the answers by key ({{output.key}}), each also
+        {{<output>_<key>}}. For views that do not depend on each other: the medical and the legal reading of
+        a claim. 2-5 prompts, each an LLM call (3 tries at most). The caller puts a user_task after it, where a
+        person reviews the answers."""
+        if not 2 <= len(prompts) <= MAX_LLM_STEPS or not all(re.fullmatch(r"[A-Za-z_]\w*", k) for k in prompts):
+            raise SpecError(f"{name}: 2 to {MAX_LLM_STEPS} prompts, by keys that are names (letters, digits, _)")
+        join, collect = f"{name}: join", f"{name}: answers"
+        self.parallel_gateway(name, list(prompts))
+        self.add(join, MERGE, {"mode": "combine", "combineBy": "combineByPosition", "numberInputs": len(prompts),
+                               "options": {}}, bpmn=False, version=3)  # one item with every answer, not one each
+        for key, prompt in prompts.items():
+            self.llm_agent(f"{name}: {key}", prompt, f"{output}_{key}", instructions)
+            self.flow(name, f"{name}: {key}", join, output=key)
+        answers = ", ".join(f'"{key}": $json.{output}_{key}' for key in prompts)
+        self.add(collect, SET, {"mode": "manual", "assignments": {"assignments": [
+            {"id": str(uuid.uuid4()), "name": output, "type": "object", "value": f"={{{{ ({{ {answers} }}) }}}}"}]},
+            "includeOtherFields": True, "options": {}}, bpmn=False, version=3.4)
+        self.flow(join, collect)
+        self.steps[name] = (name, collect)
+        return self
+
+    CRITIC = ("You are the critic of a draft. Judge it against the criteria you are given, and only those. Start "
+              "your answer with PASS if it meets every one, otherwise with REVISE; then say briefly why and what "
+              "to change.")
+
+    def reflection(self, name, prompt, critique, output, max_rounds=2, instructions=""):
+        """Reflection, a producer and a critic [AE 36-39], with a budget (J4): an LLM agent drafts {{output}},
+        a critic agent judges the draft against `critique` (its criteria; the draft is appended) and answers
+        PASS or REVISE with its reasons ({{<output>_critique}}), and the draft is redone with that critique
+        until it passes or max_rounds (1-5) drafts were made. The round is counted in the case
+        ({{reflection_round}}; {{passed}}: whether the critic passed the last draft). Each round is two LLM
+        calls (3 tries at most each), so max_rounds caps the cost. The caller puts a user_task after it, where
+        a person reviews the draft and its critique, passed or not."""
+        if not 1 <= max_rounds <= MAX_LLM_STEPS:
+            raise SpecError(f"{name}: max_rounds is 1 to {MAX_LLM_STEPS}")
+        start, critic, verdict, gate = (f"{name}: {part}" for part in ("first round", "critic", "verdict", "again?"))
+        draft, feedback = f"{{{{{output}}}}}", f"{{{{{output}_critique}}}}"
+        self.add(start, SET, {"mode": "manual", "assignments": {"assignments": [  # the loop's variables, empty
+            {"id": str(uuid.uuid4()), "name": n, "type": t, "value": v}
+            for n, t, v in ((output, "string", ""), (f"{output}_critique", "string", ""), ("reflection_round", "number", 0))]},
+            "includeOtherFields": True, "options": {}}, bpmn=False, version=3.4)
+        self.llm_agent(name, f"{prompt}\n\nYour previous draft, if any:\n{draft}\n\nThe critique of it, to address:\n{feedback}",
+                       output, instructions)
+        self.llm_agent(critic, f"{critique}\n\nThe draft:\n{draft}", f"{output}_critique", self.CRITIC)
+        self.task(verdict, "scriptTask", "read_critique",
+                  fields={"critique": feedback, "reflection_round": "{{reflection_round}}", "max_rounds": max_rounds})
+        self.condition_gateway(gate, "exclusive", {"done": "not {{again}}", "again": "{{again}}"},
+                               decision_scope="technical")  # the loop's budget, no decision about a person
+        self.flow(start, name, critic, verdict, gate).flow(gate, name, output="again")
+        self.steps[name] = (start, gate)
+        return self
+
+    def guardrailed_agent(self, name, prompt, output, on_block, checks=("pii",), output_checks=None, instructions=""):
+        """Guardrails and safety [AE]: an llm_agent between two guardrails (see guardrail). The prompt, its
+        {{variables}} filled, is checked with `checks`, and the LLM gets it with personal data replaced by
+        placeholders (with "pii" among the checks, personal data blocks it instead); its answer {{output}} is
+        checked with output_checks (default: checks; "schema" belongs there). A blocked text goes to a person
+        in the lane on_block ("<name>: blocked") instead of going on. The caller puts a user_task after it,
+        where a person reviews {{output}}."""
+        before, after, blocked = f"{name}: input check", f"{name}: output check", f"{name}: blocked"
+        self.guardrail(before, prompt, checks)
+        self.llm_agent(name, "{{redacted}}", output, instructions)
+        self.guardrail(after, f"{{{{{output}}}}}", output_checks or checks)
+        self._blocked(blocked, on_block, name)
+        self.flow(before, name, after).flow(before, blocked, output="blocked").flow(after, blocked, output="blocked")
+        self.steps[name] = (before, self.steps[after][1])
         return self
 
     def node(self, name):
@@ -316,10 +463,10 @@ class Workflow:
 
     def flow(self, *names, output=0):
         """Sequence flow through `names`; `output` is the output the first hop leaves from: its index
-        or its name (a gateway's branch, "default", "timeout"). A hop that exists already is not added
-        again (two flows through the same steps would run them twice)."""
+        or its name (a gateway's branch, "default", "timeout", "error"; of a step's last node). A hop that
+        exists already is not added again (two flows through the same steps would run them twice)."""
         if isinstance(output, str):
-            labels = output_names(self.node(names[0]))
+            labels = output_names(self.node(self.steps.get(names[0], (names[0], names[0]))[1]))
             if output not in labels:
                 raise ValueError(f"{names[0]!r} has no output {output!r}, only {labels}")
             output = labels.index(output)

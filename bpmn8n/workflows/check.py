@@ -70,9 +70,9 @@ class WorkflowCheck:
         seconds = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400, "weeks": 604800}
         return p.get("mode") == "until" or float(p.get("amount") or 0) * seconds.get(p.get("unit", "hours"), 3600) > 60
 
-    def end_without_person(self, name):
-        """The first end reached from `name` without passing a user or manual task, or None (breadth first,
-        in output order: the same end every time)."""
+    def end_without_person(self, name, stop=()):
+        """The first end reached from `name` without passing a user or manual task (nor a step in `stop`), or
+        None (breadth first, in output order: the same end every time)."""
         seen, queue = {name}, deque([name])
         while queue:
             current = queue.popleft()
@@ -81,7 +81,7 @@ class WorkflowCheck:
                 return current
             for n in dict.fromkeys(following):
                 seen.add(n)
-                if not self.graph.element(n).human:
+                if not self.graph.element(n).human and n not in stop:
                     queue.append(n)
         return None
 
@@ -193,9 +193,11 @@ class WorkflowCheck:
             changed = False
             for name in self.nodes:
                 e = self.graph.element(name)
-                # an event-based gateway's message outputs carry a payload of unknown shape
+                # an event-based gateway's message outputs carry a payload of unknown shape; an error output, the
+                # data the failed step received (it produced nothing)
                 inputs = [(source, port, (set() if forms_only else None)
                            if port and self.graph.element(source).kind == "eventBasedGateway"
+                           else before[source] if port == self.graph.error_port(source)
                            else after[source]) for source, port in dict.fromkeys(self.graph.incoming[name])]
                 value = set() if name in self.triggers or not inputs else self.joined_data(name, inputs) \
                     if e.joins and not forms_only else self.common_data([value for _, _, value in inputs])

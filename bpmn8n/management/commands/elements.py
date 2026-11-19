@@ -17,7 +17,8 @@ SAMPLES = {
     "start": [{"path": "p"}],
     "subprocess_start": [{}],
     "task": [*({"kind": kind, "endpoint": "t"} for kind in TASK_KINDS),
-             {"kind": "serviceTask", "endpoint": "t", "text": "{{message}}"}],
+             {"kind": "serviceTask", "endpoint": "t", "text": "{{message}}"},
+             {"kind": "serviceTask", "endpoint": "t", "on_error": "branch", "retry": 2}],
     "gateway": [{"kind": kind, "question": "q", "branches": {"a": "b"}} for kind in ("exclusive", "inclusive")],
     "condition_gateway": [{"kind": kind, "conditions": {"a": "true"}, "decision_scope": "technical"}
                           for kind in ("exclusive", "inclusive")],
@@ -35,10 +36,17 @@ SAMPLES = {
                    "not_same_as": ["s"], "completion": 2},
                   {"title": "t", "lane": "l", "form": [], "due_at": "{{d}}", "completion": "any"}],
     "merge": [{}],
-    "llm_agent": [{"prompt": "p {{a}}", "output": "o", "instructions": "i"}],
+    "llm_agent": [{"prompt": "p {{a}}", "output": "o", "instructions": "i"},
+                  {"prompt": "p", "output": "o", "oversight": "audit", "risk": "low"}],
     "metrics": [{"project": "p", "metrics": [{"name": "m", "value": 1, "threshold": 1}], "label": "l"}],
     "global_variable": [{"key": "k"}, {"key": "k", "operation": "set", "value": {"a": 1}, "ttl": 60},
                         {"key": "k", "operation": "increment", "by": 2}],
+    "guardrail": [{"text": "{{t}}", "checks": {"pii": True, "length": 9, "blocklist": ["w"], "schema": ["k"]},
+                   "on_block": "l"}],
+    "prompt_chain": [{"prompts": ["p {{a}}", "q {{previous}}"], "output": "o"}],
+    "parallel_llm": [{"prompts": {"a": "p", "b": "q"}, "output": "o"}],
+    "reflection": [{"prompt": "p", "critique": "c", "output": "o"}],
+    "guardrailed_agent": [{"prompt": "p {{a}}", "output": "o", "on_block": "l"}],
 }
 
 

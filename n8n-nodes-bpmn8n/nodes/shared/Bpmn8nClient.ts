@@ -74,7 +74,9 @@ export interface Routed {
 }
 
 /** Runs `route` for every input item and puts the item on the outputs it returns.
- * With "Continue On Fail" a failing item goes to `errorOutput` carrying the error message. */
+ * With "Continue On Fail" a failing item goes to `errorOutput` carrying the error message; it also carries
+ * the error itself, which is how n8n tells it apart when On Error is "Continue (using error output)" and
+ * moves it to the node's "error" output (an item with other fields than `error` would stay on `main`). */
 export async function routeItems(
 	ctx: IExecuteFunctions,
 	outputCount: number,
@@ -88,7 +90,11 @@ export async function routeItems(
 			for (const target of targets) outputs[target].push({ json, pairedItem: { item: index } });
 		} catch (error) {
 			if (!ctx.continueOnFail()) throw error;
-			outputs[errorOutput].push({ json: { ...item.json, error: (error as Error).message }, pairedItem: { item: index } });
+			const failure = error instanceof NodeOperationError ? error
+				: new NodeOperationError(ctx.getNode(), error as Error, { itemIndex: index });
+			outputs[errorOutput].push({
+				json: { ...item.json, error: failure.message }, error: failure, pairedItem: { item: index },
+			});
 		}
 	}
 	return outputs;

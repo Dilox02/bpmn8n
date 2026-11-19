@@ -121,18 +121,20 @@ class TaskExists(Rule):
 @rule
 class OutputsConnected(Rule):
     id, level = "output", "warning"
-    doc = ("an output that leads nowhere, on a gateway or any node with several outputs (not a conditions "
-           "gateway's `default`; Laya's `default` must lead to a person)")
+    doc = ("an output that leads nowhere, on a gateway or any node with several outputs, a task's `error` output "
+           "included (not a conditions gateway's `default`, nor a task's `main`; Laya's `default` must lead to a "
+           "person)")
 
     def check(self, ctx):
         for name, node in ctx.nodes.items():
-            labels = ctx.graph.outputs(name)
-            if not (ctx.graph.element(name).branching or len(labels) > 1):
+            labels, branching = ctx.graph.outputs(name), ctx.graph.element(name).branching
+            if not (branching or len(labels) > 1):
                 continue
             ports, by_conditions = ctx.outs[name], node["parameters"].get("decider") == "conditions"
             for i, label in enumerate(labels):
-                if label == "default" and by_conditions:
-                    continue  # conditions often cover every case; Laya's "default" must lead to a person
+                if label == "default" and by_conditions or label == "main" and not branching:
+                    continue  # conditions often cover every case; Laya's "default" must lead to a person; a
+                    # task with an error output may be the last step
                 if not (ports[i] if i < len(ports) else []):
                     yield self.problem(name, f"output {label!r} leads nowhere: the items taking it end the case")
 
@@ -259,7 +261,8 @@ class PeopleDecide(Rule):
     id, category = "human", "people"
     doc = ("after an LLM agent, a path that reaches an end without a person (User or Manual Task); a warning after "
            "a gateway (Laya or conditions), not after a conditions gateway that reads only form fields filled in "
-           "before it or declares `decision_scope=\"technical\"` (housekeeping, never decisions about people)")
+           "before it or declares `decision_scope=\"technical\"` (housekeeping, never decisions about people); an "
+           "info for an LLM agent audited on a sample (`oversight=\"audit\"`) declared `risk=\"low\"`")
 
     def check(self, ctx):
         for name in ctx.graph.of(decides=True):
@@ -269,10 +272,32 @@ class PeopleDecide(Rule):
                 continue
             if params.get("decider") == "conditions" and ctx.reads_only_forms(name):
                 continue
-            if end := ctx.end_without_person(name):
+            if agent and (audit := self.audited(ctx, name)):
+                yield audit
+            elif end := ctx.end_without_person(name):
                 what = "the LLM agent's answer" if agent else "this automatic decision"
                 yield self.problem(name, f"{what} reaches {end!r}, an end, without a person deciding: put a user task "
                                          "on the way", "error" if agent else "warning")
+
+    def audited(self, ctx, name):
+        """H10, human-on-the-loop: the problem of an agent whose answers reach an end without a person only past
+        an audit sample (a person sees a share of them); None otherwise. Lawful only for a low-risk step."""
+        samples = {n for n in ctx.after(name) - {name} if task_name(ctx.nodes[n]) == "draw_audit_sample"}
+        if not samples or ctx.end_without_person(name, stop=samples) or not (end := ctx.end_without_person(name)):
+            return None
+        fields = [(ctx.nodes[s]["parameters"].get("input") or {}).get("value") or {} for s in samples]
+        if all(f.get("risk") == "low" for f in fields):
+            rates = ", ".join(f"{r:.0%}" if isinstance(r := f.get("rate"), (int, float)) else str(r) for f in fields)
+            return self.problem(name, f"human-on-the-loop: a person audits a sample ({rates}) of the answers, the others "
+                                      f"reach {end!r} without one; declared low-risk (risk=\"low\")", "info")
+        return self.problem(name, f"the LLM agent's answer reaches {end!r} audited only on a sample, and the step is not "
+                                  "declared low-risk: a decision with legal or similar effects on a person needs a person "
+                                  "every time (GDPR art. 22). Use oversight=\"review\", or risk=\"low\" if it has none")
+
+
+def task_name(node):
+    """The @task a task node runs, from its parameters ("" for any other node)."""
+    return str((node.get("parameters") or {}).get("task", "")).rsplit("/", 1)[-1]
 
 
 @rule
@@ -322,6 +347,33 @@ class MetricsDecide(Rule):
             elif not any(ctx.nodes[n]["parameters"].get("decider") == "conditions" for n in ctx.after(name) - {name}):
                 yield self.problem(name, "missing a threshold changes nothing: add a condition gateway on the same "
                                          "values if the run should stop or take another path", "info")
+
+
+@rule
+class ErrorPath(Rule):
+    """J7, C3: n8n retries a failing step, then stops the case unless the step has an error path; a person
+    should learn of the failure and take the case over."""
+    id, level, category = "error-path", "info", "people"
+    doc = ("a step n8n retries whose last failure reaches no person: it stops the case (no `on_error`), or its "
+           "error path ends without a User or Manual Task (an `error` output leading nowhere is the `output` rule's)")
+
+    def check(self, ctx):
+        for name, node in ctx.nodes.items():
+            if not node.get("retryOnFail") or ctx.graph.element(name).decides:  # an agent's answer: the human rule
+                continue
+            tries = node.get("maxTries", 3)
+            if (port := ctx.graph.error_port(name)) is not None:
+                targets = ctx.outs[name][port] if port < len(ctx.outs[name]) else []
+                end = next((e for t in targets if not ctx.graph.element(t).human and (e := ctx.end_without_person(t))), None)
+            elif node.get("onError") == "continueRegularOutput":
+                end = ctx.end_without_person(name)
+            else:
+                yield self.problem(name, f"after {tries} tries a failure stops the case and nobody takes it over: give "
+                                         "it on_error=\"branch\" and flow its \"error\" output to a person (a user task)")
+                continue
+            if end:
+                yield self.problem(name, f"after {tries} tries its failure reaches {end!r}, an end, without a person: "
+                                         "put a user task on its error path")
 
 
 # --- implicit gateways ([AW] §2.3, §3.3, §4.2) ----------------------------------------------------
