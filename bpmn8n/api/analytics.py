@@ -4,10 +4,13 @@ and says what each filter kept. Times are seconds, rates per hour. /overlay feed
 n8n's editor, so it also accepts the n8n session that may open that workflow."""
 from datetime import datetime
 
+from django.http import HttpResponse
 from ninja import Query, Router
 from ninja.errors import HttpError
 
 from ..analytics import FilterError, FilterStack, Log, Scope, queues, stats
+from ..analytics import export as export_log
+from ..models import AuditEntry
 from .evaluations import evaluation_read_auth
 
 router = Router(tags=["analytics"])
@@ -110,3 +113,46 @@ def overlay(request, workflow_id: str, since: datetime | None = None, until: dat
     and a 0–1 heat for frequency and for duration."""
     log, scope = scoped(None, since, until, filters, workflow=workflow_id)
     return {"scope": {**scope, "workflow_id": workflow_id}, "nodes": stats.overlay(log)}
+
+
+@router.get("/export")
+def export(request, format: str = "csv", anonymise: bool = False, process: str | None = None,
+           since: datetime | None = None, until: datetime | None = None, filters: str | None = None):
+    """The filtered event log as `csv` or `xes` (a download). `anonymise=1` replaces case ids, resources and every
+    attribute value that is not a number or a time with stable pseudonyms (the same resource is the same pseudonym
+    throughout; keyed with the server's secret). Recorded in the audit log, with the filters but not the data.
+    ponytail: built in memory like the log itself; narrow by process and window for the largest logs."""
+    if format not in ("csv", "xes"):
+        raise HttpError(422, "format must be csv or xes")
+    log, _ = scoped(process, since, until, filters)
+    events = list(export_log.rows(log))
+    if not events:
+        raise HttpError(422, "no case in scope: nothing to export")
+    if anonymise:
+        pseudonyms = export_log.Anonymiser()
+        events = [pseudonyms.row(e) for e in events]
+    if format == "xes":
+        from ..mining import xes
+        body, kind = xes.to_xes(events), "application/xml"
+    else:
+        body, kind = export_log.to_csv(events), "text/csv"
+    AuditEntry.write("eventlog.export", object_type="eventlog", object_id=process or "", format=format,
+                     anonymised=anonymise, cases=len(log.traces), events=len(events), filters=filters or "")
+    response = HttpResponse(body, content_type=kind)
+    name = "eventlog-anonymised" if anonymise else "eventlog"
+    response["Content-Disposition"] = f'attachment; filename="{name}.{format}"'
+    return response
+
+
+REPLAY_STEPS = 200  # steps kept per case: the animation is a picture of the flow, not the whole log
+
+
+@router.get("/replay", auth=overlay_auth)
+def replay(request, workflow_id: str, since: datetime | None = None, limit: int = Query(50, ge=1, le=200)):
+    """The latest `limit` cases of a workflow (that started at or after `since`), each its ordered steps as
+    {node, start, end} in epoch seconds: what the editor's Replay animates over the canvas."""
+    log, scope = scoped(None, since, None, None, workflow=workflow_id)
+    traces = sorted(log.traces, key=lambda t: t.start)[-limit:]
+    return {"scope": {**scope, "workflow_id": workflow_id}, "cases": [
+        {"case_id": t.case_id, "steps": [{"node": s.activity, "start": s.started, "end": s.ended} for s in t.steps[:REPLAY_STEPS]]}
+        for t in traces]}

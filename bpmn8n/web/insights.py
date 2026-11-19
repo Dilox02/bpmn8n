@@ -8,14 +8,17 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from ..analytics import FilterError, FilterStack, Log, Scope, queues, stats
 from ..analytics.log import duration_text
-from . import charts
+from ..models import Snapshot
+from . import charts, processmap
 
-STATE = ("process", "since", "until", "filters", "vs", "target")
+STATE = ("process", "since", "until", "filters", "vs", "target", "acts", "paths", "map")
+SNAPSHOTS = 20  # listed on the page
 UNITS = {"s": 1, "min": 60, "h": 3600, "d": 86400}
 BUCKET_NAMES = {60: "minute", 300: "5 minutes", 900: "15 minutes", 3600: "hour", 3 * 3600: "3 hours",
                 6 * 3600: "6 hours", 86400: "day", 7 * 86400: "week", 30 * 86400: "30 days"}
@@ -99,14 +102,36 @@ def insights(request):
     base = Log.load(Scope(process or None, since=day(state["since"]), until=day(state["until"], end=True)))
     log, steps = base.filter(stacks["filters"])
     context = {"processes": processes, "process": process, "state": state, "base_cases": len(base.traces),
-               "chips": chips(state, "filters", stacks["filters"], steps), "names": names(base), "target": state["target"]}
+               "chips": chips(state, "filters", stacks["filters"], steps), "names": names(base), "target": state["target"],
+               "snapshots": [{"name": n.name, "author": n.author, "created": n.created, "url": reverse("snapshot", args=[n.pk])}
+                             for n in Snapshot.objects.all()[:SNAPSHOTS]]}
     if stacks["vs"]:
         cohort, vs_steps = base.filter(stacks["vs"])
         context.update(vs_chips=chips(state, "vs", stacks["vs"], vs_steps), comparison=stats.compare(log, cohort),
                        vs_cases=len(cohort.traces))
     if log.traces:
-        context.update(page(log, target))
+        context.update(page(log, target), pmap=processmap.section(log, state))
     return render(request, "bpmn8n/insights.html", context)
+
+
+@login_required
+@require_POST
+def save_snapshot(request):
+    """Names the page's current state (its hidden fields) and opens it by its own URL."""
+    state = {k: v for k in STATE if (v := request.POST.get(k, "").strip())}
+    name = request.POST.get("name", "").strip()[:120]
+    if not name:
+        messages.error(request, "Give the snapshot a name.")
+        return redirect(reverse("insights") + link(state))
+    snapshot = Snapshot.objects.create(name=name, state=state, author=request.user.get_username())
+    messages.success(request, f"Saved {name}: reopen it from the list or by its link.")
+    return redirect("snapshot", snapshot.pk)
+
+
+@login_required
+def open_snapshot(request, pk):
+    """A saved analysis: the Insights page with that state, recomputed on the log as it is now."""
+    return redirect(reverse("insights") + link(get_object_or_404(Snapshot, pk=pk).state))
 
 
 def chips(state, key, stack, steps):
