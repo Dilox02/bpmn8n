@@ -71,6 +71,14 @@
 </section>
 {% endif %}
 
+{% if processes %}
+<details class="export">
+  <summary class="btn">Export this log</summary>
+  <p class="meta">The filtered log as CSV or XES, with the API token; <code>anonymise=1</code> replaces case ids, resources and text values with stable pseudonyms.</p>
+  <pre><code>curl -H "Authorization: Bearer $API_TOKEN" -o log.csv "{{ request.scheme }}://{{ request.get_host }}/api/analytics/export?format=csv&amp;anonymise=1&amp;process={{ process|urlencode }}{% if state.since %}&amp;since={{ state.since|urlencode }}{% endif %}{% if state.filters %}&amp;filters={{ state.filters|urlencode }}{% endif %}"</code></pre>
+</details>
+{% endif %}
+
 {% if not processes %}
 <p class="empty">No case in the event log yet. Run a process in n8n (every bpmn8n step is logged), import a log with <code>manage.py import_eventlog file.csv</code>, or see a demo with <code>manage.py seed_events</code>.</p>
 {% elif not overview %}
