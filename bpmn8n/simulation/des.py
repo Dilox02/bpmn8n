@@ -186,6 +186,7 @@ def simulate(model: SimModel, replications=None, seed=None):
             "scenarios": _average([t["scenarios"] for t in tables]),
             # every completed case of every replication
             "cycle_time": stats.summary(c.cycle_time for run in runs for c in run.done),
+            "cycle_time_histogram": stats.histogram([c.cycle_time for run in runs for c in run.done]),
             "waiting_time": stats.summary(c.waiting_time for run in runs for c in run.done),
             "case_cost": stats.summary(run.case_cost(c) for run in runs for c in run.done)}
 

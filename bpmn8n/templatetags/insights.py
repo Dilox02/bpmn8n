@@ -2,6 +2,7 @@
 from django import template
 
 from ..analytics.log import duration_text
+from ..simulation.spec import UNITS
 
 register = template.Library()
 
@@ -47,3 +48,23 @@ def signed(value, kind="number"):
     if kind == "percent":
         return f"{sign}{abs(value) * 100:.0f} pt"
     return f"{sign}{number(abs(value), 2)}"
+
+
+@register.filter
+def span(value, unit="minutes"):
+    """A time in a simulation spec's unit, in words: 12.5 (minutes) -> "12.5 min"."""
+    return "0" if value == 0 else duration_text(None if value is None else value * UNITS.get(unit, 1.0) * 60)
+
+
+@register.filter
+def per_hour(value, unit="minutes"):
+    """A rate per unit of a simulation spec, per hour: 0.1 (a minute) -> "6 /h"."""
+    return "—" if value is None else f"{value * 60 / UNITS.get(unit, 1.0):,.3g} /h"
+
+
+@register.filter
+def relative(value):
+    """A relative error with its sign: 0.123 -> "+12 %"; a dash when unknown."""
+    if value is None:
+        return "—"
+    return f"{'+' if value > 0 else '−' if value < 0 else '±'}{abs(value) * 100:.0f} %"

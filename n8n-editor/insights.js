@@ -1,15 +1,18 @@
 // Heatmap of the event log on n8n's canvas ([OC] Fig. 22, Disco's map §4.1.4): on a canvas with bpmn8n
 // nodes, a small switch (Off / Frequency / Duration) reads bpmn8n's /api/analytics/overlay for this workflow
 // and rings each node hot to cold, with a badge (how many times it ran, or its mean duration) and a legend.
-// One hue per measure, light to strong: frequency blue, duration red. Loaded in the editor through
+// One hue per measure, light to strong: frequency blue, duration red. *Capacity* reads /api/simulation/overlay
+// instead: each step of a lane coloured by the lane's utilisation ρ in closed form (red from 85 %), with the
+// expected wait, and the bottleneck in the legend; steps nobody waits for are dimmed. Loaded in the editor through
 // EXTERNAL_FRONTEND_HOOKS_URLS (docker-compose.yml: n8n), with ?bpmn8n=<bpmn8n's public URL>. The read uses
 // the browser's n8n session (bpmn8n checks it may open the workflow), as the evaluations view does.
 // ponytail: finds nodes by n8n's data-test-id / data-node-name and the workflow in the URL (/workflow/<id>);
 // an n8n upgrade that renames them only hides the switch. The pure functions below are tested with
 // `node --test n8n-editor/test/insights.test.mjs`.
 (() => {
-  const MODES = ['off', 'frequency', 'duration'];
+  const MODES = ['off', 'frequency', 'duration', 'capacity'];
   const HUES = { frequency: 212, duration: 8 };  // one sequential hue per measure
+  const NEAR = 0.85;  // utilisation from which a lane is red, as on bpmn8n's simulation page
 
   /** value / max, clamped to 0 to 1 (0 when there is nothing to compare with). */
   const scale = (value, max) => (!(max > 0) || !(value > 0) ? 0 : Math.min(1, value / max));
@@ -52,7 +55,23 @@
     const id = (String(pathname).match(/\/workflow\/([^/?#]+)/) || [])[1];
     return id && id !== 'new' ? decodeURIComponent(id) : null;
   };
-  const overlayURL = (base, id) => `${String(base).replace(/\/$/, '')}/api/analytics/overlay?workflow_id=${encodeURIComponent(id)}`;
+  const overlayURL = (base, id, mode) => `${String(base).replace(/\/$/, '')}/api/${mode === 'capacity' ? 'simulation' : 'analytics'}` +
+    `/overlay?workflow_id=${encodeURIComponent(id)}`;
+  /** A lane's utilisation as a colour: a cool ramp up to NEAR, red from there (null: nobody waits there). */
+  const capacityColour = rho => {
+    if (rho == null || !Number.isFinite(rho)) return null;
+    if (rho >= NEAR) return 'hsl(0 85% 58%)';
+    const t = Math.max(0, rho) / NEAR;
+    return `hsl(190 ${Math.round(25 + 50 * t)}% ${Math.round(70 - 18 * t)}%)`;
+  };
+  const percent = rho => `${Math.round(rho * 100)} %`;
+  const capacityBadge = node => (node?.utilisation == null ? '' : percent(node.utilisation));
+  const capacityDescribe = (name, node) => `${name}: ${node.resource} \u00b7 ${node.servers ?? 'unlimited'} ` +
+    `${node.servers === 1 ? 'person' : 'people'}, busy ${percent(node.utilisation)}` +
+    (node.stable === false ? ' \u00b7 cannot keep up' : ` \u00b7 waits ${duration(node.wait)}`) +
+    ` \u00b7 ${Number(node.visits ?? 0).toFixed(2).replace(/\.?0+$/, '')} visits per case`;
+  const capacityLegend = overlay => (overlay?.bottleneck ? `bottleneck ${overlay.bottleneck}` +
+    `${overlay.stable === false ? ', cannot keep up' : ''}` : overlay?.note || 'no lane: nobody waits');
   /** bpmn8n on the same loopback host as the editor, so the n8n session cookie goes along (cookies ignore ports). */
   const sameHost = (configured, here) => {
     const url = new URL(configured), location = new URL(here);
@@ -60,7 +79,8 @@
     if (loopback.has(url.hostname) && loopback.has(location.hostname)) url.hostname = location.hostname;
     return url.href.replace(/\/$/, '');
   };
-  const Heat = { MODES, scale, measure, heat, colour, count, duration, badge, describe, legend, workflowId, overlayURL, sameHost };
+  const Heat = { MODES, NEAR, scale, measure, heat, colour, count, duration, badge, describe, legend, workflowId, overlayURL, sameHost,
+    capacityColour, capacityBadge, capacityDescribe, capacityLegend };
   if (typeof module === 'object' && module.exports) { module.exports = Heat; return; }  // node --test
 
   const BPMN8N = sameHost(new URL(document.currentScript?.src || location.href).searchParams.get('bpmn8n') || 'http://localhost:8000', location.href);
@@ -85,22 +105,25 @@
   `;
   document.head.append(style);
 
-  let mode = 'off', data = null, loadedFor = null, panel = null, queued = false;
+  let mode = 'off', data = null, overlay = null, loadedFor = null, panel = null, queued = false;
+  const source = id => `${id}:${mode === 'capacity' ? 'simulation' : 'analytics'}`;  // capacity reads another endpoint
   try { mode = MODES.includes(localStorage.getItem('bpmn8n-heat')) ? localStorage.getItem('bpmn8n-heat') : 'off'; } catch { /* private mode */ }
 
   const say = text => { if (panel) panel.querySelector('.state').textContent = text; };
-  async function load(id) {
-    loadedFor = id; data = null; say('Reading the event log\u2026');
+  async function fetchOverlay(id) {
+    const key = source(id);
+    loadedFor = key; data = null; overlay = null; say(mode === 'capacity' ? 'Reading the closed forms\u2026' : 'Reading the event log\u2026');
     try {
       const browserId = (() => { try { return localStorage.getItem('n8n-browserId') || ''; } catch { return ''; } })();
-      const response = await fetch(overlayURL(BPMN8N, id), { credentials: 'include', headers: browserId ? { 'browser-id': browserId } : {} });
-      if (loadedFor !== id) return;
-      if (response.status === 401 || response.status === 403) throw Error('Sign in to n8n again to read the event log.');
-      if (!response.ok) throw Error(`bpmn8n did not answer (HTTP ${response.status}).`);
-      data = (await response.json()).nodes || {};
-      say(Object.keys(data).length ? '' : 'No case of this workflow in the event log yet.');
+      const response = await fetch(overlayURL(BPMN8N, id, mode), { credentials: 'include', headers: browserId ? { 'browser-id': browserId } : {} });
+      if (loadedFor !== key) return;
+      if (response.status === 401 || response.status === 403) throw Error('Sign in to n8n again to read bpmn8n.');
+      if (!response.ok) throw Error((await response.json().catch(() => ({}))).detail || `bpmn8n did not answer (HTTP ${response.status}).`);
+      overlay = await response.json();
+      data = overlay.nodes || {};
+      say(Object.keys(data).length ? '' : mode === 'capacity' ? overlay.note || 'Nothing to size here.' : 'No case of this workflow in the event log yet.');
     } catch (error) {
-      if (loadedFor === id) say(error.message === 'Failed to fetch' ? `bpmn8n is unreachable at ${BPMN8N}.` : error.message);
+      if (loadedFor === key) say(error.message === 'Failed to fetch' ? `bpmn8n is unreachable at ${BPMN8N}.` : error.message);
     }
     schedule();
   }
@@ -108,7 +131,7 @@
   function ensurePanel() {
     if (panel) return panel;
     panel = document.createElement('div');
-    panel.className = 'bpmn8n-heat'; panel.setAttribute('role', 'group'); panel.setAttribute('aria-label', 'Heatmap of the event log');
+    panel.className = 'bpmn8n-heat'; panel.setAttribute('role', 'group'); panel.setAttribute('aria-label', 'Heatmap of the event log and capacity');
     panel.innerHTML = `<span>Heat</span>${MODES.map(m => `<button type="button" data-mode="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}
       <span class="legend"></span><span class="state" role="status"></span>`;
     panel.addEventListener('click', event => {
@@ -132,13 +155,18 @@
     const box = flow.getBoundingClientRect();
     Object.assign(panel.style, { top: `${Math.round(box.top + 12)}px`, left: `${Math.round(box.left + 12)}px` });
     panel.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
-    if (mode === 'off') { clear(); panel.querySelector('.legend').textContent = ''; say(''); return; }
-    if (loadedFor !== id) { clear(); load(id); return; }
+    const legendBox = panel.querySelector('.legend');
+    if (mode === 'off') { clear(); legendBox.textContent = ''; delete legendBox.dataset.said; say(''); return; }
+    if (loadedFor !== source(id)) { clear(); fetchOverlay(id); return; }
     if (!data) return;
-    const ends = legend(data, mode);
-    panel.querySelector('.legend').innerHTML = ends
-      ? `${ends.low}<span class="ramp" style="background: linear-gradient(90deg, ${colour(0, mode)}, ${colour(1, mode)})"></span>${ends.high}` +
-        ` \u00b7 ${mode === 'duration' ? 'mean duration' : 'times run'}` : '';
+    if (mode === 'capacity') return paintCapacity();
+    const ends = legend(data, mode), said = `${mode}|${ends?.low}|${ends?.high}`;
+    if (legendBox.dataset.said !== said) {
+      legendBox.innerHTML = ends
+        ? `${ends.low}<span class="ramp" style="background: linear-gradient(90deg, ${colour(0, mode)}, ${colour(1, mode)})"></span>${ends.high}` +
+          ` \u00b7 ${mode === 'duration' ? 'mean duration' : 'times run'}` : '';
+      legendBox.dataset.said = said;
+    }
     document.querySelectorAll('[data-test-id=canvas-node][data-node-name]').forEach(el => {
       const name = el.dataset.nodeName, node = data[name];
       let tag = el.querySelector(':scope > .bpmn8n-heat-badge');
@@ -150,6 +178,32 @@
       const text = badge(node, mode);
       if (tag.textContent !== text) tag.textContent = text;
       el.title = describe(name, node);
+    });
+  }
+
+  function paintCapacity() {
+    const legendBox = panel.querySelector('.legend'), said = `${capacityLegend(overlay)}|${overlay.page}`;
+    if (legendBox.dataset.said !== said) {  // rewritten only when it changes: the observer would repaint forever
+      const ramp = `linear-gradient(90deg, ${capacityColour(0)}, ${capacityColour(NEAR - 0.01)} 85%, ${capacityColour(NEAR)} 85%)`;
+      legendBox.innerHTML = `0 %<span class="ramp" style="background: ${ramp}"></span>100 % \u00b7 utilisation (closed form) \u00b7 `;
+      legendBox.append(capacityLegend(overlay));
+      if (overlay.page) {
+        const a = Object.assign(document.createElement('a'), { href: BPMN8N + overlay.page, target: '_blank', rel: 'noopener', textContent: ' \u00b7 what if' });
+        a.style.color = 'inherit';
+        legendBox.append(a);
+      }
+      legendBox.dataset.said = said;
+    }
+    document.querySelectorAll('[data-test-id=canvas-node][data-node-name]').forEach(el => {
+      const name = el.dataset.nodeName, node = data[name], tint = capacityColour(node?.utilisation);
+      let tag = el.querySelector(':scope > .bpmn8n-heat-badge');
+      if (!tint) { el.dataset.bpmn8nHeat = 'none'; tag?.remove(); el.removeAttribute('title'); return; }
+      if (el.style.getPropertyValue('--bpmn8n-heat') !== tint) el.style.setProperty('--bpmn8n-heat', tint);
+      el.dataset.bpmn8nHeat = 'hot';
+      if (!tag) { tag = document.createElement('span'); tag.className = 'bpmn8n-heat-badge'; el.append(tag); }
+      const text = capacityBadge(node);
+      if (tag.textContent !== text) tag.textContent = text;
+      el.title = capacityDescribe(name, node);
     });
   }
 

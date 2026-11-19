@@ -1,0 +1,274 @@
+{% extends "bpmn8n/base.html" %}
+{% load static insights %}
+{% block title %}Simulation{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'bpmn8n/insights.css' %}"><link rel="stylesheet" href="{% static 'bpmn8n/simulation.css' %}">{% endblock %}
+{% block crumbs %}<span>Simulation</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Simulation</h1>
+    <p class="sub">{% if name %}{{ name }}{% if calibrated %} · parameters from the event log of {{ state.process }}{% endif %} · times in {{ unit }}{% elif state.process %}{{ state.process }} in the event log{% else %}How long a case takes, where it waits and how many people each lane needs: in closed form at once, then simulated.{% endif %}</p>
+  </div>
+</div>
+
+<form class="scope" method="get" aria-label="What to simulate">
+  <label class="field"><span>Workflow</span>
+    <select class="input" name="project"><option value="">Choose a workflow</option>{% for key, label in sources.items %}<option value="{{ key }}"{% if key == state.project %} selected{% endif %}>{{ label }}{% if key|slice:":8" == "example:" %} · example{% endif %}</option>{% endfor %}</select>
+  </label>
+  {% if processes %}
+  <label class="field"><span>Event log</span>
+    <select class="input" name="process"><option value="">No process</option>{% for p in processes %}<option value="{{ p.process }}"{% if p.process == state.process %} selected{% endif %}>{{ p.process }} · {{ p.cases }} case{{ p.cases|pluralize }}</option>{% endfor %}</select>
+  </label>
+  <label class="field"><span>Started from</span><input class="input" type="date" name="since" value="{{ state.since }}"></label>
+  <label class="field"><span>to</span><input class="input" type="date" name="until" value="{{ state.until }}"></label>
+  {% endif %}
+  <button class="btn" type="submit">Open</button>
+</form>
+
+{% if not state.project and not state.process %}
+<p class="empty">Choose a workflow to read its capacity, try a what-if and simulate it{% if processes %}, or a process of the event log to calibrate a model from what really happened{% endif %}. A project's <code>simulation.json</code> gives the times, lanes and branch shares; what it leaves out comes from the elements.</p>
+<ul class="sources">{% for key, label in sources.items %}<li><a href="?{% if key %}project={{ key|urlencode }}{% endif %}">{{ label }}</a><span class="mono meta">{{ key }}</span></li>{% endfor %}</ul>
+{% else %}
+
+{% if now %}
+<nav class="jump" aria-label="On this page"><a href="#capacity">Capacity now</a><a href="#what-if">What if</a><a href="#scenarios">Scenarios</a><a href="#simulate">Simulate</a>{% if processes %}<a href="#log">From the log</a>{% endif %}<a href="#spec">Spec</a></nav>
+
+<section class="block" aria-labelledby="capacity">
+  <div class="section-head"><h2 id="capacity">Capacity now</h2><span class="meta">queueing theory in closed form, at once</span></div>
+  <p class="headline">{{ now.sentence }}</p>
+  {% with a=now.a %}{% if a.steady %}
+  <section class="tiles" aria-label="The process">
+    <div class="tile"><span class="label">Arrivals</span><span class="value num">{{ a.rate|per_hour:unit }}</span><span class="meta">variability ca² {{ a.ca2|number:2 }}</span></div>
+    <div class="tile"><span class="label">Mean cycle time</span><span class="value num">{% if a.cycle_time is not None %}{{ a.cycle_time|span:unit }}{% else %}unbounded{% endif %}</span><span class="meta">{% if a.cycle_time_method == "visits" %}every visit added up{% else %}over the scenarios{% endif %}</span></div>
+    <div class="tile"><span class="label">Cases in the system</span><span class="value num">{{ a.in_system|number }}</span><span class="meta">Little's law: arrivals × cycle time</span></div>
+    <div class="tile"><span class="label">Lanes</span><span class="value num">{{ now.stations|length }}</span><span class="meta">{% if a.stable %}all keep up{% else %}one cannot keep up{% endif %}</span></div>
+  </section>
+  {% if now.stations %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Lane</th><th scope="col" class="n">People</th><th scope="col" class="n">Arrivals</th><th scope="col" class="n">Work</th><th scope="col">Utilisation ρ</th><th scope="col" class="n">Wait</th><th scope="col" class="n">Response</th></tr></thead>
+      <tbody>{% for s in now.stations %}
+        <tr>
+          <td>{{ s.resource }}<span class="sub">{{ s.nodes|join:", " }}</span></td>
+          <td class="n num">{% if s.servers is None %}unlimited{% else %}{{ s.servers|number:0 }}{% endif %}</td>
+          <td class="n num">{{ s.arrival_rate|per_hour:unit }}</td>
+          <td class="n num">{{ s.service_time|span:unit }}</td>
+          <td class="meter-cell"><span class="meter{% if s.utilisation >= 0.85 %} hot{% endif %}"><span style="width: {{ s.utilisation|width }}"></span></span><span class="num">{{ s.utilisation|percent }}</span>{% if not s.stable %} <span class="pill tone-negative">cannot keep up</span>{% elif s.utilisation >= 0.85 %} <span class="pill tone-warning">near capacity</span>{% endif %}</td>
+          <td class="n num">{% if s.stable %}{{ s.waiting_time|span:unit }}{% else %}unbounded{% endif %}</td>
+          <td class="n num">{% if s.stable %}{{ s.response_time|span:unit }}{% else %}unbounded{% endif %}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <h3 class="subhead">Per step</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Step</th><th scope="col" class="n">Visits per case</th><th scope="col" class="n">Time</th><th scope="col" class="n">Expected wait</th><th scope="col" class="n">Response</th></tr></thead>
+      <tbody>{% for s in now.steps %}
+        <tr><td>{{ s.node }}<span class="sub">{% if s.resource %}{{ s.resource }}{% else %}nobody waits{% endif %}</span></td><td class="n num">{{ s.visits|number:2 }}</td><td class="n num">{{ s.service_time|span:unit }}</td><td class="n num">{% if s.waiting_time is None %}unbounded{% else %}{{ s.waiting_time|span:unit }}{% endif %}</td><td class="n num">{% if s.response_time is None %}unbounded{% else %}{{ s.response_time|span:unit }}{% endif %}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif a.busy_bound %}<p class="meta">With every lane as it is, the work of these cases needs at least {{ a.busy_bound|span:unit }}.</p>{% endif %}
+  {% if a.warnings %}<ul class="notes">{% for w in a.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  {% endwith %}
+</section>
+
+<section class="block" aria-labelledby="what-if">
+  <div class="section-head"><h2 id="what-if">What if</h2><span class="meta">people per lane and the arrivals: the closed forms answer at once</span></div>
+  <form method="get" class="what-if">
+    {% for k, v in forms.what %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <div class="knobs">
+      {% for lane, value, current in inputs %}<label class="field knob"><span>{{ lane }}</span><input class="input" type="number" name="c:{{ lane }}" min="1" max="1000" value="{{ value }}"><small class="meta">people, now {{ current }}</small></label>{% endfor %}
+      <label class="field knob"><span>Arrivals</span><input class="input" type="number" name="load" min="0.05" max="50" step="0.05" value="{{ factor|stringformat:'g' }}"><small class="meta">× today's rate</small></label>
+    </div>
+    <div class="form-actions"><button class="btn primary" type="submit">Recompute</button>{% if changed %}<a class="btn" href="{{ forms.reset }}">Back to now</a>{% endif %}</div>
+  </form>
+  {% if changed %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Lane</th><th scope="col" class="n">People</th><th scope="col">Utilisation ρ</th><th scope="col" class="n">Wait now</th><th scope="col" class="n">Wait then</th><th scope="col" class="n">Change</th></tr></thead>
+      <tbody>{% for r in delta.rows %}
+        <tr>
+          <td>{{ r.resource }}</td>
+          <td class="n num">{{ r.servers.0|number:0 }} → {{ r.servers.1|number:0 }}</td>
+          <td class="meter-cell"><span class="meter{% if r.utilisation.1 >= 0.85 %} hot{% endif %}"><span style="width: {{ r.utilisation.1|width }}"></span></span><span class="num">{{ r.utilisation.0|percent }} → {{ r.utilisation.1|percent }}</span>{% if not r.stable %} <span class="pill tone-negative">cannot keep up</span>{% endif %}</td>
+          <td class="n num">{% if r.wait.0 is None %}unbounded{% else %}{{ r.wait.0|span:unit }}{% endif %}</td>
+          <td class="n num">{% if r.wait.1 is None %}unbounded{% else %}{{ r.wait.1|span:unit }}{% endif %}</td>
+          <td class="n num {% if r.delta < 0 %}better{% elif r.delta > 0 %}worse{% endif %}">{% if r.delta is None %}—{% else %}{% if r.delta > 0 %}+{% endif %}{{ r.delta|span:unit }}{% endif %}</td>
+        </tr>{% endfor %}
+      </tbody>
+      <tfoot><tr><th scope="row">Mean cycle time</th><td></td><td></td>
+        <td class="n num">{% if delta.cycle.0 is None %}unbounded{% else %}{{ delta.cycle.0|span:unit }}{% endif %}</td>
+        <td class="n num">{% if delta.cycle.1 is None %}unbounded{% else %}{{ delta.cycle.1|span:unit }}{% endif %}</td>
+        <td class="n num {% if delta.cycle_delta < 0 %}better{% elif delta.cycle_delta > 0 %}worse{% endif %}">{% if delta.cycle_delta is None %}—{% else %}{% if delta.cycle_delta > 0 %}+{% endif %}{{ delta.cycle_delta|span:unit }}{% endif %}</td></tr></tfoot>
+    </table>
+  </div>
+  <p class="meta">{{ then.sentence }}</p>
+  {% endif %}
+
+  <h3 class="subhead" id="staffing">Find the staffing</h3>
+  {% if inputs %}
+  <form method="get" class="inline-form staffing-form">
+    {% for k, v in forms.staffing %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <label>The fewest people for a <select class="input" name="metric"><option value="mean"{% if state.metric != "p90" %} selected{% endif %}>mean</option><option value="p90"{% if state.metric == "p90" %} selected{% endif %}>p90</option></select> cycle time of</label>
+    <label><span class="sr-only">Target</span><input class="input" type="number" name="target" min="0" step="any" value="{{ state.target }}" required> {{ unit }},</label>
+    <label>at most <input class="input" type="number" name="max" min="1" max="100" value="{{ state.max|default:20 }}"> per lane</label>
+    <label>and <input class="input" type="number" name="total" min="1" placeholder="any" value="{{ state.total }}"> in all</label>
+    <button class="btn" type="submit" data-waiting="Simulating…">Find</button>
+  </form>
+  {% if staffing_error %}<p class="notice error" role="status">{{ staffing_error }}</p>{% endif %}
+  {% if staffing %}{% with r=staffing %}
+  <p class="headline">{% if r.feasible %}A {{ r.metric }} cycle time within {{ r.target|span:unit }}{% if factor != 1 %} at {{ factor|stringformat:'g' }} × today's arrivals{% endif %} needs {{ r.headcount }} {{ r.headcount|pluralize:"person,people" }} ({% for lane, c in r.capacity.items %}{{ lane }} {{ c }}{% if not forloop.last %}, {% endif %}{% endfor %}), simulated at {{ r.value|span:unit }}.{% else %}Not feasible: {{ r.note }}{% if r.headcount %} (the best found: {% for lane, c in r.capacity.items %}{{ lane }} {{ c }}{% if not forloop.last %}, {% endif %}{% endfor %}){% endif %}.{% endif %}</p>
+  <p class="meta">{{ r.simulations }} configuration{{ r.simulations|pluralize }} simulated, 5 replications each, in {{ r.seconds|floatformat:1 }} s; the closed forms chose where to start.{% if r.note and r.feasible %} {{ r.note }}.{% endif %} <a class="inline-link" href="{{ r.try }}#what-if">Try it in the what-if</a></p>
+  {% if r.sensitivity %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">One person less in</th><th scope="col" class="n">People</th><th scope="col" class="n">{{ r.metric|capfirst }} cycle time</th><th scope="col" class="n">Change</th><th scope="col">Target</th></tr></thead>
+      <tbody>{% for s in r.sensitivity %}<tr><td>{{ s.resource }}</td><td class="n num">{{ s.capacity }}</td><td class="n num">{{ s.value|span:unit }}</td><td class="n num worse">+{{ s.delta|span:unit }}</td><td>{% if s.meets_target %}<span class="pill tone-positive">still met</span>{% else %}<span class="pill tone-negative">missed</span>{% endif %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endwith %}{% endif %}
+  {% else %}<p class="empty">No lane has people to staff: every step is automated or a delay.</p>{% endif %}
+</section>
+
+<section class="block" aria-labelledby="scenarios">
+  <div class="section-head"><h2 id="scenarios">Scenarios</h2>
+    <form method="get" class="inline-form">{% for k, v in forms.tokens %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <label>Start tokens <input class="input" type="number" name="tokens" min="1" value="{{ tokens }}"></label><button class="btn" type="submit">Count</button></form>
+  </div>
+  <p class="lead meta">Every path a case can take, the outputs its choices take in order, with its probability and the tokens it gets out of {{ tokens }}: the table drawn by hand in class, loops solved exactly.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Scenario</th><th scope="col" class="n">Tokens</th><th scope="col" class="n">Probability</th><th scope="col">Ends</th></tr></thead>
+      <tbody>{% for r in scenarios.shown %}<tr><td>{{ r.scenario|default:"straight through" }}{% if r.status != "completed" %} <span class="pill tone-warning">{{ r.status }}</span>{% endif %}</td><td class="n num">{{ r.tokens|number:2 }}</td><td class="n num">{{ r.probability|percent:2 }}</td><td>{{ r.ends|join:", " }}</td></tr>{% endfor %}</tbody>
+      {% if scenarios.more %}<tbody class="more"><tr><td colspan="4"><details><summary>{{ scenarios.more|length }} more path{{ scenarios.more|length|pluralize }}</summary>
+        <table><tbody>{% for r in scenarios.more %}<tr><td>{{ r.scenario }}</td><td class="n num">{{ r.tokens|number:2 }}</td><td class="n num">{{ r.probability|percent:2 }}</td><td>{{ r.ends|join:", " }}</td></tr>{% endfor %}</tbody></table></details></td></tr></tbody>{% endif %}
+      <tfoot>
+        {% if scenarios.unrolled %}<tr><td>Unrolled further<span class="sub">paths below {{ scenarios.threshold|percent:2 }} each</span></td><td class="n num">{{ scenarios.unrolled|number:2 }}</td><td class="n num">{{ scenarios.unrolled_share|percent:2 }}</td><td></td></tr>{% endif %}
+        <tr><th scope="row">Σ ending</th><td class="n num">{{ scenarios.total|number:2 }}</td><td></td><td>{% if scenarios.balanced %}<span class="pill tone-positive">= {{ tokens }} start tokens</span>{% else %}<span class="pill tone-negative">not {{ tokens }}: tokens lost</span>{% endif %}</td></tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
+
+<section class="block" aria-labelledby="simulate">
+  <div class="section-head"><h2 id="simulate">Simulate</h2><span class="meta">the event simulation, replicated{% if changed %}, on the what-if above{% endif %}</span></div>
+  <form method="get" class="inline-form run-form">
+    {% for k, v in forms.run %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}<input type="hidden" name="run" value="1">
+    <label>Replications <input class="input" type="number" name="replications" min="1" max="1000" value="{{ state.replications|default:defaults.replications }}"></label>
+    <label>Seed <input class="input" type="number" name="seed" min="0" value="{{ state.seed|default:defaults.seed }}"></label>
+    <label>Confidence <select class="input" name="level">{% for l in levels %}<option value="{{ l }}"{% if l == state.level or not state.level and l == "95" %} selected{% endif %}>{{ l }} %</option>{% endfor %}</select></label>
+    <button class="btn primary" type="submit" data-waiting="Simulating…">Simulate</button>
+  </form>
+  {% if run_error %}<p class="notice error" role="status">{{ run_error }}</p>{% endif %}
+  {% if run %}
+  <p class="meta">{{ run.replications }} replication{{ run.replications|pluralize }} of {{ run.cases|floatformat:0 }} cases each, seed {{ run.seed }}, in {{ run.seconds|floatformat:2 }} s on the server.</p>
+  {% if run.check.unstable %}
+  <p class="disagree" role="note">The closed form says {{ run.check.lane }} cannot keep up, so its queue grows with every case: the simulation's waits grow with the number of cases it plays, and its means describe this run, not a steady state.</p>
+  {% elif run.check %}{% if run.check.agree %}
+  <p class="agree">The closed form's mean cycle time, {{ run.check.analytic }}, is inside the simulation's {{ run.level }} % interval ({{ run.check.simulated }} ± {{ run.check.half }}): the two agree.</p>
+  {% else %}
+  <div class="disagree" role="note"><p>The closed form says {{ run.check.analytic }}, the simulation {{ run.check.simulated }} ± {{ run.check.half }} at {{ run.level }} %: they disagree beyond the interval. Trust the simulation; the closed form assumes</p>
+    <ul>{% for r in run.check.reasons %}<li>{{ r }}</li>{% endfor %}</ul></div>
+  {% endif %}{% endif %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Metric</th><th scope="col" class="n">Mean</th><th scope="col" class="n">± {{ run.level }} %</th><th scope="col" class="n">Interval</th></tr></thead>
+      <tbody>{% for m in run.rows %}<tr><td>{{ m.label }}</td><td class="n num">{{ m.mean }}</td><td class="n num">{{ m.half }}</td><td class="n num">{{ m.low }} to {{ m.high }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="charts">{{ run.histogram }}{% for chart in run.busy %}{{ chart }}{% endfor %}</div>
+  <h3 class="subhead">Per step</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Step</th><th scope="col" class="n">Visits</th><th scope="col" class="n">Queue time</th><th scope="col" class="n">Work time</th><th scope="col" class="n">Cost</th></tr></thead>
+      <tbody>{% for n in run.nodes %}<tr><td>{{ n.node }}</td><td class="n num">{{ n.visits|number }}</td><td class="n num">{% if n.queue_time is None %}<span class="muted">—</span>{% else %}{{ n.queue_time|span:unit }}{% endif %}</td><td class="n num">{{ n.work_time|span:unit }}</td><td class="n num">{{ n.cost|number:2 }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <p class="meta">Visits, queue and work per replication on average; the histogram counts every completed case of every replication, utilisation over time is the first replication's.</p>
+  {% else %}<p class="empty">Simulate to confirm the closed forms{% if changed %} on the what-if{% endif %}: every metric comes with its confidence interval over the replications.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if processes %}
+<section class="block" aria-labelledby="log">
+  <div class="section-head"><h2 id="log">From the log</h2><span class="meta">a model calibrated from what really happened</span></div>
+  {% if not state.process %}<p class="empty">Choose a process of the event log above to read its arrivals, times, branch shares and people{% if name %}, and to simulate {{ name }} with them{% endif %}.</p>
+  {% elif log.error %}<p class="empty">{{ log.error }}.</p>
+  {% else %}
+  <section class="tiles" aria-label="The log">
+    <div class="tile"><span class="label">Cases</span><span class="value num">{{ log.report.cases }}</span><span class="meta">{{ log.report.events }} events</span></div>
+    <div class="tile"><span class="label">Arrivals</span><span class="value num">{{ log.arrivals.rate }}</span><span class="meta">variability ca² {{ log.arrivals.ca2|number:2 }}</span></div>
+    <div class="tile"><span class="label">Gaps between cases</span><span class="value small">{{ log.arrivals.gaps }}</span><span class="meta">fitted on {{ log.report.arrivals.n }} gaps</span></div>
+  </section>
+  <div class="form-actions log-actions">
+    {% if now %}{% if calibrated %}<a class="btn" href="{{ without_log }}">Back to the spec's parameters</a><span class="meta">The sections above use these parameters.</span>{% else %}<a class="btn primary" href="{{ simulate_with_log }}#simulate">Simulate with these parameters</a>{% endif %}
+    {% else %}<span class="meta">Choose the workflow that runs {{ state.process }} above to simulate with these parameters.</span>{% endif %}
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Activity</th><th scope="col" class="n">Samples</th><th scope="col" class="n">Mean</th><th scope="col">Distribution</th><th scope="col" class="n">AIC</th></tr></thead>
+      <tbody>{% for a in log.activities %}<tr><td>{{ a.name }}{% if a.resource %}<span class="sub">{{ a.resource }}</span>{% endif %}</td><td class="n num">{{ a.n }}</td><td class="n num">{{ a.mean }}</td><td>{{ a.params }}</td><td class="n num">{% if a.aic is not None %}{{ a.aic|number:0 }}<span class="sub">{{ a.others }}</span>{% else %}<span class="muted">{{ a.fitted }}</span>{% endif %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="two">
+    <div>
+      <h3 class="subhead">Branch shares</h3>
+      {% for g in log.gateways %}<article class="gateway"><h3>{{ g.name }}</h3><p class="meta">{{ g.decisions }} decision{{ g.decisions|pluralize }}</p>
+        <ul class="branches">{% for b, n, share in g.branches %}<li><span>{{ b }}</span><span class="meter"><span style="width: {{ share|width }}"></span></span><span class="num">{{ share|percent }} · {{ n }}</span></li>{% endfor %}</ul></article>
+      {% empty %}<p class="meta">No gateway decided in these cases.</p>{% endfor %}
+    </div>
+    <div>
+      <h3 class="subhead">People per lane</h3>
+      {% if log.people %}<div class="table-wrap"><table>
+        <thead><tr><th scope="col">Lane</th><th scope="col" class="n">People</th><th scope="col">Who completed its tasks</th></tr></thead>
+        <tbody>{% for lane, names, c in log.people %}<tr><td>{{ lane }}</td><td class="n num">{{ c }}</td><td>{{ names|join:", "|default:"nobody named" }}</td></tr>{% endfor %}</tbody>
+      </table></div>{% else %}<p class="meta">No human task in these cases.</p>{% endif %}
+    </div>
+  </div>
+  <ul class="notes">{% for n in log.report.notes %}<li>{{ n|capfirst }}.</li>{% endfor %}{% if log.report.not_in_workflow %}<li>Left out, not steps of this workflow: {{ log.report.not_in_workflow|join:", " }}.</li>{% endif %}</ul>
+
+  {% if reality %}
+  <h3 class="subhead" id="reality">Model and reality</h3>
+  <p class="meta">The simulation above against the {{ reality.cases }} cases of the log. Mean cycle time: observed {{ reality.cycle.0|seconds }}, simulated {{ reality.cycle.1|seconds }}{% if reality.cycle_error is not None %} ({{ reality.cycle_error|relative }}){% endif %}.{% if reality.fit is not None %} Fit: the steps' simulated time is off by {{ reality.fit|percent }} of the time they take in the log.{% endif %}</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Activity</th><th scope="col" class="n">Visits per case, observed · simulated</th><th scope="col" class="n">Duration observed</th><th scope="col" class="n">Simulated</th><th scope="col" class="n">Error</th><th scope="col" class="n">Waited before</th><th scope="col" class="n">Queue simulated</th></tr></thead>
+      <tbody>{% for r in reality.rows %}<tr><td>{{ r.activity }}</td><td class="n num">{{ r.visits.0|number:2 }} · {{ r.visits.1|number:2 }}</td><td class="n num">{{ r.observed|seconds }}</td><td class="n num">{{ r.simulated|seconds }}</td><td class="n num">{{ r.error|relative }}</td><td class="n num">{{ r.wait|seconds }}</td><td class="n num">{{ r.queue|seconds }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <p class="meta">Simulated duration = queue + work, as the log counts a human task from its creation to its completion. A human task's logged time already holds its queue, which the simulation adds again on a busy lane: that error is the log's missing claim time, not the model's.</p>
+  {% elif changed %}<p class="meta">The what-if is not what happened: <a class="inline-link" href="{{ forms.reset }}">back to now</a> and simulate to compare the model with these cases.</p>
+  {% elif now and not run %}<p class="meta">Simulate to compare the model with these cases, activity by activity.</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if now %}
+<section class="block" aria-labelledby="spec">
+  <div class="section-head"><h2 id="spec">Spec</h2><span class="meta">what the simulation runs on: {% if spec.path %}<span class="mono">{{ spec.path }}</span>{% else %}the defaults{% endif %}, the elements' defaults{% if calibrated %}, the log{% endif %}{% if changed %} and the what-if{% endif %}</span></div>
+  <p class="meta">Arrivals: {{ spec.arrivals.type }}{% if spec.arrivals.rate %} · {{ spec.arrivals.rate|per_hour:unit }}{% endif %}{% if spec.arrivals.count %} · {{ spec.arrivals.count }} cases{% endif %}.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Step</th><th scope="col">Time</th><th scope="col">Lane</th><th scope="col" class="n">Cost</th><th scope="col">From</th></tr></thead>
+      <tbody>{% for r in spec.rows %}<tr><td>{{ r.node }}</td><td>{{ r.duration }}</td><td>{{ r.resource|default:"—" }}</td><td class="n num">{% if r.cost %}{{ r.cost|number:3 }}{% else %}<span class="muted">0</span>{% endif %}</td><td><span class="pill{% if r.from == 'spec' %} tone-accent{% elif r.from == 'log' %} tone-positive{% endif %}">{{ r.from }}</span></td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ here }}#spec" class="spec-form">
+    {% csrf_token %}
+    <label class="field"><span>The spec in use, every default written out{% if spec_error %} <span class="error-text">· not saved: {{ spec_error }}</span>{% endif %}</span>
+      <textarea class="input mono" name="spec" rows="14" spellcheck="false"{% if spec_error %} aria-invalid="true"{% endif %}>{{ spec.text }}</textarea></label>
+    <div class="form-actions">
+      <a class="btn" href="{{ spec.download }}" download="simulation.json">Download JSON</a>
+      {% if spec.path %}<button class="btn primary" type="submit">Save to {{ spec.path }}</button><span class="meta">checked against the workflow before it is written</span>
+      {% else %}<span class="meta">An example has no project folder: download its spec and put it next to a workflow in <code>projects/</code>.</span>{% endif %}
+    </div>
+  </form>
+  {% if spec.file %}<details class="file"><summary>What <span class="mono">{{ spec.path }}</span> says now</summary><pre><code>{{ spec.file }}</code></pre></details>{% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,62 @@
+/* The simulation page, on insights.css (tiles, meters, charts) and app.css's tokens: colour only on data. */
+
+.scope { margin-bottom: 24px; }
+.meta + .table-wrap, .agree + .table-wrap, .disagree + .table-wrap { margin-top: 12px; }
+ul.notes { padding: 12px 16px; }
+.branches .num { min-width: 72px; text-align: right; }
+.sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 8px; margin-top: 16px; }
+.sources li { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); }
+.sources a { font-weight: 500; }
+.sources a:hover { color: var(--b8-accent); }
+.sources .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.jump { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: -4px 0 24px; font-size: var(--b8-fs-small); color: var(--b8-muted); }
+.jump a:hover { color: var(--b8-accent); }
+.headline { max-width: 72ch; margin-bottom: 16px; font-size: var(--b8-fs-section); line-height: 24px; }
+.tile .value.small { font-size: var(--b8-fs-body); line-height: 20px; font-weight: 500; }
+
+/* what if: one number per lane */
+.knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 12px; margin-bottom: 12px; }
+.knob > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knob .input { height: var(--b8-control-height); }
+.what-if { margin-bottom: 16px; }
+.what-if .form-actions { justify-content: flex-start; }
+.better { color: var(--b8-positive); }
+.worse { color: var(--b8-negative); }
+tfoot th, tfoot td { border-top: 1px solid var(--b8-border); font-weight: 500; }
+tfoot th { text-align: left; }
+
+/* the inline forms of a section */
+.staffing-form, .run-form { flex-wrap: wrap; margin-bottom: 16px; }
+.staffing-form .input, .run-form .input { width: 88px; }
+.staffing-form select.input, .run-form select.input { width: auto; }
+.section-head .inline-form { flex-wrap: wrap; }
+
+/* simulated against the closed form */
+.agree { margin-bottom: 16px; color: var(--b8-muted); }
+.disagree { margin-bottom: 16px; padding: 12px 16px; border-left: 3px solid var(--b8-warning); border-radius: var(--b8-radius-control); background: var(--b8-pill-warning-bg); color: var(--b8-pill-warning-ink); }
+.disagree ul { margin-top: 6px; padding-left: 18px; list-style: disc; }
+.disagree li + li { margin-top: 4px; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--b8-gap); margin: 24px 0 8px; }
+
+.more details summary { cursor: pointer; color: var(--b8-accent); }
+.more table { margin-top: 8px; }
+.log-actions { justify-content: flex-start; flex-wrap: wrap; margin: 0 0 16px; }
+.log-actions .meta { margin-left: 0; }
+.two .gateway + .gateway { margin-top: 12px; }
+
+/* the spec */
+.spec-form { margin-top: 16px; }
+.spec-form textarea { min-height: 240px; font-size: var(--b8-fs-code); line-height: 18px; white-space: pre; overflow: auto; }
+.spec-form .form-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 12px; }
+.file { margin-top: 16px; }
+.file summary { cursor: pointer; color: var(--b8-muted); }
+.file pre { max-height: 320px; margin-top: 8px; overflow: auto; }
+
+@media (max-width: 1100px) {
+  .charts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .headline { font-size: var(--b8-fs-body); line-height: 22px; }
+  .block td.n, .block th.n { white-space: nowrap; }  /* a number on one line; the table scrolls in its frame */
+}
