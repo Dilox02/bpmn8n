@@ -9,6 +9,7 @@
     <h1>Insights</h1>
     <p class="sub">{% if overview %}{{ overview.cases }} case{{ overview.cases|pluralize }} of {{ process|default:"every process" }}{% if chips %} kept by {{ chips|length }} filter{{ chips|length|pluralize }}, of {{ base_cases }}{% endif %} · {{ overview.start|slice:":10" }} to {{ overview.end|slice:":10" }}{% elif processes %}No case of {{ process|default:"this process" }} in this window{% if chips %} passes the filters{% endif %}.{% else %}What the event log says about your processes: volumes, durations, waits, people, decisions and bottlenecks.{% endif %}</p>
   </div>
+  {% if user.is_staff %}<a class="btn" href="{% url 'insights_import' %}">Import a log</a>{% endif %}
 </div>
 
 {% if processes %}

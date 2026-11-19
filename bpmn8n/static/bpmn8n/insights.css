@@ -114,3 +114,10 @@
 .pmap marker path { fill: var(--b8-muted); stroke: none; }
 .pmap .act rect { fill: color-mix(in srgb, var(--b8-accent) calc(var(--heat) * .35), var(--b8-surface)); stroke: var(--b8-border); }
 .pmap .act .sub { fill: var(--b8-muted); font-size: 11px; }
+
+/* import wizard */
+.import-form, .import-map { max-width: 960px; }
+.import-map .table-wrap { margin-bottom: 12px; }
+.readiness { margin: 16px 0; padding: 12px 16px; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); }
+.readiness ul { margin: 0; padding-left: 18px; }
+.readiness .warn { color: var(--b8-warning); }
