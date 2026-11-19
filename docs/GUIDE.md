@@ -899,7 +899,7 @@ The hypotheses were verified on the real stack (n8n 2.42, Apple M5) with the tes
 ## Tests
 
 ```bash
-python manage.py test bpmn8n --parallel 1             # 578 tests: API, states, check, Studio (real build), mining, simulation, security, every project's examples and scenarios
+python manage.py test bpmn8n --parallel 1             # 671 tests: API, states, check, Studio (real build), mining, simulation, security, every project's examples and scenarios
 python manage.py check_project projects/<name>        # one project: imports, examples, scenarios, workflow
 python manage.py test_scenarios projects/<name>       # only its scenarios (scenarios.json) on the token engine
 python manage.py record_scenario <case id> projects/<name>  # a real case becomes a scenario (regression test)

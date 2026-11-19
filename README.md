@@ -24,11 +24,11 @@ n8n runs workflows well, but it does not speak the language of business processe
 | 🔷 **Real BPMN** | 16 BPMN elements as n8n nodes (tasks, gateways, timers, deadlines, signals, terminate and error ends, compensation) drawn with the official BPMN 2.0 symbols, lanes as bands, and `.bpmn` files exported with their diagram and imported back. |
 | 🧠 **Studio** | Say what the process is. The LLM searches the web for the domain's rules, asks you one question at a time, then writes the activities and the workflow. |
 | ✅ **Workflow check** | Every activity is imported and run against its examples, and the workflow is analysed before anything is loaded. Only what passes is published. |
-| 👤 **People in the loop** | User and Manual Tasks get a page generated from the form. Final decisions always go through a person. |
+| 👤 **People in the loop** | User and Manual Tasks get a page generated from the form, with deadlines, reminders, e-mail notifications and similar past cases; a workload dashboard per lane; start a case from a form. Final decisions always go through a person, and their overrides teach the gateways. |
 | 🤖 **Small models where they shine** | [GLiNER2.5](https://github.com/fastino-ai/GLiNER2) fills task inputs from free text, [Laya](https://github.com/NandhaKishorM/laya) decides gateways in about 20 ms, Vision reads scanned documents. |
 | 📈 **Process mining** | Every step lands in an event log, ready for PM4Py. |
-| 🔎 **Insights** | Filters, statistics, variants, decisions and cohorts on your own event log, and a heatmap on the n8n canvas. |
-| ⏱️ **Queueing and simulation** | Utilisation, waits and the bottleneck of every lane in closed form (M/M/c, G/G/c, Jackson networks); scenario tables, event simulation with confidence intervals, staffing what-if, parameters calibrated from the log. |
+| 🔎 **Insights** | Filters, statistics, variants, decisions and cohorts on your own event log; a process map with detail sliders; cases replayed and a heatmap on the n8n canvas; import any CSV or XES log, export it anonymised. |
+| ⏱️ **Queueing and simulation** | Utilisation, waits and the bottleneck of every lane in closed form (M/M/c, G/G/c, Jackson networks); scenario tables, event simulation with confidence intervals, staffing what-if, parameters calibrated from the log, the cost of people and LLM calls per case, and a functional mode that runs the real tasks. |
 | 🧪 **Tested processes** | Scenario tests run each process without n8n, on a token engine checked against n8n itself; a deadlock search; CI on every push. |
 | 🆓 **Open edition** | What n8n sells by subscription, built in: variables shared by every workflow (on Redis), workflow history with diff and restore, log streaming, case search, git-based source control. |
 | 🔐 **Production** | A Docker image, secure settings, health checks, Prometheus metrics, encrypted LLM keys, an audit log and erasure by case. |
@@ -59,6 +59,8 @@ Then open:
 | http://localhost:5678 | n8n, with the BPMN canvas |
 | http://localhost:8000/studio/ | design a process with the LLM |
 | http://localhost:8000/inbox/ | people's tasks, with deadlines and priority |
+| http://localhost:8000/start/ | start a case from a form |
+| http://localhost:8000/workload/ | open, overdue and waiting work per lane |
 | http://localhost:8000/insights/ | what really happened: metrics, variants, queues |
 | http://localhost:8000/simulation/ | capacity, what-if and simulation |
 | http://localhost:8000/docs/ | the full guide |

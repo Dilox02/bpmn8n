@@ -45,6 +45,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *web-env
+      PYTHONUNBUFFERED: "1"  # its log lines show as they happen (the dev image does not set it)
       PRUNE_DAYS: ${PRUNE_DAYS:-}
     depends_on:
       postgres: {condition: service_healthy}
