@@ -160,21 +160,30 @@ def execution_of(answer):
     return None
 
 
+def forms(processes, chosen="", values=None, errors=None):
+    """The processes with what the person submitted and each field's error, for the page (only for the `chosen` one)."""
+    values, errors = values or {}, errors or {}
+    return [{**p, "fields": [{**f, "value": values.get(f["name"], "") if p["path"] == chosen else "",
+                              "checked": p["path"] == chosen and values.get(f["name"]) == "on",
+                              "error": errors.get(f["name"], "") if p["path"] == chosen else ""} for f in p["fields"]]}
+            for p in processes.values()]
+
+
 @login_required
 def start_case(request):
     """The processes a webhook starts, each with a form generated from its contract's start data."""
-    return render(request, "bpmn8n/start.html", {"processes": list(starts().values())})
+    return render(request, "bpmn8n/start.html", {"processes": forms(starts())})
 
 
 @login_required
 @require_POST
 def start_run(request, hook):
     """Posts the form's JSON to n8n's production webhook, then shows n8n's answer and the case when it names one."""
-    process = starts().get(hook)
-    if process is None:
+    processes = starts()
+    if (process := processes.get(hook)) is None:
         raise Http404(hook)
     body, errors = clean_start(process["fields"], request.POST)
-    context = {"processes": list(starts().values()), "chosen": hook, "values": request.POST, "errors": errors}
+    context = {"processes": forms(processes, hook, request.POST, errors), "errors": errors}
     if errors:
         return render(request, "bpmn8n/start.html", context, status=422)
     try:
@@ -186,6 +195,7 @@ def start_run(request, hook):
     case_id = f"{process['workflow_id']}:{execution}" if execution and process["workflow_id"] else ""
     AuditEntry.write("case.start", object_type="process", object_id=process["name"], case_id=case_id, path=hook,
                      fields=sorted(body), execution=execution or "")
-    context |= {"answer": json.dumps(answer, indent=2, ensure_ascii=False)[:4000], "case_id": case_id, "values": {}}
+    context |= {"answer": json.dumps(answer, indent=2, ensure_ascii=False)[:4000], "case_id": case_id, "chosen": hook,
+                "processes": forms(processes)}
     return render(request, "bpmn8n/start.html", context)
 

@@ -650,7 +650,7 @@ class Reminder(models.Model):
             Reminder.objects.filter(pk=self.pk).update(sent=None)  # a failed send is tried again
             raise
         AuditEntry.write("usertask.remind", task, actor="system", activity=task.activity, how=how, to=self.target)
-        if task.assignee_id or self.webhook:  # an unassigned task's lane has the reminder mail already
+        if task.assignee_id:  # an unassigned task's lane has the reminder mail, or its escalation workflow
             from .people import Notification  # people.py imports this module
             Notification.notify(task, "escalated")
         return True

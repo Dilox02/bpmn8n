@@ -17,19 +17,19 @@
     {% for f in p.fields %}
       <div class="field">
         {% if f.kind == "boolean" %}
-          <label class="check"><input type="checkbox" name="{{ f.name }}"{% if chosen == p.path and values|get:f.name %} checked{% endif %}> {{ f.name }}</label>
+          <label class="check"><input type="checkbox" name="{{ f.name }}"{% if f.checked %} checked{% endif %}> {{ f.name }}</label>
         {% elif f.kind == "choice" %}
           <label for="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{{ f.name }}{% if not f.required %} <span class="meta">optional</span>{% endif %}</label>
           <select class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" name="{{ f.name }}"{% if f.required %} required{% endif %}>
-            <option value=""></option>{% for o in f.options %}<option value="{{ o }}"{% if chosen == p.path and values|get:f.name == o %} selected{% endif %}>{{ o }}</option>{% endfor %}
+            <option value=""></option>{% for o in f.options %}<option value="{{ o }}"{% if f.value == o %} selected{% endif %}>{{ o }}</option>{% endfor %}
           </select>
         {% else %}
           <label for="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{{ f.name }}{% if not f.required %} <span class="meta">optional</span>{% endif %}</label>
-          {% if f.kind == "json" %}<textarea class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" name="{{ f.name }}" rows="3"{% if f.required %} required{% endif %}>{% if chosen == p.path %}{{ values|get:f.name }}{% endif %}</textarea>
-          {% else %}<input class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" type="{% if f.kind == 'number' %}number{% elif f.kind == 'date' %}date{% else %}text{% endif %}" name="{{ f.name }}"{% if f.kind == "number" %} step="any"{% endif %} value="{% if chosen == p.path %}{{ values|get:f.name }}{% endif %}"{% if f.required %} required{% endif %}>{% endif %}
+          {% if f.kind == "json" %}<textarea class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" name="{{ f.name }}" rows="3"{% if f.required %} required{% endif %}>{{ f.value }}</textarea>
+          {% else %}<input class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" type="{% if f.kind == 'number' %}number{% elif f.kind == 'date' %}date{% else %}text{% endif %}" name="{{ f.name }}"{% if f.kind == "number" %} step="any"{% endif %} value="{{ f.value }}"{% if f.required %} required{% endif %}>{% endif %}
         {% endif %}
         {% if f.help %}<p class="help">{{ f.help }}</p>{% endif %}
-        {% if chosen == p.path %}{% with e=errors|get:f.name %}{% if e %}<p class="error">{{ e }}</p>{% endif %}{% endwith %}{% endif %}
+        {% if f.error %}<p class="error">{{ f.error }}</p>{% endif %}
       </div>
     {% empty %}<p class="muted">This process takes no start data.</p>{% endfor %}
     <div class="form-actions"><button class="btn primary" type="submit">Start</button></div>

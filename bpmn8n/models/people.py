@@ -6,7 +6,7 @@ from django.core.mail import send_mail
 from django.db import models
 from django.utils import timezone
 
-from ..conf import settings
+from ..conf import CONFIG, settings
 from .cases import Case
 from .safety import AuditEntry
 from .waiting import UserTask
@@ -66,7 +66,7 @@ class Notification(models.Model):
                 send_mail(f"{SUBJECTS[kind]}: {task.title}",
                           f"“{task.title}” ({task.process or 'bpmn8n'}) is {SUBJECTS[kind].lower()}"
                           f"{f', due {task.due:%Y-%m-%d %H:%M} UTC' if task.due else ''}.\n\n"
-                          f"{settings.BPMN8N_PUBLIC_URL}/inbox/{task.pk}/\n", None, [user.email])
+                          f"{CONFIG.BPMN8N_PUBLIC_URL}/inbox/{task.pk}/\n", None, [user.email])
             except Exception:  # ponytail: no retry queue; run_deadlines sends the time-based kinds again next run
                 log.exception("notification %s for task %s to %s failed", kind, task.pk, user.username)
                 row.delete()
@@ -89,7 +89,7 @@ class Notification(models.Model):
         tasks = UserTask.objects.workable().for_user(user).filter(
             models.Q(assignee=user) | models.Q(assignee__isnull=True)).by_urgency()
         lines = [f"- {t.title}{' (overdue)' if t.overdue else ' (due soon)' if t.due_soon else ''}: "
-                 f"{settings.BPMN8N_PUBLIC_URL}/inbox/{t.pk}/" for t in tasks[:50]]
+                 f"{CONFIG.BPMN8N_PUBLIC_URL}/inbox/{t.pk}/" for t in tasks[:50]]
         if not lines:
             return False
         send_mail(f"{len(lines)} task{'s' * (len(lines) != 1)} waiting for you", "\n".join(lines), None, [user.email])
