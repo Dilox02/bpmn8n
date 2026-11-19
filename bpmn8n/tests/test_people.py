@@ -354,6 +354,15 @@ class BuilderTest(TestCase):
         self.assertEqual(ProcessGraph(workflow).outputs("Approve"), ["timeout", "done"])
         self.assertEqual(WorkflowCheck(workflow, fetch=lambda _: None).errors, [])
 
+    def test_the_timeout_path_has_no_answers(self):
+        """Nobody filled the form when the deadline passed: a step after "timeout" cannot read its fields."""
+        w = (Workflow("Expenses").start("In", "in")
+             .user_task("Approve", "Approve", "managers", form=[["ok", "OK", "boolean"]], due_in=(2, "days"), deadline=True)
+             .manual_task("Escalate", "Escalate {{ok}}", "managers").manual_task("Pay", "Pay {{ok}}", "managers")
+             .flow("In", "Approve").flow("Approve", "Escalate", output="timeout").flow("Approve", "Pay", output="done"))
+        problems = WorkflowCheck(w.as_json(), fetch=lambda _: None, start_data=[]).problems
+        self.assertEqual([(p.node, p.rule) for p in problems if p.level == "error"], [("Escalate", "variable")])
+
     def test_without_a_deadline_the_task_keeps_one_output(self):
         w = Workflow("Lending").user_task("Check Out", "Check out", "librarians", form=[], due_at="{{due_date}}")
         params = w.node("Check Out")["parameters"]

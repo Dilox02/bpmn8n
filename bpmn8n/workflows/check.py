@@ -193,10 +193,8 @@ class WorkflowCheck:
             changed = False
             for name in self.nodes:
                 e = self.graph.element(name)
-                # an event-based gateway's message outputs carry a payload of unknown shape
-                inputs = [(source, port, (set() if forms_only else None)
-                           if port and self.graph.element(source).kind == "eventBasedGateway"
-                           else after[source]) for source, port in dict.fromkeys(self.graph.incoming[name])]
+                inputs = [(source, port, self.carried(source, port, before, after, forms_only))
+                          for source, port in dict.fromkeys(self.graph.incoming[name])]
                 value = set() if name in self.triggers or not inputs else self.joined_data(name, inputs) \
                     if e.joins and not forms_only else self.common_data([value for _, _, value in inputs])
                 if forms_only:
@@ -209,6 +207,17 @@ class WorkflowCheck:
                 if value != before[name] or output != after[name]:
                     before[name], after[name], changed = value, output, True
         return before
+
+    def carried(self, source, port, before, after, forms_only):
+        """What leaves `source` on output `port`: on a "timeout" (an event-based gateway's, a user task's with a
+        deadline) only what reached it, since nothing was answered; an event-based gateway's message outputs
+        carry a payload of unknown shape; any other output what the step produced too."""
+        labels = self.graph.outputs(source)
+        if port < len(labels) and labels[port] == "timeout":
+            return before[source]
+        if port and self.graph.element(source).kind == "eventBasedGateway":
+            return set() if forms_only else None
+        return after[source]
 
 
 class ProjectCheck:
