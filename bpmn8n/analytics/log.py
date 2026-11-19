@@ -185,7 +185,7 @@ def iso(seconds):
 
 def duration_text(seconds):
     """A duration in one or two units: "350 ms", "42 s", "12 min", "3 h 20 min", "4.5 d"."""
-    if seconds is None or not math.isfinite(seconds):
+    if not isinstance(seconds, (int, float)) or not math.isfinite(seconds):  # None, or text from a crafted query
         return "—"
     s = abs(seconds)
     sign = "−" if seconds < 0 else ""

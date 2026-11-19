@@ -16,15 +16,20 @@ def seconds(value):
 @register.filter
 def percent(value, digits=0):
     """A share (0–1) as a percentage: 0.125 -> "13 %"; a dash when unknown."""
-    if value is None:
+    if not known(value):
         return "—"
     return f"{value * 100:.{int(digits)}f} %"
+
+
+def known(value):
+    """A number to print: not None, not text (a crafted query string can put text where a number goes)."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 @register.filter
 def width(value, top=1):
     """The width of an inline bar: value over top, as a CSS percentage (0–100)."""
-    if not value or not top:
+    if not known(value) or not known(top) or not value or not top:
         return "0%"
     return f"{max(0.0, min(100.0, 100 * value / top)):.1f}%"
 
@@ -32,7 +37,7 @@ def width(value, top=1):
 @register.filter
 def number(value, digits=1):
     """A number with at most `digits` decimals; a dash when unknown."""
-    if value is None:
+    if not known(value):
         return "—"
     return f"{value:,.{int(digits)}f}".rstrip("0").rstrip(".") if digits else f"{value:,.0f}"
 
@@ -40,7 +45,7 @@ def number(value, digits=1):
 @register.filter
 def signed(value, kind="number"):
     """A difference with its sign: "+12 %", "−3 min", "+2"."""
-    if value is None:
+    if not known(value):
         return "—"
     sign = "+" if value > 0 else "−" if value < 0 else "±"
     if kind == "seconds":
