@@ -82,6 +82,7 @@ class Stack:
     get: Callable = http_get
     spawn: Callable = spawn
     sleep: Callable = time.sleep
+    now: Callable = time.time
     say: Callable = print
     apple_silicon: bool = field(default_factory=apple_silicon)
 

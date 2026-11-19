@@ -44,6 +44,11 @@ a { color: inherit; text-decoration: none; }
 .crumbs a:hover { color: var(--b8-text); }
 .crumbs span:last-child { color: var(--b8-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar .spacer { flex: 1; }
+.status-dots { display: flex; align-items: center; gap: 8px; }  /* n8n, models, redis, search: the dot says it, a screen reader reads the label */
+.status-dots:focus-visible { outline: 2px solid var(--b8-accent); outline-offset: 4px; border-radius: 4px; }
+.status-dot i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--b8-faint); }
+.status-dot[data-state=up] i { background: var(--b8-positive); }
+.status-dot[data-state=down] i { background: var(--b8-negative); }
 .sheet { min-width: 0; margin: 0 var(--b8-sheet-inset) var(--b8-sheet-inset) 0; padding: var(--b8-pad); background: var(--b8-surface); border: 1px solid var(--b8-border); border-radius: var(--b8-radius-sheet); }
 .menu-toggle { display: none; }
 

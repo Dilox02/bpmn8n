@@ -68,3 +68,7 @@ playwright-report/
 
 # Claude Code agents' git worktrees
 /.claude/worktrees/
+
+# Operations output: backups (python -m bpmn8n backup) and pruned events (manage.py prune)
+/backups/
+/archive/

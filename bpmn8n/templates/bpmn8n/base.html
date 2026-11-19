@@ -44,6 +44,10 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
     </button>
     <div class="crumbs">{% block crumbs %}{% endblock %}</div>
+    {% if status_dots %}<span class="spacer"></span>
+    {% if user.is_staff %}<a class="status-dots" href="{% url 'status' %}" aria-label="Service status">{% else %}<span class="status-dots" role="group" aria-label="Service status">{% endif %}
+      {% for dot in status_dots %}<span class="status-dot" data-state="{{ dot.state }}" title="{{ dot.name }}: {{ dot.state }}"><i aria-hidden="true"></i><span class="sr-only">{{ dot.name }}: {% if dot.state == "off" %}not configured{% else %}{{ dot.state }}{% endif %}</span></span>{% endfor %}
+    {% if user.is_staff %}</a>{% else %}</span>{% endif %}{% endif %}
   </header>
   <main class="sheet">
     {% for m in messages %}<p class="notice {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}

@@ -1,0 +1,25 @@
+{% extends "bpmn8n/base.html" %}
+{% block title %}Status{% endblock %}
+{% block crumbs %}<span>Status</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Status</h1>
+    <p class="sub">Overall: {{ overall }}. The same checks as <code>python -m bpmn8n doctor</code>.</p>
+  </div>
+</div>
+<div class="table-wrap">
+  <table class="as-rows">
+    <thead><tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col" class="n">ms</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+    {% for r in results %}
+      <tr><td><span class="mono">{{ r.name }}</span></td><td>{{ r.status }}</td><td class="n num">{{ r.ms|default_if_none:"" }}</td><td>{{ r.error|default:"" }}{% if r.status == "off" %}not configured{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if hints %}
+<h2>Hints</h2>
+<ul>{% for hint in hints %}<li>{{ hint }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

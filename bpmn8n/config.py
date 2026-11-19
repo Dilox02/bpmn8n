@@ -31,7 +31,7 @@ SECRETS = frozenset({"SECRET_KEY", "BPMN8N_API_TOKEN", "FIELD_ENCRYPTION_KEY", "
 APP_SETTINGS = {"API_TOKEN": "BPMN8N_API_TOKEN", **{name: name for name in (
     "LAYA_URL", "LAYA_API_KEY", "EXTRACTOR_URL", "OCR_URL", "MODELS_API_KEY", "LAYA_TIMEOUT", "LAYA_BUSY_TIMEOUT",
     "FIELD_ENCRYPTION_KEY", "N8N_URL", "N8N_PUBLIC_URL", "N8N_PREVIEW_URL", "N8N_API_KEY", "N8N_CREDENTIAL",
-    "GUNICORN_PID", "SEARCH_URL", "REDIS_URL", "EVENT_STREAM_MAXLEN", "EVENT_WEBHOOKS")}}
+    "GUNICORN_PID", "SEARCH_URL", "REDIS_URL", "EVENT_STREAM_MAXLEN", "EVENT_WEBHOOKS", "PRUNE_DAYS")}}
 
 
 def derived(public_url):
@@ -89,6 +89,8 @@ class Config(BaseModel):
                          "`http://n8n:5678`)")
     N8N_API_KEY: str = Field("", description="n8n's public API key (the CLI creates it): conformance, Studio and "
                              "`workflows diff/push/pull`")
+    PRUNE_DAYS: str = Field("", description="Days of events and task runs the scheduler keeps; older ones are "
+                            "archived (events) or deleted by `manage.py prune` daily. Empty: nothing is pruned")
     N8N_CREDENTIAL: str = Field("", description="Id of the n8n credential bpmn8n's nodes use (the CLI creates it)")
     N8N_EMAIL: str = Field("", description="n8n owner login the CLI uses to create the credential and the API key")
     N8N_PASSWORD: str = Field("", description="Its password")

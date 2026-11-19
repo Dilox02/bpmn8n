@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from django.conf import settings as django_settings
+from django.core.cache import cache
 from django.db import DatabaseError, connection
 
 from ..clients.http import request_json
@@ -74,6 +75,26 @@ def run():
     with ThreadPoolExecutor(len(others)) as pool:
         pending = pool.map(lambda item: timed(*item), others.items())
         return [timed("database", database), *pending]
+
+
+DOTS = {"n8n": ("n8n",), "models": ("laya", "extractor"), "redis": ("redis",), "search": ("search",)}
+DOTS_KEY, DOTS_TTL = "bpmn8n:status-dots", 15  # seconds: the top bar of every page reads it, one check serves them all
+
+
+def dots():
+    """The top bar's dots: [{"name", "state": up | down | off}] for n8n, the models, Redis and search, cached for
+    DOTS_TTL seconds (a page never waits on the checks twice in a row)."""
+    if (found := cache.get(DOTS_KEY)) is not None:
+        return found
+    others = checks()
+    with ThreadPoolExecutor(len(others)) as pool:
+        results = {r.name: r.status for r in pool.map(lambda item: timed(*item), others.items())}
+    found = []
+    for name, parts in DOTS.items():
+        states = {results[p] for p in parts} - {"off"}
+        found.append({"name": name, "state": "down" if "down" in states else "up" if states else "off"})
+    cache.set(DOTS_KEY, found, DOTS_TTL)
+    return found
 
 
 def overall(results):

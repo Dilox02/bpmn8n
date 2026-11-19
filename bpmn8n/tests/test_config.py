@@ -79,7 +79,7 @@ class ConfigTest(SimpleTestCase):
         self.assertEqual(set(conf.DEFAULTS), {
             "LAYA_URL", "LAYA_API_KEY", "EXTRACTOR_URL", "OCR_URL", "MODELS_API_KEY", "LAYA_TIMEOUT", "LAYA_BUSY_TIMEOUT",
             "API_TOKEN", "FIELD_ENCRYPTION_KEY", "N8N_URL", "N8N_PUBLIC_URL", "N8N_PREVIEW_URL", "N8N_API_KEY",
-            "N8N_CREDENTIAL", "GUNICORN_PID", "SEARCH_URL", "REDIS_URL", "EVENT_STREAM_MAXLEN", "EVENT_WEBHOOKS"})
+            "N8N_CREDENTIAL", "GUNICORN_PID", "SEARCH_URL", "REDIS_URL", "EVENT_STREAM_MAXLEN", "EVENT_WEBHOOKS", "PRUNE_DAYS"})
         self.assertEqual(Config.from_env({"BPMN8N_API_TOKEN": "t"}).app_settings()["API_TOKEN"], "t")
 
     def test_nothing_else_reads_the_environment(self):

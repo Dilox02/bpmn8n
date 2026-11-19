@@ -976,6 +976,7 @@ This table is generated (`python manage.py config --md`; a test fails when it is
 | `DB_PATH` | (empty) | SQLite file; empty: `db.sqlite3` in the checkout |
 | `N8N_URL` | `http://localhost:5678` | Where bpmn8n reaches n8n (compose: `http://n8n:5678`) |
 | `N8N_API_KEY` | (empty) | n8n's public API key (the CLI creates it): conformance, Studio and `workflows diff/push/pull` |
+| `PRUNE_DAYS` | (empty) | Days of events and task runs the scheduler keeps; older ones are archived (events) or deleted by `manage.py prune` daily. Empty: nothing is pruned |
 | `N8N_CREDENTIAL` | (empty) | Id of the n8n credential bpmn8n's nodes use (the CLI creates it) |
 | `N8N_EMAIL` | (empty) | n8n owner login the CLI uses to create the credential and the API key |
 | `N8N_PASSWORD` | (empty) | Its password |

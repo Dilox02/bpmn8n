@@ -23,6 +23,7 @@ from .. import conf
 from ..api.tasks import TASK_KINDS, TASKS
 from ..clients.http import ServiceUnavailable
 from ..models import Event, TransitionError, UserTask
+from ..ops import health
 from .text import to_html
 
 ACTIONS = {  # what a person can do on the task page; the model allows it or raises TransitionError
@@ -100,7 +101,7 @@ def navigation(request):
     if not request.user.is_authenticated:
         return context
     waiting = UserTask.objects.workable().for_user(request.user).count()
-    return {**context, "waiting_count": waiting, "user_hue": zlib.crc32(request.user.username.encode()) % 360,
+    return {**context, "status_dots": health.dots(), "waiting_count": waiting, "user_hue": zlib.crc32(request.user.username.encode()) % 360,
             "nav": nav_entries(NAV, request, {"inbox": waiting}), "nav_bottom": nav_entries(NAV_BOTTOM, request)}
 
 

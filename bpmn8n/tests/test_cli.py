@@ -252,7 +252,8 @@ class CommandsTest(SimpleTestCase):
             for argv in ([], ["start"], ["status", "--json"]):
                 with self.subTest(argv=argv), self.assertRaises(SystemExit):
                     cli.main(argv, stack(self.tmp))
-        self.assertEqual(set(cli.COMMANDS), {"up", "down", "status", "doctor", "logs", "export", "import", "deploy", "diff"})
+        self.assertEqual(set(cli.COMMANDS), {"up", "down", "status", "doctor", "logs", "export", "import", "deploy", "diff",
+                                             "pull", "backup", "restore", "schedule", "version"})
 
     def test_status_says_what_is_down_and_exits_with_1(self):
         lines = []

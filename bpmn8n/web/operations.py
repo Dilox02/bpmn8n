@@ -18,10 +18,19 @@ from ..clients.n8n import N8nError
 from ..core import history, shared
 from ..core.cases import OPERATORS, STATUSES, CaseSearch, SearchError
 from ..models import AuditEntry, Case, WorkflowVersion
+from ..ops import health
 from ..workflows.changes import changes
 
 PAGE = 50  # cases per page
 VERSIONS = 50  # versions shown on a workflow's page
+
+
+@staff_member_required
+def status(request):
+    """What the top bar's dots summarise: every check with its latency and error, and doctor's hints."""
+    results = health.run()
+    return render(request, "bpmn8n/status.html", {"results": results, "overall": health.overall(results),
+                                                  "hints": health.hints()})
 
 
 @staff_member_required
