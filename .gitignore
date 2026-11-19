@@ -65,3 +65,6 @@ playwright-report/
 
 # collectstatic output (production images collect their own)
 /staticfiles/
+
+# Claude Code agents' git worktrees
+/.claude/worktrees/
