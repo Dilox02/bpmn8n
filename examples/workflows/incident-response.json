@@ -1,5 +1,5 @@
 {
-  "name": "ACME \u00b7 Incident response",
+  "name": "ACME · Incident response",
   "nodes": [
     {
       "id": "fb3b7a79-d96b-4fe0-b1ec-4427e75aac4d",
@@ -51,20 +51,20 @@
         "decider": "laya",
         "question": "",
         "state": "{{summary}}",
-        "minConfidence": 0.5,
+        "minConfidence": 0.7,
         "branches": {
           "values": [
             {
               "name": "isolate_host",
-              "description": "Is a device infected or compromised?"
+              "description": "Is a computer infected (malware, worm, backdoor, cryptominer)?"
             },
             {
               "name": "reset_credentials",
-              "description": "Is a password compromised?"
+              "description": "Did a user give their password to a fake page or email?"
             },
             {
               "name": "notify_dpo",
-              "description": "Was personal data leaked?"
+              "description": "Was a file with personal data of many people leaked?"
             }
           ]
         }

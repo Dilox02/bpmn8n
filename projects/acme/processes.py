@@ -77,13 +77,15 @@ def expense_approval(credential=None, path="acme-expense", min_confidence=MIN_CO
 
 # Short, plain yes/no questions: they scored best on the evaluation set (e2e/test_laya_eval.py).
 INCIDENT_ACTIONS = {
-    "isolate_host": "Is a device infected or compromised?",
-    "reset_credentials": "Is a password compromised?",
-    "notify_dpo": "Was personal data leaked?",
+    "isolate_host": "Is a computer infected (malware, worm, backdoor, cryptominer)?",
+    "reset_credentials": "Did a user give their password to a fake page or email?",
+    "notify_dpo": "Was a file with personal data of many people leaked?",
 }
 
 
-def incident_response(credential=None, path="acme-incident", min_confidence=0.5):
+# Concrete yes/no questions and 0.7 (e2e/datasets/incidents.json: exact 10/16 as before, higher precision): an
+# automatic reset or isolation is costly, an unsure alert goes to an analyst through the default flow.
+def incident_response(credential=None, path="acme-incident", min_confidence=MIN_CONFIDENCE):
     return (
         Workflow("ACME · Incident response", credential)
         .start("Alert Received", path)
