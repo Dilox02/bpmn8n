@@ -28,19 +28,29 @@ A framework for building BPMN workflows on n8n, checked before they run.
 ## Getting started
 
 ```bash
-./start.sh            # start everything (safe to re-run: it rebuilds and reloads the nodes)
-./start.sh status     # what is running
-./start.sh logs       # live logs
-./start.sh stop       # stop everything (data is kept)
-./start.sh export     # n8n workflows -> workflows/*.json (to version with git)
-./start.sh import     # workflows/*.json -> n8n (published workflows stay published)
+./start.sh                      # the first time: makes .venv with bpmn8n's packages, then `python -m bpmn8n up`
+python -m bpmn8n up             # start everything (safe to re-run: it rebuilds and reloads the nodes)
+python -m bpmn8n status         # the containers, and whether each service answers (exits with 1 if one does not)
+python -m bpmn8n doctor         # every dependency with its error, and hints from the configuration
+python -m bpmn8n logs           # live logs
+python -m bpmn8n down           # stop everything (data is kept)
+python -m bpmn8n export         # n8n workflows -> workflows/*.json (to version with git)
+python -m bpmn8n import         # workflows/*.json -> n8n (published workflows stay published)
+python -m bpmn8n deploy         # every project's workflow.json -> n8n (`manage.py workflows push`)
+python -m bpmn8n diff           # drift between git and n8n (`manage.py workflows diff`)
 ```
 
-The script:
+`bpmn8n` (the console script, after `pip install -e .`) is the same command, and `./start.sh <command>` passes it on
+(`./start.sh stop` is `down`). `up`:
 - builds the nodes into `n8n-nodes-bpmn8n/dist`;
 - on an **Apple Silicon Mac** starts the native **models server** (`tools/models_server.py`): Laya on the GPU (about 20 ms per decision), GLiNER2.5 on the CPU (about 20 ms), OCR with Vision (about 0.4 s per page). Elsewhere it uses CPU containers (`--profile cpu-models`), without OCR;
 - starts Postgres, Redis, Django, n8n (main + worker, with the BPMN canvas), its read-only preview and SearXNG (web search for Studio's research), and applies the migrations;
-- creates in n8n the **bpmn8n (web:8000)** credential and an API key (read and create workflows, never activate them; list, create and update credentials, for the LLM agents); writes the key, the credential id and the model addresses to `.env`, so manual `docker compose …` commands use the same configuration.
+- creates in n8n the **bpmn8n (web:8000)** credential and an API key (read and create workflows, never activate them; list, create and update credentials, for the LLM agents); writes the key, the credential id and the model addresses to `.env` (other lines stay as they are), so manual `docker compose …` commands use the same configuration. Secrets go to `.env`, never to the output.
+
+The CLI (`bpmn8n/cli.py`) drives one `Service` per part of the stack (`bpmn8n/ops/services.py`: `Postgres`, `Redis`,
+`Models`, `Web`, `N8n`, `Preview`, `Search`), each with `ensure()`, `start()`, `stop()` and `health()` over docker compose
+and the health checks of `/api/health`; n8n's bootstrap is `bpmn8n/ops/bootstrap.py`. `doctor`, `deploy` and `diff` run
+`manage.py` in the web container, where the stack's configuration is.
 
 Then:
 - **http://localhost:8000/docs/**: this guide;
@@ -48,10 +58,10 @@ Then:
 - **http://localhost:8000/admin/** → *Settings*: the LLM providers for Studio; *Groups*: the lanes (roles);
 - **http://localhost:8000/studio/**: design a process with the LLM.
 
-More capacity: `WEB_WORKERS=8 ./start.sh` for Django, `docker compose up -d --scale n8n-worker=3` for n8n.
-On n8n's first start, create the owner account at http://localhost:5678, then `N8N_EMAIL=… N8N_PASSWORD=… ./start.sh` (they are kept in `.env`, which git ignores).
+More capacity: `WEB_WORKERS=8 python -m bpmn8n up` for Django, `docker compose up -d --scale n8n-worker=3` for n8n.
+On n8n's first start, create the owner account at http://localhost:5678, then `N8N_EMAIL=… N8N_PASSWORD=… python -m bpmn8n up` (they are kept in `.env`, which git ignores).
 The admin user: `docker compose exec web python manage.py createsuperuser`.
-Requirements: Docker, Node.js and, on a Mac, [uv](https://docs.astral.sh/uv/).
+Requirements: Docker, Node.js, Python 3.11+ and, on a Mac, [uv](https://docs.astral.sh/uv/).
 
 ## How the code is organised
 
