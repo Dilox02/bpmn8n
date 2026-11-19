@@ -42,8 +42,8 @@ def test_task_node_reads_openapi(n8n_page, create_workflow, credential):
     expect(n8n_page.get_by_test_id("credentials-label")).to_be_visible()  # NDV fully rendered
     n8n_page.get_by_test_id("parameter-input-task").locator("input").click()
     n8n_page.get_by_text("Register Ticket", exact=True).click()
-    for field in ("Customer", "Message", "Channel", "Output"):
-        expect(n8n_page.get_by_test_id("node-parameters").get_by_text(field, exact=True)).to_be_visible()
+    for field in ("Customer", "Message", "Channel", "Output"):  # n8n's fields, below bpmn8n's card (its "Output" heading)
+        expect(n8n_page.get_by_test_id("node-parameters").get_by_text(field, exact=True).last).to_be_visible()
 
 
 def test_exclusive_gateway_with_laya(web_api, laya_ready):
