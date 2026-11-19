@@ -678,6 +678,7 @@ bpmn8n is also a library (`pyproject.toml`). An existing project installs it, ad
 ```python
 # settings.py: set only the values that differ from bpmn8n/conf.py's defaults (LAYA_URL, N8N_URL, …)
 INSTALLED_APPS += ["bpmn8n"]
+MIDDLEWARE += ["bpmn8n.core.audit.middleware"]  # the audit log's who and from where (after AuthenticationMiddleware)
 # urls.py: the n8n nodes call <baseUrl>/api/...; the project's routes come first
 from bpmn8n.api import api, discover
 discover()  # registers the @tasks of the apps' tasks modules (a broken one is logged and left out)

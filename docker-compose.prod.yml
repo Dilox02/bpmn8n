@@ -13,6 +13,8 @@ services:
       DEBUG: "0"
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY, a long random string (python -c "import secrets; print(secrets.token_urlsafe(50))")}
       BPMN8N_API_TOKEN: ${BPMN8N_API_TOKEN:?set BPMN8N_API_TOKEN, the token n8n's bpmn8n credential and Prometheus send}
+      # encrypts the LLM providers' API keys; empty: derived from SECRET_KEY (docs/GUIDE.md, "Data safety")
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
       # the public host names, comma-separated; web: n8n's nodes call http://web:8000 inside the network
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:?set ALLOWED_HOSTS, the public host names of bpmn8n (comma-separated)},web
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}  # e.g. https://bpmn8n.example.org

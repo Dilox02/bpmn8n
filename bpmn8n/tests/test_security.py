@@ -18,7 +18,7 @@ PUBLIC_PAGES = {"/", "/login/", "/logout/"}
 TOKEN = "s3cret-token"
 FRAMEWORK_PREFIXES = {"tasks", "gateways", "usertasks", "messages", "workflows", "evaluations", "executions", "analytics",
                       "variables", "history", "simulation", "events", "cases", "metrics", "eventlog.csv",
-                      "processmining", "datasets", "health", "elements", "openapi.json", "docs"}
+                      "processmining", "datasets", "health", "elements", "openapi.json", "docs", "audit"}
 EVIL = '<script>alert("x")</script>'
 
 

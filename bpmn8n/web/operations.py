@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 from ..clients.n8n import N8nError
 from ..core import history, shared
 from ..core.cases import OPERATORS, STATUSES, CaseSearch, SearchError
-from ..models import Case, WorkflowVersion
+from ..models import AuditEntry, Case, WorkflowVersion
 from ..workflows.changes import changes
 
 PAGE = 50  # cases per page
@@ -32,11 +32,13 @@ def variables(request):
         key = request.POST.get("key", "").strip()
         try:
             if request.POST.get("action") == "delete":
-                store.delete(key)
+                if store.delete(key):
+                    AuditEntry.write("variable.delete", object_type="variable", object_id=key)
                 messages.success(request, f"Deleted {key}.")
             else:
                 ttl = request.POST.get("ttl", "").strip()
                 store.set(key, json.loads(request.POST.get("value", "")), float(ttl) if ttl else None)
+                AuditEntry.write("variable.set", object_type="variable", object_id=key, ttl=float(ttl) if ttl else None)
                 messages.success(request, f"Saved {key}.")
         except json.JSONDecodeError:
             messages.error(request, 'The value is not JSON: write 42, "text", true, [1, 2] or {"limit": 3}.')
@@ -127,6 +129,8 @@ def restore_version(request, workflow_id, version_id):
     version = get_object_or_404(WorkflowVersion, workflow_id=workflow_id, version_id=version_id)
     try:
         restored = history.restore(version)
+        AuditEntry.write("workflow.restore", object_type="workflow", object_id=workflow_id, version=version_id,
+                         saved_as=restored.version_id if restored else None)
         messages.success(request, f"Saved version {version_id[:8]} back to n8n"
                                   f"{f' as {restored.version_id[:8]}' if restored else ''}. "
                                   "It is not published: publish it in n8n's editor when it should run.")

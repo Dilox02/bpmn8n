@@ -1,4 +1,4 @@
-"""The event log and the cases, for monitoring and process-mining tools."""
+"""The event log and the cases, for monitoring and process-mining tools; the audit log and erasure by case."""
 from datetime import datetime
 from typing import Any, Literal
 
@@ -8,9 +8,10 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 
 from ..core.cases import CaseData, CaseSearch, SearchError
+from ..core.erasure import NoSuchCase, StillWaiting, erase
 from ..core.observability import CASE_HEADER, metrics_snapshot
 from ..core.streaming import EventStream, publish
-from ..models import Case, Event
+from ..models import AuditEntry, Case, Event
 
 router = Router(tags=["observability"])
 
@@ -110,3 +111,45 @@ def get_case(request, case_id: str):
     """A case's process variables (what {{name}} templates read)."""
     case = Case.objects.filter(case_id=case_id).values("case_id", "process", "variables", "created", "updated").first()
     return (200, case) if case else (404, {"detail": f"no case {case_id!r}"})
+
+
+@router.post("/cases/{case_id}/erase", response={200: dict, 404: dict, 409: dict})
+def erase_case(request, case_id: str, force: bool = False):
+    """Erases the case's personal data (GDPR art. 17), as `manage.py erase_case`: its variables, its steps' input
+    and output, its user tasks' and messages' data; activities, times and statuses stay for process mining.
+    409 while it still waits, unless `force=true` (it cancels the waits first). For staff: the API token is the
+    authority."""
+    try:
+        return 200, erase(case_id, force=force)
+    except NoSuchCase as e:
+        return 404, {"detail": str(e)}
+    except StillWaiting as e:
+        return 409, {"detail": str(e)}
+
+
+class AuditOut(Schema):
+    at: datetime
+    actor: str
+    action: str
+    object_type: str
+    object_id: str
+    case_id: str
+    details: dict
+    ip: str | None
+
+
+@router.get("/audit", response=list[AuditOut])
+def list_audit(request, case_id: str = "", actor: str = "", action: str = "", since: datetime | None = None,
+               limit: int = 100):
+    """The audit log, newest first (at most 1000): who did what, on which object and case, from where. `action`
+    is exact (usertask.complete) or a prefix ending in a dot (usertask.)."""
+    entries = AuditEntry.objects.all()
+    if case_id:
+        entries = entries.filter(case_id=case_id)
+    if actor:
+        entries = entries.filter(actor=actor)
+    if action:
+        entries = entries.filter(action__startswith=action) if action.endswith(".") else entries.filter(action=action)
+    if since:
+        entries = entries.filter(at__gte=since)
+    return entries[:min(max(limit, 1), 1000)]
