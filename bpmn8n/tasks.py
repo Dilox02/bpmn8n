@@ -47,7 +47,7 @@ def luhn_ok(text):
 # kind, pattern, check: earlier kinds win where matches overlap (an IBAN holds digit runs that look like phones).
 # ponytail: IBANs in capitals only (a lower-case word after one would join it); a fiscal code by its shape only,
 # without its check letter, because one with a typo still names a person; any run of 9-13 digits counts as a
-# phone number: recall before precision, as the hospital project's pseudonymisation does.
+# phone number: recall before precision (projects reuse them through redact(), e.g. a pseudonymisation).
 PERSONAL_DATA = (
     ("email", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), None),
     ("iban", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b"), iban_ok),
@@ -67,6 +67,15 @@ def personal_data(text):
             if (valid is None or valid(m.group())) and not any(s < m.end() and m.start() < e for _, s, e in spans):
                 spans.append((kind, m.start(), m.end()))
     return sorted(spans, key=lambda span: span[1])
+
+
+def redact(text):
+    """(text with its personal data replaced by placeholders such as [EMAIL], the spans personal_data found):
+    the guardrail's redaction, for a task that hides personal data before an LLM reads a text."""
+    spans = personal_data(text)
+    for kind, start, end in reversed(spans):
+        text = f"{text[:start]}[{kind.upper()}]{text[end:]}"
+    return text, spans
 
 
 def schema_problems(text, keys):
@@ -121,7 +130,7 @@ def check_guardrails(request, data: GuardrailInput) -> GuardrailResult:
     Italian fiscal codes, card numbers), its length, blocked words, or that it is a JSON object with given
     keys. Whatever the checks, it also returns the text with the personal data redacted."""
     checks, text, findings = names(data.checks), data.text, []
-    spans = personal_data(text)
+    redacted, spans = redact(text)
     if "pii" in checks:
         findings += [GuardrailFinding(check="pii", what=kind, where=f"{s}-{e}") for kind, s, e in spans]
     if "length" in checks and len(text) > data.max_length:
@@ -131,9 +140,7 @@ def check_guardrails(request, data: GuardrailInput) -> GuardrailResult:
                      for word in names(data.blocklist) for m in re.finditer(rf"(?<!\w){re.escape(word)}(?!\w)", text, re.I)]
     if "schema" in checks:
         findings += [GuardrailFinding(check="schema", what=problem) for problem in schema_problems(text, names(data.keys))]
-    for kind, start, end in reversed(spans):
-        text = f"{text[:start]}[{kind.upper()}]{text[end:]}"
-    return GuardrailResult(passed=not findings, findings=findings, redacted=text)
+    return GuardrailResult(passed=not findings, findings=findings, redacted=redacted)
 
 
 # --- oversight (H10) and reflection (J1, J4) ------------------------------------------------------------
