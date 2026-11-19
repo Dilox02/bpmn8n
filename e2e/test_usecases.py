@@ -63,11 +63,11 @@ def test_uc2_business_expense_is_approved_by_a_manager(deploy, n8n_api, web_api,
     page.get_by_label("Username").fill(manager["username"])
     page.get_by_label("Password").fill(manager["password"])
     page.get_by_role("button", name="Sign in").click()
-    card = page.get_by_role("article").filter(has_text="ann@acme.test").last
-    expect(card).to_contain_text("within_policy")
-    card.get_by_label("Approve").check()
-    card.get_by_label("Note").fill("OK, strategic customer.")
-    card.get_by_role("button", name="Complete").click()
+    page.get_by_role("link", name="Approve 180 EUR for ann@acme.test").last.click()  # the inbox lists, the page works
+    expect(page.get_by_role("main")).to_contain_text("within_policy")  # the case data the person decides on
+    page.get_by_label("Approve").check()
+    page.get_by_label("Note").fill("OK, strategic customer.")
+    page.get_by_role("button", name="Complete").click()
     expect(page.get_by_role("status")).to_contain_text("completed")
 
     rows = event_log.wait_for_case(known, until=lambda acts: acts[-1] == "Notify Employee")

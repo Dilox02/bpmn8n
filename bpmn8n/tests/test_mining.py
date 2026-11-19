@@ -46,6 +46,14 @@ class DecisionRulesTest(SimpleTestCase):
         self.assertIn("amount <= 1050", rules["tree"])
         self.assertNotIn("note", rules["tree"])  # free text is no rule material
 
+    def test_lists_in_the_state_are_left_out(self):
+        """A gateway that read a list (an alert's hosts) used to crash the whole mining report."""
+        from ..mining import ProcessAnalysis
+        states = [{"amount": a, "hosts": [f"h-{a}"], "meta": {"k": a}} for a in range(0, 3000, 100)]
+        rules = ProcessAnalysis.rules(states, ["big" if s["amount"] > 1000 else "small" for s in states])
+        self.assertEqual(rules["fit_accuracy"], 1.0)
+        self.assertNotIn("hosts", rules["tree"])
+
 
 LIBRARY = [("Get Book Status", 0), ("Is Book Available?", 1), ("Fetch Book", 2), ("Check Out Book", 3),
            ("Send Checkout Reply", 4), ("Update Catalogue", 4)]
