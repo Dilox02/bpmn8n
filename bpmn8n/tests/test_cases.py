@@ -68,7 +68,8 @@ class CasePageTest(TestCase):
         page = self.client.get("/cases/wf1:42/")
         self.assertContains(page, "<h1>Support</h1>", html=True)
         self.assertNotContains(page, 'class="notice')  # the subscriptions are not Django's messages
-        self.assertContains(page, '<span class="pill tone-accent">waiting for a person</span>', html=True)
+        self.assertContains(page, '<b8-pill tone="accent">waiting for a person</b8-pill>', html=True)
+        self.assertContains(page, '<li data-status="error">')  # <b8-timeline> colours the failed step's dot
         self.assertContains(page, "The workflow cannot be drawn")
         self.assertNotContains(page, '<iframe id="preview"')
         for text in ("Register", "TimeoutError: the shop did not answer", "sent to an LLM", "What does the customer need?",

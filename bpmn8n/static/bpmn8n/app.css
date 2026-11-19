@@ -153,24 +153,31 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
 .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; background: var(--b8-muted); }
 .legend [data-state=active]::before { background: var(--b8-accent); box-shadow: 0 0 0 2px var(--b8-pill-accent-bg); }
 .legend [data-state=waiting]::before { background: none; border: 1px dashed var(--b8-muted); }
-.timeline { display: grid; }
-.timeline li { position: relative; padding-left: 20px; }
-.timeline li::before { content: ""; position: absolute; left: 0; top: 17px; width: 8px; height: 8px; border-radius: 50%; background: var(--b8-control); }
-.timeline li:not(:last-child)::after { content: ""; position: absolute; left: 3.5px; top: 31px; bottom: -9px; width: 1px; background: var(--b8-border); }
-.timeline li.s-error::before { background: var(--b8-negative); }
-.timeline li.s-running::before { background: var(--b8-warning); }
+/* a case's steps: <b8-timeline> (static/bpmn8n/components.js) draws the dots and the line, these the open-able rows */
 .timeline summary { display: grid; grid-template-columns: minmax(0, 1fr) auto 64px 12px; gap: 4px 16px; align-items: baseline; padding: 10px 0; border-radius: var(--b8-radius-control); cursor: pointer; list-style: none; }
 .timeline summary::-webkit-details-marker { display: none; }
 .timeline summary::after { content: ""; align-self: center; width: 12px; height: 12px; background: var(--b8-muted); -webkit-mask: var(--chevron) center / 12px no-repeat; mask: var(--chevron) center / 12px no-repeat; transition: transform var(--b8-t-ui) var(--b8-ease-out); }
 .timeline details[open] summary::after { transform: rotate(90deg); }
 .timeline .name { font-weight: 500; overflow-wrap: anywhere; }
-.timeline .what .pill { margin-left: 8px; vertical-align: 1px; }
+.timeline .what b8-pill { margin-left: 8px; vertical-align: 1px; }
 .timeline .sub { display: block; margin-top: 2px; color: var(--b8-muted); font-size: var(--b8-fs-small); }
 .timeline time, .timeline .dur { color: var(--b8-muted); font-size: var(--b8-fs-small); text-align: right; white-space: nowrap; }
 @media (max-width: 600px) {  /* the step's name keeps the width; its time goes under it */
   .timeline summary { grid-template-columns: minmax(0, 1fr) auto 12px; }
   .timeline time { grid-column: 1; grid-row: 2; text-align: left; }
 }
+/* the landscape (web/landscape.py): the map scrolls in its well, the legend draws the kinds of line */
+.stack.landscape { grid-template-columns: minmax(0, 1fr); }  /* the map and the table scroll, never the page */
+.map-well { padding: 12px; border-radius: var(--b8-radius-card); background: var(--b8-raised); }
+.legend .call::before, .legend .message::before, .legend .unsent::before { width: 18px; height: 0; border-radius: 0; background: none; border-top: 1.5px solid var(--b8-muted); vertical-align: middle; }
+.legend .message::before { border-top-style: dashed; }
+.legend .unsent::before { border-top: 1.5px dashed var(--b8-warning); }
+table.landscape th[scope=row] { height: auto; padding: 14px 12px 14px 0; border-bottom: 1px solid var(--b8-rule); color: var(--b8-text); font-size: var(--b8-fs-body); white-space: normal; vertical-align: baseline; }
+table.landscape th[scope=row] .name { font-weight: 500; }
+table.landscape th[scope=row] .sub { display: block; margin-top: 2px; color: var(--b8-muted); font-size: var(--b8-fs-small); }
+table.landscape tr:target th, table.landscape tr:target td { background: var(--b8-pill-accent-bg); }
+table.landscape { min-width: 760px; }
+table.landscape code { white-space: nowrap; }
 .step-body { display: grid; gap: 8px; padding: 0 0 16px; }
 .step-body h3 { font-size: var(--b8-fs-small); font-weight: 500; color: var(--b8-muted); }
 .step-body pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

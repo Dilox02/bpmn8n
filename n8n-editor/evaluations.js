@@ -6,6 +6,8 @@
   const backend = localURL(source.searchParams.get('bpmn8n') || 'http://localhost:8000');
   const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('bpmn8n-evaluations.css?v=4', source); document.head.append(css);
   const statuses = { passed: 'Thresholds met', failed: 'Thresholds not met', unscored: 'Measurements only' };
+  const tones = { passed: 'positive', failed: 'negative' };  // <b8-pill>, bpmn8n's shared components (a classic script)
+  if (!customElements.get('b8-pill')) document.head.append(Object.assign(document.createElement('script'), { src: `${backend}/static/bpmn8n/components.js` }));
 
   class MetricChart {
     constructor() {
@@ -104,12 +106,12 @@
     }
     renderRuns() {
       this.root.querySelector('.evaluation-empty').hidden = !!this.runs.length;
-      keyed(this.root.querySelector('.evaluation-runs tbody'), this.runs, runKey, () => { const el = document.createElement('tr'); el.innerHTML = '<td><button></button><small></small></td><td></td><td></td><td></td><td><span class="evaluation-status"></span></td>'; return el; }, (el, run) => {
+      keyed(this.root.querySelector('.evaluation-runs tbody'), this.runs, runKey, () => { const el = document.createElement('tr'); el.innerHTML = '<td><button></button><small></small></td><td></td><td></td><td></td><td><b8-pill></b8-pill></td>'; return el; }, (el, run) => {
         el.dataset.selected = String(this.selectedKey === runKey(run));
         const cells = el.children; const button = cells[0].querySelector('button'); button.dataset.run = runKey(run);
         text(button, `#${run.execution_id}`); text(cells[0].querySelector('small'), run.label);
         text(cells[1], date(run.updated_at)); text(cells[2], run.project); text(cells[3], number(run.sample_count));
-        const status = cells[4].querySelector('span'); status.dataset.status = run.status; text(status, statuses[run.status]);
+        const status = cells[4].querySelector('b8-pill'); status.setAttribute('tone', tones[run.status] || 'neutral'); text(status, statuses[run.status]);
       });
       const select = this.root.querySelector('[data-action=compare]');
       keyed(select, [{ value: '', label: 'No comparison' }, ...this.runs.filter(r => runKey(r) !== this.selectedKey).map(r => ({ value: runKey(r), label: `#${r.execution_id} · ${r.label || date(r.updated_at)}` }))], o => o.value,

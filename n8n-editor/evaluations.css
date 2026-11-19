@@ -30,11 +30,6 @@
 .bpmn8n-evaluations td:first-child { white-space: normal; min-width: 150px; }
 .bpmn8n-evaluations tr[data-selected=true] { background: var(--b8-raised, var(--color--background--light-1, #333)); }
 .bpmn8n-evaluations small { display: block; font-size: 12px; margin-top: 3px; }
-.evaluation-status { display: inline-block; font-size: 12px; }
-.evaluation-status[data-status=passed] { color: var(--b8-positive, #85d8b0); }
-.evaluation-status[data-status=failed] { color: var(--b8-negative, #ffb0a4); }
-body[data-theme=light] .evaluation-status[data-status=passed] { color: var(--b8-positive, #16613c); }
-body[data-theme=light] .evaluation-status[data-status=failed] { color: var(--b8-negative, #9b291a); }
 .evaluation-detail { margin-top: 36px; }
 .evaluation-path { margin: 8px 0 20px !important; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, monospace; }
 .evaluation-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 20px 0; }

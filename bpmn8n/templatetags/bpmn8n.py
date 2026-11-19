@@ -25,8 +25,8 @@ def status_label(status):
 
 @register.filter
 def status_pill(status):
-    """A status as a pill, its words and tone from bpmn8n/web/vocab.py."""
-    return format_html('<span class="pill tone-{}">{}</span>', vocab.tone(status), vocab.label(status))
+    """A status as a <b8-pill> (static/bpmn8n/components.js), its words and tone from bpmn8n/web/vocab.py."""
+    return format_html('<b8-pill tone="{}">{}</b8-pill>', vocab.tone(status), vocab.label(status))
 
 
 @register.filter

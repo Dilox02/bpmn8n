@@ -1,0 +1,64 @@
+{% extends "bpmn8n/base.html" %}
+{% block title %}Landscape{% endblock %}
+{% block crumbs %}<span>Landscape</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Landscape</h1>
+    <p class="sub">Every workflow bpmn8n knows, from its projects, n8n and the event log, and how they meet: a Call Activity runs another workflow, a message one sends wakes another waiting for it. Read from each workflow's contract; nothing here runs.</p>
+  </div>
+</div>
+<dl class="facts">
+  <div><dt>Workflows</dt><dd class="num">{{ workflows }}</dd></div>
+  <div><dt>Calls</dt><dd class="num">{{ calls }}</dd></div>
+  <div><dt>Message links</dt><dd class="num">{{ message_links }}</dd></div>
+  <div><dt>Findings</dt><dd class="num">{{ findings|length }}</dd></div>
+</dl>
+
+<div class="stack landscape">
+  {% if findings %}
+  <section class="panel" aria-labelledby="findings">
+    <header><h2 id="findings">Findings</h2><span class="meta">what the links say is missing</span></header>
+    <ul class="rows">
+      {% for f in findings %}
+      <li class="row"><b8-pill tone="{% if f.level == 'warning' %}warning{% else %}neutral{% endif %}">{% if f.kind == "unsent" %}nobody sends it{% elif f.kind == "orphan" %}never runs{% elif f.kind == "unknown" %}not known{% else %}not published{% endif %}</b8-pill><span class="grow">{{ f.text }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section aria-labelledby="map">
+    <div class="section-head"><h2 id="map">Map</h2><span class="legend meta" aria-label="Legend"><span class="call">calls</span><span class="message">message</span><span class="unsent">from outside</span></span></div>
+    {% if map %}
+    <b8-process-map class="map-well">{{ map }}</b8-process-map>
+    {% else %}
+    <p class="empty">No workflow yet: add a project under <code>projects/</code>, set <code>N8N_API_KEY</code> so bpmn8n reads n8n's workflows, or run a case.</p>
+    {% endif %}
+  </section>
+
+  {% if rows %}
+  <section aria-labelledby="table">
+    <div class="section-head"><h2 id="table">Workflows</h2><span class="meta">the map as a table</span></div>
+    <div class="table-wrap">
+      <table class="landscape">
+        <thead><tr><th scope="col">Workflow</th><th scope="col">Starts</th><th scope="col">Waits for</th><th scope="col">Sends</th><th scope="col">Calls</th><th scope="col">Called by</th><th scope="col" class="n">Cases</th></tr></thead>
+        <tbody>
+        {% for r in rows %}{% with n=r.node %}
+          <tr id="{{ n.anchor }}">
+            <th scope="row"><span class="name">{{ n.name }}</span>
+              <span class="sub">{% if n.name == outside %}other systems, through POST /api/messages/&lt;name&gt;{% elif n.missing %}called, but neither n8n nor a project has it{% else %}{% if n.project %}<span class="mono">projects/{{ n.project }}</span>{% endif %}{% if n.project and n.workflow_id %} · {% endif %}{% if n.workflow_id %}n8n <span class="mono">{{ n.workflow_id }}</span>{% if n.active is False %} (not published){% endif %}{% endif %}{% if not n.project and not n.workflow_id %}only seen in the event log{% endif %}{% endif %}</span></th>
+            <td>{{ r.starts|join:", "|default:"—" }}</td>
+            <td>{% for m in r.waits %}<code>{{ m }}</code>{% if m in r.unsent %} <b8-pill tone="warning">from outside</b8-pill>{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+            <td>{% for m in r.sends %}<code>{{ m }}</code>{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+            <td>{{ r.calls|join:", "|default:"—" }}</td>
+            <td>{{ r.called_by|join:", "|default:"—" }}</td>
+            <td class="n num">{{ n.cases|default:"—" }}</td>
+          </tr>
+        {% endwith %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

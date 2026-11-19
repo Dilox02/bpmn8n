@@ -6,7 +6,7 @@ from django.urls import path
 from django.views.generic import RedirectView
 
 from .api import api, discover
-from .web import cases, insights, operations, simulation, studio, views
+from .web import cases, insights, landscape, operations, simulation, studio, views
 
 discover()  # every app's tasks register their @task endpoints (before api.urls); broken ones are logged
 
@@ -28,6 +28,7 @@ urlpatterns = [
     path("studio/<slug:slug>/", studio.project, name="project"),
     path("studio/<slug:slug>/build/", studio.build, name="build"),
     path("studio/<slug:slug>/events/", studio.events, name="events"),
+    path("landscape/", landscape.landscape, name="landscape"),
     path("variables/", operations.variables, name="variables"),
     path("cases/", operations.cases, name="cases"),
     path("workflows/", operations.workflows, name="workflows"),

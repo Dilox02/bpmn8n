@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><!-- taste-skill-ignore: Plex Mono for IDs, keys and code -->
 <link rel="stylesheet" href="{% static 'bpmn8n/tokens.css' %}">
 <link rel="stylesheet" href="{% static 'bpmn8n/app.css' %}">
+<script src="{% static 'bpmn8n/components.js' %}"></script><!-- b8-pill, b8-timeline, b8-process-map: defined before the body, so they never flash unstyled -->
 <script>  // the theme in force (the b8-theme cookie, else the system's): what embedded canvases are drawn in
   const b8Theme = () => document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 </script>
