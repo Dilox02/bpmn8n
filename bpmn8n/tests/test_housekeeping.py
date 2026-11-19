@@ -109,18 +109,19 @@ class SchedulerTest(SimpleTestCase):
         self.assertEqual([j.name for j in scheduler.jobs(root)], ["run_deadlines"])
         commands = root / "bpmn8n" / "management" / "commands"
         commands.mkdir(parents=True)
-        (commands / "send_digest.py").write_text("")
+        (commands / "send_digests.py").write_text("")
         found = scheduler.jobs(root, "90")
-        self.assertEqual([j.name for j in found], ["run_deadlines", "send_digest", "prune"])
+        self.assertEqual([j.name for j in found], ["run_deadlines", "send_digests", "prune"])
         self.assertEqual(found[2].args, ("--events-older-than", "90", "--taskruns-older-than", "90"))
-        self.assertEqual([j.name for j in scheduler.jobs(root, "0")], ["run_deadlines", "send_digest"])
+        self.assertEqual([j.name for j in scheduler.jobs(root, "0")], ["run_deadlines", "send_digests"])
 
 
 class SchedulerCommandTest(TestCase):
     def test_the_command_runs_the_deadlines_through_call_command(self):
         with mock.patch.object(run_scheduler, "call_command") as call:
             call_command("run_scheduler", ticks=1, stdout=StringIO())
-        call.assert_called_once_with("run_deadlines")
+        # the first tick runs every job that is due: the deadlines, and the daily digest (people's notifications)
+        self.assertEqual([c.args[0] for c in call.call_args_list], ["run_deadlines", "send_digests"])
 
     def test_a_second_scheduler_waits_on_the_lock(self):
         cursor = mock.MagicMock()
