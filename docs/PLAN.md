@@ -632,3 +632,16 @@ Bugs found and fixed on the way: the hospital process no longer built (its user 
 data-breach process skipped the Garante notification for a high risk without risk to people; process mining crashed on
 a gateway that read a list; the check credited form answers to a user task's timeout path; editing a technical
 condition gateway in n8n dropped its decision scope; a chat model counted as a second start in conformance.
+
+## 9. Next phases (what §8 leaves, in order)
+
+Each phase ships alone, keeps every suite green (Django on SQLite and on Postgres in the web container, node and
+editor tests, ruff, every project's `check_project`, the e2e suite on the running stack) and ends with the test
+in its last column.
+
+| Phase | Items | Why in this order | Exit test |
+|---|---|---|---|
+| **N1 Hardening** | G8 idempotency keys on task runs (the `X-Bpmn8n-Run/Item` identity already travels), G6 LLM keys encrypted at rest + audit log of human actions + erasure by case, D7 four-eyes lint rule, C7 `loop()` macro, F9 evaluation gates in CI, F5 engine vs n8n differential test | Safety before reach: retries must not send twice, secrets and personal data need a lifecycle, and F5 is what keeps the engine (scenarios, simulation) honest | a task retried by n8n runs its effect once; `manage.py erase_case` leaves no personal data in Case, Event or UserTask; F5 replays the ACME processes in both engines with identical traces |
+| **N2 One platform** | B1/B2 spikes then the gateway (one origin, preview on its own host), B7 TS types from OpenAPI, B8 one config, B9 `bpmn8n` CLI replacing `start.sh`'s logic, B11 shared web components, A4 process contract + C18 landscape | The spikes decide whether one login is possible on n8n Community Edition; the contract feeds the landscape, typed clients and MCP | one URL serves Django and the editor; `bpmn8n up` from a clean checkout; the landscape names a message nobody sends |
+| **N3 BPMN coverage** | C13 BPMN XML export (with diagram interchange) then import, C12 swimlane layout, C2 non-interrupting timers, C4 signals, C5 terminate, C8 Call Activity data mapping, C9 compensation (sagas), C14 data lens | Export first: it opens every workflow in bpmn.io, Camunda Modeler, Signavio and BIMP at once; the rest are nodes on the engine and checker that now exist | ACME exported and re-imported gives the same spec; a saga undoes its completed tasks in reverse order in a scenario test |
+| **N4 People, intelligence, agents** | H7 workload dashboard, H8 notifications, H9 start a case from the UI, H11 similar-case panel; I2 detail sliders, I4 animation, I7 import wizard, I8 anonymised export; J2 task-as-tool, J6 learning loop from human overrides, J8 goals and alerts; E9 LLM cost in the simulation, E10 functional + performance simulation | They build on what exists (case page, insights, simulation, agents) and need N1's audit and erasure | an override of a Laya decision lands in the decisions dataset and moves its evaluation; a simulated case costs its LLM calls |
