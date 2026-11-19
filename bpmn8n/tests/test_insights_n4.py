@@ -72,6 +72,6 @@ class ReplayApiTest(TestCase):
         self.assertEqual(first[0]["node"], "A")
         self.assertTrue(all(s["end"] >= s["start"] for s in first))
         self.assertEqual([s["start"] for s in first], sorted(s["start"] for s in first))
-        self.assertEqual(len(self.get().json()["cases"]), 8)
+        self.assertEqual(len(self.get().json()["cases"]), 9)
         self.assertEqual(self.get(workflow_id="other").json()["cases"], [])
         self.assertEqual(self.get(limit=0).status_code, 422)
