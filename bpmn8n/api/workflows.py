@@ -1,5 +1,7 @@
 """Workflows checked before they run (bpmn8n/workflows/check.py), and the BPMN elements they are made of."""
+from django.http import HttpResponse
 from ninja import Body, Router
+from ninja.errors import HttpError
 
 from ..workflows.elements import manifest
 
@@ -24,3 +26,15 @@ def list_elements(request):
     """Every BPMN element a workflow can contain (bpmn8n/workflows/elements.py): kind, n8n type,
     category, label, summary, glyph and traits."""
     return manifest()
+
+
+@router.get("/{path:workflow_id}.bpmn")
+def export_bpmn(request, workflow_id: str, data: int = 0):
+    """The workflow as BPMN 2.0 XML with diagram interchange (bpmn_xml.py), for bpmn.io, Camunda Modeler, Signavio or
+    BIMP. `workflow_id`: as for the contract (an n8n id, a project, `acme/ticket-triage`). `?data=1` adds the
+    data lens: a data object per variable and its data associations. 404 when nobody knows the workflow."""
+    from ..workflows.bpmn_xml import to_bpmn
+    from .contracts import find
+    if (found := find(workflow_id)) is None:
+        raise HttpError(404, f"no workflow {workflow_id!r} in n8n nor in projects/")
+    return HttpResponse(to_bpmn(found[0], data=bool(data)), content_type="application/xml")

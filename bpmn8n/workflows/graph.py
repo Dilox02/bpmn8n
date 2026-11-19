@@ -14,6 +14,7 @@ from functools import cached_property
 from .elements import NOOP, STICKY, Element, element
 
 ERROR_OUTPUT = "continueErrorOutput"  # n8n's On Error: "Continue (using error output)", a node setting
+CUSTOMER, PEOPLE, SYSTEM = "Customer", "People", "System"  # swimlanes: who starts a case, a lane-less person, software
 
 
 def outputs(node):
@@ -210,6 +211,43 @@ class ProcessGraph:
         """The nodes where a path ends (no output leads anywhere)."""
         return [n for n in self.flow_nodes if not self.successors(n)]
 
+    def paths(self, limit=100):
+        """The paths from the starts to where they end, loops not followed back (at most `limit`, depth first)."""
+        found, stack = [], [[s] for s in reversed(self.starts)]
+        while stack and len(found) < limit:
+            path = stack.pop()
+            nexts = [n for n in self.forward(path[-1]) if n not in path]
+            if not nexts:
+                found.append(path)
+            stack.extend(path + [n] for n in reversed(nexts))
+        return found
+
+    # --- swimlanes ([WM] A49–A52) ---------------------------------------------------------
+
+    def lane(self, name):
+        """Who holds the step: "Customer" for a trigger (whoever starts the case), a human task's lane, "System"
+        for every automated step (gateways and events included)."""
+        if name in self.triggers:
+            return CUSTOMER
+        if self.element(name).human:
+            return self.nodes[name]["parameters"].get("lane") or PEOPLE
+        return SYSTEM
+
+    @cached_property
+    def lanes(self):
+        """{lane: its nodes}, in swimlane order ([WM] A51): the customer first, the people's lanes in order of
+        first appearance, the systems last; sub-nodes (a chat model) with the systems."""
+        lanes = {CUSTOMER: []} | {self.lane(n): [] for n in self.order if self.element(n).human} | {SYSTEM: []}
+        for name in [*self.order, *self.subnodes]:
+            lanes[self.lane(name)].append(name)
+        return {lane: names for lane, names in lanes.items() if names}
+
+    def handoffs(self, path):
+        """The lanes a path's work passes, in order (its tasks; gateways and events are no work): each change is
+        a handoff, where delay, errors and cost arise ([WM] A63–A64)."""
+        lanes = [self.lane(n) for n in path if self.element(n).category == "task"]
+        return [lane for i, lane in enumerate(lanes) if not i or lane != lanes[i - 1]]
+
     def _position(self, name):
         x, y = (self.nodes[name].get("position") or [0, 0])[:2]
         return (y, x, name)
@@ -239,3 +277,4 @@ def demo():
     assert g.dominators["Again?"] == {"Start", "Do", "Off", "Again?"}
     assert g.order[0] == "Start" and g.of(trigger=True) == ["Start"]
     assert outputs({"type": node_type("serviceTask"), "onError": ERROR_OUTPUT}) == ["main", "error"]
+    assert g.lanes == {CUSTOMER: ["Start"], SYSTEM: ["Do", "Off", "Again?"]} and g.paths() == [["Start", "Do", "Off", "Again?"]]

@@ -6,7 +6,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime
 
-from .elements import AGENT, MERGE, NODE, SET, TASK_KINDS, node_type, types
+from .elements import AGENT, MERGE, NODE, SET, STICKY, TASK_KINDS, node_type, types
 from .graph import ERROR_OUTPUT, ProcessGraph
 from .graph import outputs as output_names
 
@@ -21,6 +21,7 @@ ON_ERROR = {"branch": ERROR_OUTPUT, "continue": "continueRegularOutput"}  # task
 PREVIOUS = re.compile(r"\{\{\s*previous\s*\}\}")  # in a prompt_chain's prompt: the answer before
 MAX_LLM_STEPS = 5  # J4: the most links of a prompt_chain, branches of a parallel_llm, rounds of a reflection
 ROUNDS_LEFT = "rounds_left"  # what the loop step's count_round task tells its gateway: the budget, no decision
+BAND = "Lane: "  # the name of a swimlane's sticky note: layout("lanes") draws them and redraws them
 
 
 class SpecError(ValueError):
@@ -514,13 +515,17 @@ class Workflow:
             return 0
         return sum(c["node"] == name for outs in self.connections.values() for port in outs.get("main", []) for c in port)
 
-    def layout(self):
+    def layout(self, mode="levels"):
         """Levels left to right: a step's column is its longest path from the trigger (a join comes after
         all its branches). The longest path runs straight along the top row, except a detour (a branch
         that joins its sibling later goes below, so the direct flow never passes behind it); every other branch takes the
         first row below that is free until it joins the others, so branches never overlap, and a step that
         branches join goes in the highest of their rows (the one its longest branch kept free). Flows then run right and down, as n8n draws them
-        (out on the right, in on the left); only loops go back. A chat model goes under its agent."""
+        (out on the right, in on the left); only loops go back. A chat model goes under its agent.
+        mode="lanes": the same columns, the rows grouped in swimlanes (see swimlanes())."""
+        if mode not in ("levels", "lanes"):
+            raise SpecError(f"layout mode is 'levels' or 'lanes', not {mode!r}")
+        self.nodes = [n for n in self.nodes if not n["name"].startswith(BAND)]  # the bands of a previous layout
         graph = ProcessGraph(self.as_json())
         models = graph.parent  # chat model -> its agent
         after = {name: [n for port in graph.outs[name] for n in port] for name in graph.nodes}
@@ -589,13 +594,33 @@ class Workflow:
                 offered[child].append(lane)
         for node in self.nodes:  # ponytail: unconnected nodes (no flow in or out) all go at the origin
             node["position"] = [depth.get(node["name"], 0) * 280, row.get(node["name"], 0) * 200]
+        return self.swimlanes(graph) if mode == "lanes" else self
+
+    def swimlanes(self, graph):
+        """Rows grouped by lane, in graph.lanes' order ([WM] A51: the customer, the people's lanes, the systems
+        last), each lane keeping its steps' rows from the level layout, and a sticky note behind each lane: its
+        band, named "Lane: <lane>", in a colour of its own, the lane's name on it. The columns do not move."""
+        at, top, bands = {n["name"]: n for n in self.nodes}, 0, []
+        for lane, names in graph.lanes.items():
+            rows = sorted({at[n]["position"][1] for n in names})
+            for n in names:
+                at[n]["position"][1] = (top + rows.index(at[n]["position"][1])) * 200
+            bands.append((lane, top, len(rows)))
+            top += len(rows)
+        xs = [at[n]["position"][0] for n in graph.nodes] or [0]
+        for i, (lane, first, rows) in enumerate(bands):  # a node is 100×100: 50 around it, 60 at the sides
+            self.nodes.append({"id": self.stable_id(BAND, lane), "name": BAND + lane, "type": STICKY, "typeVersion": 1,
+                               "position": [min(xs) - 60, first * 200 - 50],
+                               "parameters": {"content": f"## {lane}", "width": max(xs) - min(xs) + 220,
+                                              "height": rows * 200, "color": i % 7 + 1}})
         return self
 
     @classmethod
     def from_spec(cls, spec, credential=None, chat_model=None):
         """A workflow from a JSON spec (what bpmn8n Studio's LLM writes), laid out automatically:
         {"name": ..., "steps": [{"type": <one of STEPS>, "name": ..., <that method's arguments>}],
-         "flows": [{"from": <step>, "branch": <output name, for gateways>, "to": [<step>, ...]}]}"""
+         "flows": [{"from": <step>, "branch": <output name, for gateways>, "to": [<step>, ...]}],
+         "layout": "levels" (the default) or "lanes"}"""
         workflow, names = cls(spec.get("name") or "Untitled process", credential, chat_model), set()
         steps, flows = spec.get("steps", []), spec.get("flows", [])
         if not (isinstance(steps, list) and all(isinstance(s, dict) for s in steps)
@@ -622,7 +647,7 @@ class Workflow:
                 workflow.flow(*path, output=flow.get("branch") or 0)  # "branch": null on a plain flow
             except (TypeError, ValueError) as e:
                 raise SpecError(f"flow {flow}: {e}") from e
-        return workflow.layout()
+        return workflow.layout(spec.get("layout") or "levels")
 
     def as_json(self):
         # v1 = what n8n's editor uses: a join runs once no branch can still deliver (inclusive join);

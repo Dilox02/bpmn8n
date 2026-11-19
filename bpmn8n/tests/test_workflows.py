@@ -201,7 +201,8 @@ class CheckTest(TestCase):
             problems = WorkflowCheck(json.loads(path.read_text()), fetch=lambda _: None).problems
             self.assertEqual([p for p in problems if p.level == "error"], [], path.name)
         self.assertEqual(rules(PROCESSES["ticket-triage"]().as_json()),  # it refunds and closes tickets on its own
-                         {("", "start-data", "info"), ("Route Ticket", "human", "warning")})
+                         {("", "start-data", "info"), ("Route Ticket", "human", "warning"),
+                          ("Triage Ticket", "handoffs", "info")})
 
     def test_people_take_the_final_decisions(self):
         def agent(*after):
@@ -290,7 +291,8 @@ class CheckTest(TestCase):
                     .task("Refund", "businessRuleTask", "calculate_refund")
                     .flow("Start", "Route", "Approve", "Refund")).as_json()
         self.assertEqual(rules(workflow), {("Route", "output", "warning"),  # "default" leads nowhere
-                                           ("Approve", "lane", "warning"), ("", "start-data", "info")})
+                                           ("Approve", "lane", "warning"), ("", "start-data", "info"),
+                                           ("Refund", "handoffs", "info")})
         self.assertIn(("", "trigger", "warning"), rules({"nodes": [workflow["nodes"][1]], "connections": {}}))
 
     def test_the_start_data_a_workflow_needs_is_listed(self):
@@ -329,7 +331,8 @@ class CheckTest(TestCase):
         call_command("check_workflow", str(EXAMPLES / "library-lending.json"), "--json", stdout=out)
         problems = json.loads(out.getvalue())[str(EXAMPLES / "library-lending.json")]
         # No start_data was declared: required initial variables are listed as information.
-        self.assertEqual([(p["rule"], p["level"]) for p in problems], [("start-data", "info"), ("human", "warning")])
+        self.assertEqual([(p["rule"], p["level"]) for p in problems], [("start-data", "info"), ("human", "warning"), ("handoffs", "info"),
+                          ("handoffs", "info")])  # the librarians' lane and back
         broken = Path(self.id().replace(".", "_") + ".json")
         broken.write_text(json.dumps(Workflow("x").start("S", "s").task("T", "serviceTask", "nope").flow("S", "T").as_json()))
         try:

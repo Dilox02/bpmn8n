@@ -251,7 +251,8 @@ class LoopTest(TestCase):
         self.assertEqual([[c["node"] for c in port] for port in w.connections["Approved?"]["main"]],
                          [["Send Letter"], ["Draft Letter"], ["Write Letter"]])
         Group.objects.create(name="staff")
-        problems = {(p.rule, p.node) for p in WorkflowCheck(w.as_json(), fetch=lambda _: None, start_data=["customer"]).problems}
+        problems = {(p.rule, p.node) for p in WorkflowCheck(w.as_json(), fetch=lambda _: None, start_data=["customer"]).problems
+                    if p.rule != "handoffs"}  # an info: the letter is written in the staff lane
         self.assertEqual(problems, set())  # a guaranteed exit (loop rules), data on the first round, a person's decision
         spec = Workflow.from_spec({"name": "Answer Customer", "steps": [
             {"type": "start", "name": "Start", "path": "p"},
