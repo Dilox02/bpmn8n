@@ -26,6 +26,11 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
       - run: python manage.py test bpmn8n  # SQLite, no environment variables
+      # F9: a project's committed evaluation runs (projects/<p>/run/) must meet their thresholds; skipped when
+      # there are none, and "nothing to judge" (exit 2: runs without a threshold) does not fail the build
+      - name: Evaluation gate
+        if: hashFiles('projects/*/run/**') != ''
+        run: python manage.py eval_gate || [ $? -eq 2 ]
 
   node:
     runs-on: ubuntu-latest

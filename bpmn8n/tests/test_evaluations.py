@@ -1,14 +1,17 @@
+import io
 import tempfile
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import SimpleTestCase, override_settings
 from pydantic import ValidationError
 
 from bpmn8n.clients.http import ServiceUnavailable
-from bpmn8n.core.evaluations import EvaluationStore, Sample
+from bpmn8n.core.evaluations import EvaluationStore, Metric, Sample
 from bpmn8n.workflows import Workflow
 
 
@@ -99,6 +102,44 @@ class EvaluationsTest(SimpleTestCase):
             response = self.client.get("/api/evaluations/workflow1/runs", HTTP_AUTHORIZATION="Bearer secret")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["runs"]), 1)
+
+    def gate(self, *args):
+        """(exit code, what eval_gate printed) on the temporary store."""
+        out = io.StringIO()
+        with override_settings(BASE_DIR=self.root.parent):
+            try:
+                call_command("eval_gate", *args, stdout=out)
+                return 0, out.getvalue()
+            except CommandError as e:
+                return e.returncode, f"{out.getvalue()}{e}"
+
+    def run_of(self, execution, *metrics, workflow="workflow1"):
+        self.store.write(self.sample().model_copy(update={"execution_id": execution, "workflow_id": workflow,
+                                                          "metrics": [Metric(**m) for m in metrics]}))
+
+    def test_the_gate_fails_on_a_missed_threshold_of_the_newest_runs(self):
+        self.assertEqual(self.gate()[0], 2)  # no run: nothing to judge
+        self.run_of("1", dict(name="accuracy", value=.9))
+        self.assertEqual(self.gate(), (2, "unscored: example · workflow workflow1 · execution 1\n"
+                                          "nothing to judge: no evaluation run with a threshold"))
+        self.run_of("2", dict(name="accuracy", value=.9, threshold=.8))
+        self.run_of("1", dict(name="accuracy", value=.95, threshold=.9), workflow="workflow2")
+        self.assertEqual(self.gate()[0], 0)
+        self.run_of("3", dict(name="accuracy", value=.5, unit="ratio", threshold=.8),
+                    dict(name="latency", value=900, unit="ms", direction="lower", threshold=500),
+                    dict(name="cost", value=1, direction="lower", threshold=2))
+        code, out = self.gate()
+        self.assertEqual(code, 1)
+        self.assertIn("failed: example · workflow workflow1 · execution 3\n"
+                      "  Quality · accuracy = 0.5 ratio, threshold >= 0.8\n"
+                      "  Quality · latency = 900 ms, threshold <= 500\n", out)
+        self.assertNotIn("cost", out)
+        self.assertIn("1 of 2 evaluation runs missed a threshold", out)
+        self.assertEqual(self.gate("--workflow", "workflow2")[0], 0)  # the other workflow passes alone
+        self.assertEqual(self.gate("--project", "example", "--workflow", "nothing")[0], 2)
+        self.run_of("4", dict(name="accuracy", value=.85, threshold=.8))  # fixed: the newest run passes again
+        self.assertEqual(self.gate("--workflow", "workflow1")[0], 0)
+        self.assertEqual(self.gate("--workflow", "workflow1", "--last", "2")[0], 1)  # the one before did not
 
     def test_builder_exports_metrics_step(self):
         workflow = Workflow("test").metrics("Scores", "example", [{"name": "accuracy", "value": "={{ $json.score }}", "threshold": .8}])
