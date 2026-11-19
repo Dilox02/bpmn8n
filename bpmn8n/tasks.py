@@ -1,5 +1,5 @@
 """bpmn8n's own activities: the LLM agent's prompt (the workflow builder's llm_agent step), the agentic
-patterns' guardrail, audit sample and critique, and OCR."""
+patterns' guardrail, audit sample and critique, the loop step's round count, and OCR."""
 import hashlib
 import json
 import re
@@ -168,6 +168,33 @@ def draw_audit_sample(request, data: AuditInput) -> AuditResult:
     return AuditResult(audited=not case or audit_share(case) < data.rate)
 
 
+def next_round(made, max_rounds):
+    """(the rounds made with this one, whether another may start): the one count behind every loop's
+    budget, a reflection's drafts and loop()'s rounds, so that each loop ends."""
+    return made + 1, made + 1 < max_rounds
+
+
+class RoundInput(Schema):
+    loop: str = Field(description="The loop's name: each loop of a case counts its own rounds")
+    loop_rounds: dict[str, int] = Field(default_factory=dict,
+                                        description="The rounds each loop of the case has made, by loop name")
+    max_rounds: int = Field(3, ge=1, description="The most rounds the loop may make")
+
+
+class RoundResult(Schema):
+    loop_rounds: dict[str, int] = Field(description="The rounds each loop of the case has made, this one included")
+    rounds_left: bool = Field(description="Whether the loop may go round again")
+
+
+@task("scriptTask")
+def count_round(request, data: RoundInput) -> RoundResult:
+    """Counts a round of a loop (the loop step) in the case, so the loop's gateway goes round again only
+    while rounds are left: the loop always ends. ponytail: a case that enters the same loop again from
+    outside it (an outer loop) goes on counting where it stopped."""
+    made, left = next_round(data.loop_rounds.get(data.loop, 0), data.max_rounds)
+    return RoundResult(loop_rounds={**data.loop_rounds, data.loop: made}, rounds_left=left)
+
+
 class CritiqueInput(Schema):
     critique: str = Field("", description="The critic's answer: PASS or REVISE first, then why")
     reflection_round: int = Field(0, description="The drafts made before the one judged")
@@ -184,8 +211,9 @@ class CritiqueResult(Schema):
 def read_critique(request, data: CritiqueInput) -> CritiqueResult:
     """Reads a reflection's critic (PASS or REVISE) and counts the round: the draft is redone only while it
     does not pass and fewer than max_rounds drafts were made, so the loop always ends."""
-    passed, done = bool(re.match(r"\W*PASS\b", data.critique, re.I)), data.reflection_round + 1
-    return CritiqueResult(passed=passed, again=not passed and done < data.max_rounds, reflection_round=done)
+    passed = bool(re.match(r"\W*PASS\b", data.critique, re.I))
+    done, left = next_round(data.reflection_round, data.max_rounds)
+    return CritiqueResult(passed=passed, again=not passed and left, reflection_round=done)
 
 
 class DocumentImage(Schema):

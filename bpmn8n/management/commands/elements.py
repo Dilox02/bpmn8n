@@ -47,6 +47,7 @@ SAMPLES = {
     "parallel_llm": [{"prompts": {"a": "p", "b": "q"}, "output": "o"}],
     "reflection": [{"prompt": "p", "critique": "c", "output": "o"}],
     "guardrailed_agent": [{"prompt": "p {{a}}", "output": "o", "on_block": "l"}],
+    "loop": [{"back_to": "start 0", "until": "{{a}}", "max_rounds": 2, "decision_scope": "technical"}],
 }
 
 

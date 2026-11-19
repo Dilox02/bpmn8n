@@ -20,6 +20,7 @@ GUARDRAIL_CHECKS = ("pii", "length", "blocklist", "schema")  # what the check_gu
 ON_ERROR = {"branch": ERROR_OUTPUT, "continue": "continueRegularOutput"}  # task(on_error=...) -> n8n's On Error
 PREVIOUS = re.compile(r"\{\{\s*previous\s*\}\}")  # in a prompt_chain's prompt: the answer before
 MAX_LLM_STEPS = 5  # J4: the most links of a prompt_chain, branches of a parallel_llm, rounds of a reflection
+ROUNDS_LEFT = "rounds_left"  # what the loop step's count_round task tells its gateway: the budget, no decision
 
 
 class SpecError(ValueError):
@@ -104,9 +105,10 @@ class Workflow:
     STEPS = ("start", "subprocess_start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
              "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics",
              "global_variable", "guardrail", "prompt_chain", "parallel_llm", "reflection",
-             "guardrailed_agent")  # a spec's steps
-    # the @tasks (bpmn8n/tasks.py) that steps place on their own: llm_agent's prompt and audit, the patterns'
-    STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique")
+             "guardrailed_agent", "loop")  # a spec's steps
+    # the @tasks (bpmn8n/tasks.py) that steps place on their own: llm_agent's prompt and audit, the patterns',
+    # the loop's count
+    STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique", "count_round")
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -298,6 +300,28 @@ class Workflow:
     def merge(self, name, inputs=2, row=0):
         """Join (n8n's Merge): waits for the inputs that can still deliver, then runs once."""
         return self.add(name, MERGE, {"numberInputs": inputs}, row, bpmn=False, version=3)
+
+    def loop(self, name, back_to, until, max_rounds=3, decision_scope=None):
+        """A standard loop with its guard (BPMN's loop marker, max_rounds its loop maximum): flow the step
+        whose result decides into it; when `until` holds the case goes on through "done", otherwise back
+        to back_to ("again"), for at most max_rounds rounds; then "limit", which you flow to a person or an
+        end. until: a condition on the process variables, as a condition_gateway's ("{{approved}}"). The
+        count_round task counts the rounds in the case ({{loop_rounds}}, by loop name), so the loop always
+        ends; decision_scope="technical" as a condition_gateway's (housekeeping, never decisions about
+        people)."""
+        if isinstance(max_rounds, bool) or not isinstance(max_rounds, int) or max_rounds < 1:
+            raise SpecError(f"{name}: max_rounds is a whole number of rounds, at least 1")
+        if not str(until).strip():
+            raise SpecError(f"{name}: until is the condition that ends the loop, e.g. \"{{{{approved}}}}\"")
+        if not any(n["name"] == self.steps.get(back_to, (back_to,))[0] for n in self.nodes):
+            raise SpecError(f"{name}: back_to {back_to!r} is no step added before the loop")
+        count = f"{name}: count"
+        self.task(count, "scriptTask", "count_round", fields={"loop": name, "max_rounds": max_rounds})
+        self.condition_gateway(name, "exclusive", {"done": until, "again": f"{{{{{ROUNDS_LEFT}}}}}",
+                                                   "limit": f"not {{{{{ROUNDS_LEFT}}}}}"}, decision_scope)
+        self.flow(count, name).flow(name, back_to, output="again")
+        self.steps[name] = (count, name)
+        return self
 
     def llm_agent(self, name, prompt, output, instructions="", oversight="review", audit_rate=0.1, risk=None):
         """An LLM (n8n's AI Agent, with the chat model of admin → Settings) drafts text that needs judgement:

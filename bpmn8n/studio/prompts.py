@@ -277,8 +277,8 @@ or similar effect on anyone; otherwise keep the default review of every answer.
 
 "workflow.flows": {{"from": step, "to": [the steps that follow, in sequence], "branch": the output it leaves
 from when "from" is a gateway or a pattern: one of its branch names, "default" (exclusive/inclusive: taken
-when no branch applies), "timeout" (event_gateway), "blocked" (guardrail), "audit" (an audited llm_agent)
-or "error" (a task with on_error="branch")}}.
+when no branch applies), "timeout" (event_gateway), "blocked" (guardrail), "audit" (an audited llm_agent),
+"done" or "limit" (a loop, which flows "again" back itself) or "error" (a task with on_error="branch")}}.
 
 "assessment" (in the brief's language) comes first: judge critically who or what should do each step
 that needs judgement or a decision, before writing the workflow.
