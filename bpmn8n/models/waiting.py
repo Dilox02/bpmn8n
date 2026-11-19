@@ -431,6 +431,9 @@ class UserTask(WaitingActivity):
                     raise TransitionError(why)
                 fields |= {"assignee": to, "claimed": timezone.now()}
             self.transition(action, actor=user, **fields)
+        if action in ("reassign", "delegate"):
+            from .people import Notification  # people.py imports this module
+            Notification.notify(self, "assigned")
 
     def complete(self, user, result):
         """`user` None: a system completes it through the API."""
@@ -647,6 +650,9 @@ class Reminder(models.Model):
             Reminder.objects.filter(pk=self.pk).update(sent=None)  # a failed send is tried again
             raise
         AuditEntry.write("usertask.remind", task, actor="system", activity=task.activity, how=how, to=self.target)
+        if task.assignee_id:  # an unassigned task's lane has the reminder mail, or its escalation workflow
+            from .people import Notification  # people.py imports this module
+            Notification.notify(task, "escalated")
         return True
 
     def remind(self, task):

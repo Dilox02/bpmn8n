@@ -6,7 +6,7 @@ from django.urls import path
 from django.views.generic import RedirectView
 
 from .api import api, discover
-from .web import cases, insights, landscape, operations, simulation, studio, views
+from .web import cases, insights, landscape, operations, people, simulation, studio, views
 
 discover()  # every app's tasks register their @task endpoints (before api.urls); broken ones are logged
 
@@ -21,6 +21,10 @@ urlpatterns = [
     path("inbox/", views.inbox, name="inbox"),
     path("inbox/<int:pk>/", views.task, name="task"),
     path("inbox/<int:pk>/<str:action>/", views.act, name="act"),
+    path("workload/", people.workload, name="workload"),
+    path("notifications/", people.notifications, name="notifications"),
+    path("start/", people.start_case, name="start_case"),
+    path("start/<path:hook>/", people.start_run, name="start_run"),
     path("cases/<str:case_id>/", cases.case, name="case"),  # "<workflow id>:<execution id>"
     path("insights/", insights.insights, name="insights"),
     path("simulation/", simulation.simulation, name="simulation"),

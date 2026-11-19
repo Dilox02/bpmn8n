@@ -62,3 +62,4 @@ def span(moment):
     if abs((moment - now).total_seconds()) < 60:
         return "a moment"
     return timesince(moment, now, depth=1) if moment < now else timeuntil(moment, now, depth=1)
+

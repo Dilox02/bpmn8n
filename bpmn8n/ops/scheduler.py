@@ -20,8 +20,8 @@ def jobs(root, prune_days=""):
     people area ships one; a daily prune when PRUNE_DAYS is set."""
     commands = {p.stem for p in (Path(root) / "bpmn8n" / "management" / "commands").glob("*.py")}
     found = [Job("run_deadlines", 60)]
-    if "send_digest" in commands:
-        found.append(Job("send_digest", DAY))
+    if "send_digests" in commands:
+        found.append(Job("send_digests", DAY))
     if str(prune_days).isdigit() and int(prune_days) > 0:
         found.append(Job("prune", DAY, ("--events-older-than", str(prune_days), "--taskruns-older-than", str(prune_days))))
     return found

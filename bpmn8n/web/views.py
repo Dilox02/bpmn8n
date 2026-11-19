@@ -24,6 +24,7 @@ from ..api.tasks import TASK_KINDS, TASKS
 from ..clients.http import ServiceUnavailable
 from ..models import Event, TransitionError, UserTask
 from ..ops import health
+from .similar import similar_cases
 from .text import to_html
 
 ACTIONS = {  # what a person can do on the task page; the model allows it or raises TransitionError
@@ -57,7 +58,8 @@ class Nav:
 
 
 # the sidebar; an entry shows once its URL name resolves, so a page added later appears without editing base.html
-NAV = (Nav("inbox", "Inbox", "inbox"), Nav("cases", "Cases", "cases"), Nav("insights", "Insights", "insights"),
+NAV = (Nav("inbox", "Inbox", "inbox"), Nav("start_case", "Start a case", "start"), Nav("workload", "Workload", "workload"),
+       Nav("cases", "Cases", "cases"), Nav("insights", "Insights", "insights"),
        Nav("simulation", "Simulation", "simulation", staff=True), Nav("studio", "Studio", "studio", staff=True),
        Nav("activities", "Activities", "activities"),
        Nav("workflows", "Workflows", "workflows"), Nav("landscape", "Landscape", "landscape"),
@@ -177,7 +179,9 @@ def form_fields(task, values=None, errors=None):
 def task_page(request, task, values=None, errors=None, status=200):
     trail = Event.objects.filter(case_id=task.case_id, started__lt=task.created).order_by("started") if task.case_id else []
     allowed = task.allowed(request.user)
+    similar, similar_how = similar_cases(task, request.user)
     return render(request, "bpmn8n/task.html", {
+        "similar": similar, "similar_how": similar_how,
         "task": task, "mine": task.assignee_id == request.user.pk, "trail": trail, "allowed": allowed,
         "barred": task.barred(request.user) if task.status in task.WORKABLE else "",
         "fields": form_fields(task, values, errors),
