@@ -609,10 +609,16 @@ behaviour of n8n 2.42 that was not verified while writing this plan; each has a 
 
 ## 8. Implementation status (2026-11-19, branch `feat/framework-v2`)
 
-Built by ten engineers in parallel (one worktree each), merged, then verified: 426 Django tests green on SQLite and on
-Postgres inside the web container, 25 node tests, 17 editor tests, ruff clean, every tracked project's
-`check_project` ok (examples + scenarios + workflow check), 30 of 31 end-to-end tests green on the running stack
-(the one failure, UC3 "phishing", is the decision model's choice, unchanged code).
+Built by eleven engineers in parallel (one worktree each), merged, then verified: 439 Django tests green on SQLite
+and on Postgres inside the web container, 25 node tests, 17 editor tests, ruff clean, every tracked project's
+`check_project` ok (examples + scenarios + workflow check), all 40 end-to-end tests green on the running stack.
+
+Security checks: every API route needs the token and every page a login (tests enumerate the routes, so a new one
+cannot forget), forms need CSRF, no open redirect, no path traversal, case data escaped; `check --deploy` clean with
+production settings; ruff's bandit rules reviewed (no real finding); pip-audit finds no known vulnerability; npm's three
+remaining advisories are in n8n-workflow's build-time types (not shipped); no secret from the local `.env` files is in
+the git history (the n8n credential *id* in the projects' workflows is a reference, not a secret). Open by design: the
+OpenAPI document is public (the editor reads it) and carries the tasks' examples, so examples must stay synthetic.
 
 | Workstream | Done | Partial | Not yet |
 |---|---|---|---|
