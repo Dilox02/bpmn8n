@@ -3,6 +3,7 @@ so they cover every worker process: the endpoints' calls, errors and time (the e
 /api/metrics), the cases, the work waiting for people and messages, and Studio's projects."""
 from django.db.models import Count, Q, Sum
 
+from ..core import goals
 from ..models import Case, Event, MessageSubscription, Project, UserTask
 
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -31,6 +32,14 @@ def counts(queryset, *fields):
             for row in queryset.values(*fields).annotate(n=Count("pk")).order_by(*fields)]
 
 
+def goal_samples():
+    """J9: 1 when a goal of a project's evaluations.json is met, 0 when missed (none while nothing is measured)."""
+    try:
+        return [("", {"process": g["process"], "goal": g["name"]}, g["ok"]) for g in goals.evaluate() if g["ok"] is not None]
+    except goals.GoalError:  # an invalid goal is check_goals' to report, not the scrape's
+        return []
+
+
 def exposition():
     # ponytail: aggregates the whole Event table per scrape, as /api/metrics does; past a few million
     # events keep running counters instead (G10)
@@ -50,6 +59,7 @@ def exposition():
                 [("", labels, n) for labels, n in counts(UserTask.objects.waiting(), "lane", "status")]),
         *family("bpmn8n_message_subscriptions_open", "gauge", "Receive tasks and event gateways waiting, per message.",
                 [("", {"message": labels["name"]}, n) for labels, n in counts(MessageSubscription.objects.waiting(), "name")]),
+        *family("bpmn8n_goal_ok", "gauge", "1 when a process goal (evaluations.json) is met, 0 when missed.", goal_samples()),
         *family("bpmn8n_studio_projects", "gauge", "Studio projects per status.",
                 [("", labels, n) for labels, n in counts(Project.objects, "status")]),
     ]
