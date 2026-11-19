@@ -62,10 +62,10 @@ class TaskError(TypeError):
 class Task:
     """A @task function: its BPMN kind, its input Schema, its output Schema when the function
     declares one (`-> MyResult`: documented in OpenAPI, checked on every call, and the workflow
-    check knows what it produces), and its two endpoints."""
+    check knows what it produces), the task that undoes it (`compensate`, C9: core/saga.py), and its two endpoints."""
 
-    def __init__(self, fn, kind):
-        self.fn, self.name, self.kind = fn, fn.__name__, kind
+    def __init__(self, fn, kind, compensate=None):
+        self.fn, self.name, self.kind, self.compensate = fn, fn.__name__, kind, compensate
         signature = inspect.signature(fn)
         schemas = [p.annotation for p in signature.parameters.values() if is_schema(p.annotation)]
         if len(schemas) != 1:
@@ -209,18 +209,22 @@ def same(actual, expected):
     return math.isclose(actual, expected, rel_tol=0, abs_tol=0.005) if numbers else actual == expected
 
 
-def task(kind="serviceTask", **options):
+def task(kind="serviceTask", compensate=None, **options):
     """Registers fn as a BPMN task of `kind` (see Task). Name it verb_noun in the singular
-    (issue_refund, not handle_refunds); its argument is a Schema; `options` go to ninja."""
+    (issue_refund, not handle_refunds); its argument is a Schema; `options` go to ninja. `compensate`: the
+    name of the @task that undoes it (a saga: `POST /api/cases/<case>/compensate` runs the undo of every
+    completed task of a case, newest first, with the input and output the task logged)."""
     if kind not in TASK_KINDS:
         raise ValueError(f"kind must be one of {TASK_KINDS}")
+    if compensate is not None and not (isinstance(compensate, str) and compensate):
+        raise ValueError("compensate is the name of the @task that undoes this one")
 
     def register(fn):
         if fn.__name__ in TASKS:
             raise ValueError(f"task {fn.__name__!r} is already registered by {TASKS[fn.__name__].module}")
         if is_mushy(fn.__name__):
             warnings.warn(f"task {fn.__name__!r}: mushy verb, name it after a countable result", stacklevel=2)
-        TASKS[fn.__name__] = Task(fn, kind)
+        TASKS[fn.__name__] = Task(fn, kind, compensate)
         TASKS[fn.__name__].register(router, **options)
         return fn
 

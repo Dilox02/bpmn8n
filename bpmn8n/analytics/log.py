@@ -16,7 +16,7 @@ from ..models import Event, MessageSubscription, UserTask
 SETTLE = 60.0  # seconds: a case with nothing open and no event for this long has ended (as in process mining)
 COLUMNS = ("case_id", "process", "activity", "started", "ended", "duration_ms", "status", "resource", "endpoint", "id")
 HUMAN = frozenset(("userTask", "manualTask"))  # Event.endpoint of a person's step (UserTask.kind)
-WAITS = frozenset(("receiveTask",))  # Event.endpoint of a wait for an outside party (a message)
+WAITS = frozenset(("receiveTask", "signalCatch"))  # Event.endpoint of a wait for an outside party (a message)
 NOT_PEOPLE = frozenset(("", "system", "api"))  # resources that are not a person
 
 
@@ -41,7 +41,7 @@ class Step:
     @property
     def delay(self):
         """It waited for an outside party (a message): no servers here, nobody of the process works it."""
-        return self.endpoint in WAITS or self.resource.startswith("message:")
+        return self.endpoint in WAITS or self.resource.startswith(("message:", "signal:"))
 
 
 @dataclass(slots=True)

@@ -12,7 +12,8 @@ n8n's semantics, one token = one item:
 - a parallel gateway takes every output; an exclusive gateway the one output the Resolver picks, an
   inclusive one any subset of its branches (none: "default"), an event-based one "timeout" or one
   message;
-- an error end event ends the case with an error and cancels its other tokens; a token whose output
+- an error end event ends the case with an error and cancels its other tokens; a terminate end event ends it
+  (completed) and cancels them too: its other branches, the waits among them, stop; a token whose output
   leads nowhere ends; a case completes when it has no token left;
 - a node visited more than `visit_limit` times in one case stops it ("loop limit");
 - tokens of a case that wait for something that never comes (a join no token can complete, a
@@ -258,6 +259,11 @@ class TokenEngine:
             case.tokens["ended"] += 1
             case.ends.append(visit.node)
             self._finish(case, ERROR, f"{visit.node}: {visit.data.get('error') or element.label}")
+            return
+        if element.kind == "terminateEndEvent":  # the case ends normally; its other tokens are cancelled with it
+            case.tokens["ended"] += 1
+            case.ends.append(visit.node)
+            self._finish(case, COMPLETED)
             return
         ports = self._ports(visit, element)
         names = self.graph.outputs(visit.node)

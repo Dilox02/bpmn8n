@@ -4,7 +4,7 @@ from .history import WorkflowVersion
 from .safety import AppendOnly, AuditEntry, TaskRun
 from .shared import GlobalVariable
 from .studio import Card, Project
-from .waiting import Cancelled, MessageSubscription, TransitionError, UserTask
+from .waiting import Cancelled, MessageSubscription, Reminder, TransitionError, UserTask
 
 __all__ = ["AppendOnly", "AuditEntry", "Cancelled", "Card", "Case", "Event", "GlobalVariable", "LLMProvider",
-           "MessageSubscription", "Project", "Settings", "TaskRun", "TransitionError", "UserTask", "WorkflowVersion"]
+           "MessageSubscription", "Project", "Reminder", "Settings", "TaskRun", "TransitionError", "UserTask", "WorkflowVersion"]

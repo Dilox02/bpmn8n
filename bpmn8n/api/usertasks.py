@@ -13,7 +13,7 @@ from pydantic import Field, field_validator, model_validator
 
 from ..clients.http import ServiceUnavailable
 from ..core.cases import CaseData
-from ..models import Cancelled, TransitionError, UserTask
+from ..models import Cancelled, Reminder, TransitionError, UserTask
 
 router = Router(tags=["userTask"])
 
@@ -53,6 +53,8 @@ class UserTaskIn(Schema):
     assignee: str = ""  # a username or a {{variable}}: created claimed by that person, if they may work it
     not_same_as: list[str] = []  # four-eyes: whoever completed these activities in the case may not work it
     completion: Literal["all", "any"] | Annotated[int, Field(ge=1)] = "all"  # how many of the batch resume the case
+    remind_at: str = ""  # C2: an ISO date-time; if the task still waits then, `run_deadlines` reminds (it stays open)
+    escalate_to: str = ""  # a lane to notify instead of the task's own, or "/path" of an escalation workflow's webhook
 
 
 class UserTaskOut(Schema):
@@ -117,7 +119,15 @@ def create_user_tasks(request, data: UserTaskIn):
         "process": case.trace.process, "context": case.render(data.context) if data.context else case.variables,
         "priority": data.priority, "due": due, "deadline": data.deadline, "not_same_as": data.not_same_as,
         "quorum": quorum}, str(case.text(data.assignee))) for case, due in zip(cases, dues)]
-    return 201, UserTask.register(data.resume_url, cases[0].trace.activity or data.title, instances)
+    tasks = UserTask.register(data.resume_url, cases[0].trace.activity or data.title, instances)
+    if data.remind_at:
+        try:
+            at = UserTask.parse_due(data.remind_at)
+        except ValueError:
+            raise HttpError(422, f"remind_at {data.remind_at!r} is not an ISO date-time") from None
+        for task in tasks:
+            Reminder.objects.get_or_create(task=task, defaults={"at": at, "target": data.escalate_to})
+    return 201, tasks
 
 
 @router.get("", response=list[UserTaskOut])

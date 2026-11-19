@@ -50,9 +50,21 @@ def form_field(field):
             **({"help": field["help"]} if field.get("help") else {})}
 
 
-def people_parameters(step, due_in, due_at, deadline, priority, assignee, not_same_as, completion):
+def people_parameters(step, due_in, due_at, deadline, priority, assignee, not_same_as, completion,
+                      remind_after=None, escalate_to=""):
     """A human task node's SLA, priority, actor rules and completion, as n8n saves them (defaults left out)."""
     parameters = {}
+    if remind_after is not None:
+        amount, unit = remind_after
+        if unit not in UNITS or isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
+            raise SpecError(f"{step}: remind_after is (amount > 0, unit), unit one of {', '.join(UNITS)}; "
+                            f"not {remind_after!r}")
+        parameters |= {"remindAmount": amount, "remindUnit": unit}
+    if escalate_to:
+        if remind_after is None or not isinstance(escalate_to, str):
+            raise SpecError(f"{step}: escalate_to (a lane, or \"/path\" of an escalation workflow's webhook) "
+                            "needs remind_after, the time it happens")
+        parameters["escalateTo"] = escalate_to
     if due_in is not None and due_at is not None:
         raise SpecError(f"{step}: due_in or due_at, not both")
     if due_in is not None:
@@ -106,10 +118,12 @@ class Workflow:
     STEPS = ("start", "subprocess_start", "task", "gateway", "condition_gateway", "parallel_gateway", "receive_task", "event_gateway",
              "error_end", "call_activity", "timer", "manual_task", "user_task", "merge", "llm_agent", "metrics",
              "global_variable", "guardrail", "prompt_chain", "parallel_llm", "reflection",
-             "guardrailed_agent", "loop")  # a spec's steps
+             "guardrailed_agent", "loop", "signal_catch", "signal_throw", "terminate_end", "compensate",
+             "cancel_end")  # a spec's steps
     # the @tasks (bpmn8n/tasks.py) that steps place on their own: llm_agent's prompt and audit, the patterns',
     # the loop's count
-    STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique", "count_round")
+    STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique", "count_round",
+                  "throw_signal", "compensate_case")
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -245,9 +259,56 @@ class Workflow:
         return self.add(name, node_type("errorEndEvent"), {"code": code, "message": message}, row,
                         same_column=same_column)
 
-    def call_activity(self, name, workflow_id, row=0):
-        return self.add(name, node_type("callActivity"),
-                        {"workflowId": {"__rl": True, "mode": "id", "value": workflow_id}}, row, bpmn=False)
+    def call_activity(self, name, workflow_id, row=0, inputs=None, outputs=None):
+        """Runs another workflow as a sub-process. Without a mapping the items go in and its result comes back as
+        they are. inputs: {child variable: "{{parent variable}}"}, the only fields the sub-process gets;
+        outputs: the variables of its result that come back (merged into the item): the only ones, and what the
+        workflow check takes the step to produce."""
+        parameters = {"workflowId": {"__rl": True, "mode": "id", "value": workflow_id}}
+        if inputs is not None:
+            if not isinstance(inputs, dict) or not inputs or not all(isinstance(k, str) and k for k in inputs):
+                raise SpecError(f"{name}: inputs is {{child variable: \"{{{{parent variable}}}}\"}}, at least one")
+            parameters["inputs"] = json.dumps(inputs, ensure_ascii=False)
+        if outputs is not None:
+            if isinstance(outputs, str) or not outputs or not all(isinstance(o, str) and o for o in outputs):
+                raise SpecError(f"{name}: outputs is a list of the sub-process's variables that come back")
+            parameters["outputs"] = list(outputs)
+        return self.add(name, node_type("callActivity"), parameters, row, bpmn=False)
+
+    def signal_catch(self, name, signal, row=0, same_column=False):
+        """Waits for the signal `signal`: POST /api/signals/<signal> resumes every case waiting for it (a message
+        goes to one, by its correlation key); its payload adds variables the case does not have."""
+        if not isinstance(signal, str) or not signal.strip():
+            raise SpecError(f"{name}: signal is the name of the signal to wait for")
+        return self.add(name, node_type("signalCatch"), {"signal": signal.strip()}, row, same_column=same_column,
+                        webhookId=self.stable_id(name, "webhook"))
+
+    def signal_throw(self, name, signal, payload=None, row=0, same_column=False):
+        """Throws the signal `signal` (with `payload`, {{variables}} allowed): every case waiting at a signal_catch
+        for it resumes. It is a task: it never waits, and nobody waiting is no error."""
+        if not isinstance(signal, str) or not signal.strip():
+            raise SpecError(f"{name}: signal is the name of the signal to throw")
+        return self.task(name, "sendTask", "throw_signal", row, same_column,
+                         fields={"name": signal.strip(), "payload": payload or {}})
+
+    def terminate_end(self, name, reason="", row=0, same_column=False):
+        """Ends the whole case here and stops its other branches (and what they wait for): n8n's execution is
+        stopped, bpmn8n cancels the waiting tasks and answers 409 to the case's later calls."""
+        return self.add(name, node_type("terminateEndEvent"), {"reason": reason}, row, same_column=same_column)
+
+    def compensate(self, name, row=0, same_column=False, on_error=None):
+        """Undoes the case's completed tasks that declared an undo (@task(compensate="...")), newest first: a saga.
+        Fails (on_error as a task's) when an undo does; running it again undoes only what is left."""
+        return self.task(name, "serviceTask", "compensate_case", row, same_column, on_error=on_error)
+
+    def cancel_end(self, name, code, message="", row=0):
+        """A cancel end event: compensates, then ends with the error `code` (as error_end)."""
+        undo = f"{name}: undo"
+        self.compensate(undo, row)
+        self.error_end(name, code, message, row)
+        self.flow(undo, name)
+        self.steps[name] = (undo, name)
+        return self
 
     def timer(self, name, amount=None, unit="hours", until=None, row=0, same_column=False):
         """Waits for amount unit (seconds | minutes | hours | days | weeks), or until a moment: until is a
@@ -270,7 +331,7 @@ class Workflow:
 
     def user_task(self, name, title, lane, form, context="", description="", row=0, same_column=False,
                   kind="userTask", due_in=None, due_at=None, deadline=False, priority="normal", assignee="",
-                  not_same_as=(), completion="all"):
+                  not_same_as=(), completion="all", remind_after=None, escalate_to=""):
         """form: [name, label, type] with type string | number | boolean, or {"name", "label", "type", "required",
         "help", "options"} with type also text | choice (its options) | date | email; fields are required
         unless "required": false. context: what the person sees, {label: "{{variable}}"} (a dict, or its JSON);
@@ -280,7 +341,10 @@ class Workflow:
         when the due time passes, the tasks expire) and "done". priority: low | normal | high | urgent.
         assignee: a username or "{{variable}}" (created claimed by that person); not_same_as: activities whose
         completer may not work this one (four-eyes); completion: all | any | N, how many of the tasks of a
-        multi-instance batch resume the case (the others are cancelled)."""
+        multi-instance batch resume the case (the others are cancelled).
+        remind_after=(amount, unit): a non-interrupting reminder, the task stays open: when it is still waiting then,
+        `manage.py run_deadlines` e-mails the task's lane; escalate_to: instead, the members of that lane, or, as
+        "/path", starts the escalation workflow whose webhook has that path (with the case id)."""
         if not all(isinstance(f, (list, tuple)) and len(f) == 3 or isinstance(f, dict) and f.get("name")
                    for f in form):  # a dict as the whole form would unpack its keys
             raise ValueError("form: a list of [name, label, type] or {name, label, type, ...}")
@@ -295,7 +359,8 @@ class Workflow:
         return self.add(name, node_type(kind), {
             "title": title, "lane": lane, "description": description, "context": context,
             "form": {"fields": [form_field(f) for f in form]},
-            **people_parameters(name, due_in, due_at, deadline, priority, assignee, not_same_as, completion),
+            **people_parameters(name, due_in, due_at, deadline, priority, assignee, not_same_as, completion,
+                                remind_after, escalate_to),
         }, row, same_column=same_column, webhookId=self.stable_id(name, "webhook"))
 
     def merge(self, name, inputs=2, row=0):

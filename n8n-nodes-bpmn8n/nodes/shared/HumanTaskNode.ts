@@ -1,6 +1,6 @@
 import type { IDataObject, IExecuteFunctions, INodeProperties, IWebhookFunctions } from 'n8n-workflow';
 import type { FormField, UserTaskIn } from './contract';
-import { deadline, durationProperties } from './duration';
+import { UNIT_MS, deadline, durationProperties } from './duration';
 import { VARIABLES_HINT } from './input';
 import { WaitingNode } from './WaitingNode';
 
@@ -110,6 +110,31 @@ const PROPERTIES: INodeProperties[] = [
 			'Whether the due time interrupts the wait: the tasks expire and the process leaves on "timeout"; completed in time, on "done"',
 	},
 	{
+		displayName: 'Remind After',
+		name: 'remindAmount',
+		type: 'number',
+		typeOptions: { minValue: 0 },
+		default: 0,
+		description: 'A non-interrupting reminder: if the task still waits after this long, bpmn8n reminds its lane by e-mail (manage.py run_deadlines); the task stays open. 0: none',
+	},
+	{
+		displayName: 'Reminder Unit',
+		name: 'remindUnit',
+		type: 'options',
+		default: 'hours',
+		displayOptions: { hide: { remindAmount: [0] } },
+		options: Object.keys(UNIT_MS).map((u) => ({ name: u[0].toUpperCase() + u.slice(1), value: u })),
+	},
+	{
+		displayName: 'Escalate To',
+		name: 'escalateTo',
+		type: 'string',
+		default: '',
+		displayOptions: { hide: { remindAmount: [0] } },
+		placeholder: 'supervisors or /escalate-claims',
+		description: "With the reminder: a lane to e-mail instead of this task's, or the /path of an escalation workflow's webhook (started with the case id)",
+	},
+	{
 		displayName: 'Assignee',
 		name: 'assignee',
 		type: 'string',
@@ -143,6 +168,17 @@ const PROPERTIES: INodeProperties[] = [
 	{ displayName: VARIABLES_HINT, name: 'variablesNotice', type: 'notice', default: '' },
 ];
 
+/** The non-interrupting reminder: when it is due (a time span from now) and who or what it escalates to. */
+function remindRequest(ctx: IExecuteFunctions): Partial<UserTaskIn> {
+	const amount = ctx.getNodeParameter('remindAmount', 0, 0) as number;
+	if (!amount) return {};
+	const unit = ctx.getNodeParameter('remindUnit', 0, 'hours') as keyof typeof UNIT_MS;
+	return {
+		remind_at: new Date(Date.now() + amount * UNIT_MS[unit]).toISOString(),
+		escalate_to: ctx.getNodeParameter('escalateTo', 0, '') as string,
+	};
+}
+
 /** What the node sends bpmn8n besides title, form and context: the SLA, priority and actor rules. */
 export function peopleRequest(ctx: IExecuteFunctions): Partial<UserTaskIn> {
 	const mode = ctx.getNodeParameter('due', 0, 'none') as string;
@@ -152,6 +188,7 @@ export function peopleRequest(ctx: IExecuteFunctions): Partial<UserTaskIn> {
 		// a time span ends from now; a date may be a {{variable}}, which bpmn8n fills in from the case
 		due: mode === 'none' ? '' : mode === 'until' ? String(ctx.getNodeParameter('dueUntil', 0, '')) : deadline(ctx, 0, 'due').toISOString(),
 		deadline: hasDeadline(ctx),
+		...remindRequest(ctx),
 		assignee: ctx.getNodeParameter('assignee', 0, '') as string,
 		not_same_as: ctx.getNodeParameter('notSameAs', 0, []) as string[],
 		completion: completion === 'atLeast' ? (ctx.getNodeParameter('quorum', 0, 1) as number) : completion,

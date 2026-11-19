@@ -36,7 +36,9 @@
       "dist/nodes/Bpmn8nParallelGateway.node.js",
       "dist/nodes/Bpmn8nEventBasedGateway.node.js",
       "dist/nodes/Bpmn8nTimerEvent.node.js",
-      "dist/nodes/Bpmn8nErrorEndEvent.node.js"
+      "dist/nodes/Bpmn8nErrorEndEvent.node.js",
+      "dist/nodes/Bpmn8nTerminateEndEvent.node.js",
+      "dist/nodes/Bpmn8nSignalCatch.node.js"
     ]
   },
   "devDependencies": {

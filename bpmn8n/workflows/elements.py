@@ -124,6 +124,11 @@ ELEMENTS = {e.n8n_type: e for e in (
             transparent=True),
     _bpmn8n("errorEndEvent", "event", "Error end event", "The case ends with an error.", "events/end-event-error",
             logged=True, ends=True),
+    _bpmn8n("terminateEndEvent", "event", "Terminate end event", "The case ends here and its other branches stop.",
+            "events/end-event-terminate", logged=True, ends=True),
+    _bpmn8n("signalCatch", "event", "Signal catch event",
+            "The case waits for a named signal; one throw resumes every case waiting for it.",
+            "events/intermediate-event-catch-signal", waits=True, logged=True),
     _bpmn8n("metrics", "other", "Metrics",
             "Records configured measurements in the project run folder.", "", transparent=True),
     # a task, not a data store: it sits on the sequence flow and runs like a script task; the data-store

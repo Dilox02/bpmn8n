@@ -7,7 +7,7 @@ one; scenarios.json, next to it, tests the process. A list of:
    "start": {...},                       the data that starts the case (the webhook's body)
    "decisions": {gateway: "branch" | ["a", "b"] | "timeout"},
    "people": {user or manual task: {form answers}},
-   "messages": {receive task or event-based gateway: {"name": message, "payload": {...}}},
+   "messages": {receive task, signal catch or event-based gateway: {"name": message or signal, "payload": {...}}},
    "tasks": "run" | "stub",              run (the default): the real @task functions; stub: none runs
    "outputs": {node: {...}},             what a node returns instead of running (an LLM agent's: its text)
    "expect": {"path": [...], "visits": [...], "not": [...], "ends": node | "error:<code>",
@@ -42,11 +42,19 @@ from .graph import ProcessGraph
 
 JSON_FIELD = re.compile(r"=\{\{\s*\$json\.(\w+)")  # the one n8n expression a Set node gets: "={{ $json.output ?? …"
 GATEWAYS = ("exclusive_gateway", "inclusive_gateway", "conditions_gateway")  # their endpoints in the event log
-WAITS = ("userTask", "manualTask", "receiveTask")
+WAITS = ("userTask", "manualTask", "receiveTask", "signalCatch")
 
 
 class ScenarioError(Exception):
     """The case cannot go on as the scenario says: a missing answer, a task that fails."""
+
+
+def as_dict(value):
+    return {"output": value} if isinstance(value, str) else value if isinstance(value, dict) else {}
+
+
+def task_name(params):
+    return str(params.get("task", "")).rsplit("/", 1)[-1]
 
 
 def as_list(value):
@@ -62,6 +70,7 @@ class Play(Resolver):
         self.variables = dict(scenario.get("start") or {})
         self.stub = scenario.get("tasks", "run") == "stub"
         self.visits = Counter()
+        self.ledger = []  # (task, its input, its output) of the tasks run so far: what a compensation undoes
 
     def given(self, key, node):
         """What the scenario gives `node` under `key` for this visit, MISSING when nothing."""
@@ -87,10 +96,15 @@ class Play(Resolver):
             return self.choose(node, e, params)
         if e.human:
             return self.person(node, params)
-        if e.kind == "receiveTask":
-            return self.receive(node, [params.get("message")])
+        if e.kind in ("receiveTask", "signalCatch"):
+            return self.receive(node, [params.get("message" if e.kind == "receiveTask" else "signal")])
+        if e.kind == "callActivity" and (listed := params.get("outputs")):  # only the listed outputs come back
+            output = self.given("outputs", node)
+            return self.add({} if output is MISSING else {k: v for k, v in as_dict(output).items() if k in listed})
         if (output := self.given("outputs", node)) is not MISSING:
             return self.add({"output": output} if isinstance(output, str) else output)
+        if e.task and task_name(params) == "compensate_case":
+            return self.add(self.compensate())
         if e.task:
             return self.add({} if self.stub else self.run(node, params))
         if e.kind == "llmAgent":
@@ -179,9 +193,26 @@ class Play(Resolver):
             raise ScenarioError(f"{node!r} extracts its input from text (GLiNER, Laya): give its result in outputs")
         values = bind(task.schema, (params.get("input") or {}).get("value") or {}, self.variables)
         try:
-            return as_data(task.validated(task.fn(HttpRequest(), task.schema(**values))))
+            result = as_data(task.validated(task.fn(HttpRequest(), task.schema(**values))))
+            if task.compensate:
+                self.ledger.append((task, as_data(task.schema(**values)), result))
+            return result
         except Exception:  # whatever the code does wrong is the finding
             raise ScenarioError(f"{node!r} ({name}) fails: {traceback.format_exc(limit=-2).strip()}") from None
+
+    def compensate(self):
+        """The undo of every task run so far that declared one, newest first (core/saga.py, on the scenario's ledger)."""
+        from ..core.saga import undo_payload
+        for task, given, result in reversed(self.ledger):
+            comp = TASKS.get(task.compensate)
+            if comp is None:
+                raise ScenarioError(f"{task.name!r} is compensated by {task.compensate!r}, which is no @task")
+            try:
+                comp.validated(comp.fn(HttpRequest(), comp.schema(**undo_payload(comp, {"input": given, "output": result}))))
+            except Exception:  # whatever the code does wrong is the finding
+                raise ScenarioError(f"compensation {comp.name!r} fails: {traceback.format_exc(limit=-2).strip()}") from None
+        self.ledger.clear()
+        return {}
 
     def assignments(self, params):
         """A Set node's fields: values and {{templates}}; of n8n's expressions only `$json.<field>`."""
@@ -319,8 +350,8 @@ def from_log(events, variables, workflow, name):
         if endpoint in GATEWAYS:
             branches = (output or {}).get("branches") or ["default"]
             key, value = "decisions", branches if graph.element(node).kind == "inclusiveGateway" else branches[0]
-        elif endpoint in WAITS and event["resource"].startswith("message:"):
-            key, value = "messages", {"name": event["resource"].removeprefix("message:"), "payload": output or {}}
+        elif endpoint in WAITS and event["resource"].startswith(("message:", "signal:")):
+            key, value = "messages", {"name": event["resource"].partition(":")[2], "payload": output or {}}
         elif endpoint in WAITS:
             key, value = "people", output or {}
         elif graph.element(node).task and isinstance(output, dict):

@@ -5,6 +5,8 @@
     "task"
   ],
   "CUSTOM.bpmn8nCallActivity": [
+    "inputs",
+    "outputs",
     "workflowId"
   ],
   "CUSTOM.bpmn8nErrorEndEvent": [
@@ -82,6 +84,12 @@
     "task",
     "text"
   ],
+  "CUSTOM.bpmn8nSignalCatch": [
+    "signal"
+  ],
+  "CUSTOM.bpmn8nTerminateEndEvent": [
+    "reason"
+  ],
   "CUSTOM.bpmn8nTimerEvent": [
     "amount",
     "mode",
@@ -98,11 +106,14 @@
     "dueAmount",
     "dueUnit",
     "dueUntil",
+    "escalateTo",
     "form",
     "lane",
     "notSameAs",
     "priority",
     "quorum",
+    "remindAmount",
+    "remindUnit",
     "title"
   ]
 }

@@ -11,6 +11,7 @@ class Case(models.Model):
     # the n8n versionId of the workflow the case runs (WorkflowVersion), when n8n's API could say
     process_version = models.CharField(max_length=100, blank=True, db_index=True)
     variables = models.JSONField(default=dict, blank=True)
+    terminated = models.DateTimeField(null=True, blank=True, help_text="a Terminate End Event ended it (C5)")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 

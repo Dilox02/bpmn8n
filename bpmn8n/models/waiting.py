@@ -18,6 +18,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import models, transaction
 from django.db.models import F, Q
@@ -534,18 +535,21 @@ class MessageSubscriptionQuerySet(WaitingQuerySet):
         return super().waiting().filter(Q(expires__isnull=True) | Q(expires__gt=timezone.now()))
 
     def for_message(self, name, correlation_key):
-        """Waiting subscriptions for a message, oldest first."""
-        return self.waiting().filter(name=name, correlation_key=correlation_key).order_by("created")
+        """Waiting subscriptions for a message, oldest first (a signal's catches wait for no key: for_signal)."""
+        return self.waiting().filter(name=name, correlation_key=correlation_key, broadcast=False).order_by("created")
+
+    def for_signal(self, name):
+        """Every execution waiting for signal `name`, oldest first."""
+        return self.waiting().filter(name=name, broadcast=True).order_by("created")
 
 
 class MessageSubscription(WaitingActivity):
     """BPMN Receive Task: an execution waiting for message `name` about `correlation_key`
     (e.g. "payment-confirmed" for order 42). Another system delivers it via the API."""
 
-    bpmn_type = "receiveTask"
-
     name = models.CharField(max_length=200)
     correlation_key = models.CharField(max_length=200)
+    broadcast = models.BooleanField(default=False, help_text="a signal: no correlation key, every waiting catch gets it")
     payload = models.JSONField(null=True, blank=True)
     expires = models.DateTimeField(null=True, blank=True, help_text="after this the execution has moved on (timeout)")
 
@@ -556,6 +560,14 @@ class MessageSubscription(WaitingActivity):
 
     def __str__(self):
         return f"{self.name} [{self.correlation_key}]"
+
+    @property
+    def bpmn_type(self):
+        return "signalCatch" if self.broadcast else "receiveTask"
+
+    @property
+    def kind(self):
+        return "signal" if self.broadcast else "message"
 
     def group(self):  # an event-based gateway waits on several messages with one resume URL
         return MessageSubscription.objects.filter(resume_url=self.resume_url)
@@ -576,7 +588,7 @@ class MessageSubscription(WaitingActivity):
         """A message comes from outside (a bank, a customer's reply): it adds process variables, it
         never changes the ones the case has (an IBAN, an amount, a decision). Those are left out and
         named in `reason`."""
-        self.finish(f"message:{self.name}", payload=payload)
+        self.finish(f"{self.kind}:{self.name}", payload=payload)
 
     def completion_fields(self, fields):
         known = {}
@@ -593,4 +605,59 @@ class MessageSubscription(WaitingActivity):
         return self.payload or {}
 
     def resume_payload(self):
-        return {**self.output(), "_message": self.name, "_correlation_key": self.correlation_key}
+        return {**self.output(), f"_{self.kind}": self.name, "_correlation_key": self.correlation_key}
+
+
+class Reminder(models.Model):
+    """C2: a non-interrupting deadline of a user or manual task: at `at`, if the task is still waiting, bpmn8n
+    reminds its lane (or `target`'s) by e-mail, or starts the escalation workflow `target` (a webhook path,
+    "/..."), once (`manage.py run_deadlines`). The task stays open, n8n keeps waiting."""
+
+    task = models.OneToOneField(UserTask, on_delete=models.CASCADE, related_name="reminder")
+    at = models.DateTimeField()
+    target = models.CharField(max_length=300, blank=True, help_text="a lane, or an escalation workflow's webhook path")
+    sent = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["sent", "at"])]
+
+    def __str__(self):
+        return f"{self.task} at {self.at:%Y-%m-%d %H:%M}"
+
+    @property
+    def webhook(self):
+        return self.target.startswith("/")
+
+    def recipients(self):
+        """E-mail addresses of the lane's members: the target lane's, else the task's; no lane, no one."""
+        lane = "" if self.webhook else self.target or self.task.lane
+        users = get_user_model().objects.filter(is_active=True, groups__name=lane).exclude(email="") if lane else []
+        return sorted({u.email for u in users})
+
+    def fire(self):
+        """Sends it once; False when it was sent already or the task no longer waits (then it is dropped)."""
+        if not Reminder.objects.filter(pk=self.pk, sent__isnull=True).update(sent=timezone.now()):
+            return False
+        try:
+            task = UserTask.objects.waiting().filter(pk=self.task_id).first()
+            if task is None:
+                return False
+            how = self.escalate(task) if self.webhook else self.remind(task)
+        except Exception:
+            Reminder.objects.filter(pk=self.pk).update(sent=None)  # a failed send is tried again
+            raise
+        AuditEntry.write("usertask.remind", task, actor="system", activity=task.activity, how=how, to=self.target)
+        return True
+
+    def remind(self, task):
+        to = self.recipients()
+        if to:
+            send_mail(f"Reminder: {task.title}", f"“{task.title}” is still waiting in the {task.lane or 'bpmn8n'} lane "
+                      f"(case {task.case_id}). Open the bpmn8n inbox to work it.", None, to)
+        return f"mail to {len(to)}"
+
+    def escalate(self, task):
+        path = self.target if self.target.startswith("/webhook") else "/webhook" + self.target
+        post_json(f"{settings.N8N_URL}{path}", {"case_id": task.case_id, "task_id": task.pk, "title": task.title,
+                                              "lane": task.lane, "activity": task.activity, "process": task.process})
+        return "workflow"

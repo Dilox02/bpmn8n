@@ -165,13 +165,17 @@ class ConditionValid(Rule):
 @rule
 class LaneExists(Rule):
     id, level, category = "lane", "warning", "people"
-    doc = "a human task whose lane is no group: only superusers will see the task"
+    doc = ("a human task whose lane (or escalation lane) is no group: only superusers will see the task, nobody gets "
+           "the escalation")
 
     def check(self, ctx):
         lanes = set(Group.objects.values_list("name", flat=True))
         for name in ctx.graph.of(human=True):
-            if (lane := ctx.nodes[name]["parameters"].get("lane", "")) and lane not in lanes:
+            params = ctx.nodes[name]["parameters"]
+            if (lane := params.get("lane", "")) and lane not in lanes:
                 yield self.problem(name, f"no group {lane!r}: only superusers will see the task (add it in /admin/)")
+            if (to := params.get("escalateTo", "")) and not to.startswith("/") and to not in lanes:
+                yield self.problem(name, f"no group {to!r}: nobody gets the escalation (add it in /admin/)")
 
 
 @rule
@@ -662,3 +666,25 @@ class ActionNames(Rule):
             if ctx.graph.element(name).category == "task" and task_name(ctx.nodes[name]) not in Workflow.STEP_TASKS \
                     and (why := naming(name)):
                 yield self.problem(name, why)
+
+
+@rule
+class CallInputs(Rule):
+    id, level, category = "call-input", "warning", "data"
+    doc = ("a Call Activity that maps its inputs but leaves out one the readable sub-process requires (the start data "
+           "its steps read that nothing in it produces)")
+
+    def check(self, ctx):
+        from .contract import Contract, target  # contract.py builds on the check: imported when a rule runs
+        for name in ctx.graph.of(kind="callActivity"):
+            params = ctx.nodes[name]["parameters"]
+            try:
+                mapped = set(json.loads(params["inputs"])) if params.get("inputs") else None
+            except (ValueError, TypeError):
+                mapped = None
+            if mapped is None or (sub := ctx.fetch(target(params))) is None:
+                continue
+            required = {v for v, f in Contract(sub).fields.items() if f["required"]}
+            if left := required - mapped:
+                yield self.problem(name, f"the sub-process needs {', '.join(sorted(left))}, which this step does not "
+                                         "map in its inputs: it would run without", "warning")

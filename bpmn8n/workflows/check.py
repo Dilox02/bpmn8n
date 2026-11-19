@@ -146,6 +146,8 @@ class WorkflowCheck:
             return {a["name"] for a in node["parameters"].get("assignments", {}).get("assignments", [])}
         if e.kind == "llmAgent":
             return {"output"}
+        if e.kind == "callActivity" and node["parameters"].get("outputs"):
+            return set(node["parameters"]["outputs"])  # C8: only these come back from the sub-process
         return set() if name in self.triggers or e.transparent else None
 
     @staticmethod
