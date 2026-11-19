@@ -248,11 +248,11 @@
           "values": [
             {
               "name": "no",
-              "condition": "not {{risk_to_people}}"
+              "condition": "not ({{personal_data}} and ({{risk_to_people}} or {{high_risk}}))"
             },
             {
               "name": "yes",
-              "condition": "{{risk_to_people}}"
+              "condition": "{{personal_data}} and ({{risk_to_people}} or {{high_risk}})"
             }
           ]
         }

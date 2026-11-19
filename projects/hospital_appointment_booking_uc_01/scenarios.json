@@ -1,0 +1,88 @@
+[
+  {
+    "name": "a complete request is booked and confirmed",
+    "start": {"request_id": "scenario-uc01-booked", "patient_id": "P-1001", "patient_name": "Mario Rossi",
+              "fiscal_code": "", "email": "mario@example.org", "phone": "", "date_of_birth": "1980-01-01",
+              "message": "Hi, I am Mario Rossi, I need a cardiology visit in the first week of March, mornings",
+              "registered": true, "referral_required": false, "referral_present": false},
+    "outputs": {
+      "AI Agent collects patient information and preferences": "SERVICE: Cardiology\nEARLIEST: 2027-03-01\nLATEST: 2027-03-05\nTIME: morning\nDOCTOR: any\nQUESTION: none",
+      "Search doctors and available slots": {"slots_available": true, "slot_ids": "1,2", "morning": true,
+                                             "alternatives_available": false, "alternatives_text": "",
+                                             "search_summary": "2 free slots for Cardiology in the morning."},
+      "Booking service rechecks and reserves slot": {"booked": true, "booking_id": 5,
+                                                     "confirmation": "Monday 01 March 2027, 09:00, Dr. Bianchi, Room 3"}
+    },
+    "decisions": {"Request valid?": "Yes"},
+    "people": {"Patient selects appointment": {"slot_id": 1}},
+    "expect": {
+      "path": ["Patient requests an appointment", "Pseudonymise patient data",
+               "AI Agent collects patient information and preferences: prompt",
+               "AI Agent collects patient information and preferences",
+               "AI Agent collects patient information and preferences: answer", "Read booking preferences",
+               "Information complete?", "Validate request and hospital requirements", "Request valid?",
+               "Search doctors and available slots", "Slots available?", "Present appointment options",
+               "Patient selects appointment", "Booking service rechecks and reserves slot", "Booking successful?",
+               "Send confirmation to patient", "Appointment confirmed"],
+      "variables": {"information_complete": true, "service": "Cardiology", "time_of_day": "morning",
+                    "redacted_conversation": "Patient: Hi, I am [NAME], I need a cardiology visit in the first week of March, mornings",
+                    "sent": true, "to": "mario@example.org",
+                    "subject": "Your hospital appointment is confirmed (scenario-uc01-booked)"}
+    }
+  },
+  {
+    "name": "an incomplete request loops through a follow-up question, then an unregistered patient goes to staff",
+    "start": {"request_id": "scenario-uc01-staff", "patient_id": "P-1002", "patient_name": "Giulia Verdi",
+              "fiscal_code": "", "email": "giulia@example.org", "phone": "", "date_of_birth": "",
+              "message": "Giulia Verdi here, I need a dermatology appointment",
+              "registered": false, "referral_required": false, "referral_present": false},
+    "outputs": {
+      "AI Agent collects patient information and preferences": [
+        "SERVICE: Dermatology\nEARLIEST: none\nLATEST: none\nTIME: none\nQUESTION: Which days and time of day suit you?",
+        "SERVICE: Dermatology\nEARLIEST: 2027-03-08\nLATEST: 2027-03-12\nTIME: afternoon\nDOCTOR: any"
+      ]
+    },
+    "decisions": {"Request valid?": "No"},
+    "people": {
+      "Ask patient for missing information": {"patient_reply": "Any day in the second week of March, afternoons"},
+      "Request closed or referred to staff": {"outcome": "referred", "staff_note": "registered at the desk"}
+    },
+    "expect": {
+      "path": ["Patient requests an appointment", "Pseudonymise patient data",
+               "AI Agent collects patient information and preferences: prompt",
+               "AI Agent collects patient information and preferences",
+               "AI Agent collects patient information and preferences: answer", "Read booking preferences",
+               "Information complete?", "Ask patient for missing information", "Pseudonymise patient data",
+               "AI Agent collects patient information and preferences: prompt",
+               "AI Agent collects patient information and preferences",
+               "AI Agent collects patient information and preferences: answer", "Read booking preferences",
+               "Information complete?", "Validate request and hospital requirements", "Request valid?",
+               "Escalate to hospital staff", "Request closed or referred to staff"],
+      "variables": {"information_complete": true, "failed_check": "registration", "staff_team": "admissions-desk",
+                    "redacted_conversation": "Patient: [NAME] here, I need a dermatology appointment\nAgent: Which days and time of day suit you?\nPatient: Any day in the second week of March, afternoons"}
+    }
+  },
+  {
+    "name": "no slot matches and the patient does not search again: staff close the request",
+    "start": {"request_id": "scenario-uc01-none", "patient_id": "P-1003", "patient_name": "Luca Neri",
+              "fiscal_code": "", "email": "luca@example.org", "phone": "", "date_of_birth": "",
+              "message": "Neurology, early March, any time", "registered": true,
+              "referral_required": false, "referral_present": false},
+    "outputs": {
+      "AI Agent collects patient information and preferences": "SERVICE: Neurology\nEARLIEST: 2027-03-01\nLATEST: 2027-03-03\nTIME: any",
+      "Validate request and hospital requirements": {"validation_report": "Result: all checks passed.",
+                                                     "failed_check": "none", "service": "Neurology"}
+    },
+    "decisions": {"Request valid?": "Yes"},
+    "people": {
+      "Suggest alternative dates or doctors": {"search_again": false},
+      "Request closed or referred to staff": {"outcome": "closed", "staff_note": "no neurology slots this month"}
+    },
+    "expect": {
+      "visits": ["Search doctors and available slots", "Suggest alternative dates or doctors"],
+      "not": ["Present appointment options", "Booking service rechecks and reserves slot"],
+      "ends": "Request closed or referred to staff",
+      "variables": {"slots_available": false, "alternatives_available": false}
+    }
+  }
+]

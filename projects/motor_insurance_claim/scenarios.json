@@ -1,0 +1,64 @@
+[
+  {
+    "name": "a small accident without injuries is fast-tracked and paid",
+    "start": {"name": "Anna Bianchi", "email": "anna@example.org", "iban": "IT60X0542811101000000123456",
+              "policy_number": "POL-3311", "event_date": "2026-11-10", "event_type": "accident",
+              "amount_claimed": 900, "injured": false, "text_description": "rear-ended at a red light",
+              "report_photo": ""},
+    "people": {"Fast-Track Claim Review": {"approved": true, "reason": "clear liability"}},
+    "expect": {
+      "path": ["Claim Submitted", "Has Joint Report Photo", "Merge Photo Branch", "Check Policy Status",
+               "Calculate Fraud Indicators", "Verify Policy Validity", "Check Theft Event", "Merge Police Report",
+               "Route Claim Decision", "Fast-Track Claim Review", "Merge Decision Outcome", "Is Claim Approved",
+               "Issue Payout", "Send Approval Notification"],
+      "variables": {"policy_valid": true, "fraud_signal": false, "payout_status": "submitted",
+                    "subject": "Motor Insurance Claim Approved"}
+    }
+  },
+  {
+    "name": "a late theft with a joint report photo and the police report goes to the fraud team, which rejects it",
+    "start": {"name": "Paolo Russo", "email": "paolo@example.org", "iban": "IT60X0542811101000000654321",
+              "policy_number": "POL-8812", "event_date": "2026-10-01", "event_type": "theft",
+              "amount_claimed": 12000, "injured": false, "text_description": "car stolen from the garage",
+              "report_photo": "data:image/jpeg;base64,/9j/4AAQ"},
+    "outputs": {"Read Joint Report Photo": {"document_text": "Joint report: vehicle AB123CD", "ocr_confidence": 0.93}},
+    "messages": {"Wait for Police Report": {"name": "Police Report Uploaded",
+                                            "payload": {"police_report": "report 2026/4411", "name": "someone else"}}},
+    "people": {"Investigate Fraud Claim": {"approved": false, "reason": "reported 45 days late"}},
+    "expect": {
+      "path": ["Claim Submitted", "Has Joint Report Photo", "Read Joint Report Photo", "Merge Photo Branch",
+               "Check Policy Status", "Calculate Fraud Indicators", "Verify Policy Validity", "Check Theft Event",
+               "Wait for Police Report", "Merge Police Report", "Route Claim Decision", "Investigate Fraud Claim",
+               "Merge Decision Outcome", "Is Claim Approved", "Send Rejection Notification"],
+      "not": ["Issue Payout"],
+      "variables": {"fraud_signal": true, "days_since_event": 45, "police_report": "report 2026/4411",
+                    "name": "Paolo Russo", "subject": "Motor Insurance Claim Outcome"}
+    }
+  },
+  {
+    "name": "a theft whose police report never comes is reviewed by a person",
+    "start": {"name": "Sara Galli", "email": "sara@example.org", "iban": "IT60X0542811101000000111111",
+              "policy_number": "POL-3311", "event_date": "2026-11-15", "event_type": "theft",
+              "amount_claimed": 7000, "injured": false, "text_description": "scooter stolen", "report_photo": ""},
+    "decisions": {"Wait for Police Report": "timeout"},
+    "people": {"Review Missing Police Report": {"approved": false, "reason": "no police report after the deadline"}},
+    "expect": {
+      "visits": ["Review Missing Police Report", "Merge Decision Outcome", "Send Rejection Notification"],
+      "not": ["Merge Police Report", "Route Claim Decision", "Issue Payout"],
+      "ends": "Send Rejection Notification"
+    }
+  },
+  {
+    "name": "an inactive policy is reviewed by a person, who approves it as a goodwill payout",
+    "start": {"name": "Marco Conti", "email": "marco@example.org", "iban": "IT60X0542811101000000222222",
+              "policy_number": "POL-1002", "event_date": "2026-11-12", "event_type": "accident",
+              "amount_claimed": 2500, "injured": true, "text_description": "side collision", "report_photo": ""},
+    "people": {"Review Inactive Policy Claim": {"approved": true, "reason": "renewal paid late, goodwill"}},
+    "expect": {
+      "path": ["Claim Submitted", "Has Joint Report Photo", "Merge Photo Branch", "Check Policy Status",
+               "Calculate Fraud Indicators", "Verify Policy Validity", "Review Inactive Policy Claim",
+               "Merge Decision Outcome", "Is Claim Approved", "Issue Payout", "Send Approval Notification"],
+      "variables": {"policy_valid": false, "approved": true}
+    }
+  }
+]

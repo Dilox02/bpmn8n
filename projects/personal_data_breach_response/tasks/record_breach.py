@@ -22,7 +22,7 @@ class RecordBreachResult(Schema):
 def record_breach(request, data: RecordBreachInput) -> RecordBreachResult:
     """Writes the incident, the decisions and their reasons to the breach register (GDPR art. 33(5))."""
     # TODO: the breach register (a table or the GRC tool); the event log keeps the line meanwhile
-    notify = data.personal_data and data.risk_to_people
+    notify = data.personal_data and (data.risk_to_people or data.high_risk)  # a high risk is a risk
     entry = (f"{data.incident_id}: personal data {'yes' if data.personal_data else 'no'}; "
              f"risk {'high' if data.high_risk else 'yes' if data.risk_to_people else 'no'}; "
              f"authority {'notified' if notify else 'not notified'}; reasons: {data.assessment_notes or '-'}")
