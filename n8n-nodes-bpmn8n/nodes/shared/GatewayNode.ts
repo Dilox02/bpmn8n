@@ -1,6 +1,7 @@
-import type { IDataObject, IExecuteFunctions, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { Bpmn8nClient, bpmnDescription, routeItems } from './Bpmn8nClient';
 import { branchOutputs, branchesProperty, readBranches } from './branches';
+import type { ConditionsIn, GatewayIn } from './contract';
 
 /** A BPMN split gateway, decided in bpmn8n on the case's process variables: by Laya reading text
  * (POST /api/gateways/<kind>) or by conditions such as {{amount}} > 1000, one per branch
@@ -90,15 +91,15 @@ export abstract class GatewayNode implements INodeType {
 						? await client.post('/api/gateways/conditions', {
 								kind,
 								item: item.json,
-								conditions: Object.fromEntries(branches.map((b) => [b.name, b.condition ?? ''])) as IDataObject,
-							}, i)
+								conditions: Object.fromEntries(branches.map((b) => [b.name, b.condition ?? ''])),
+							} satisfies ConditionsIn, i)
 						: await client.post(`/api/gateways/${kind}`, {
 								item: item.json,
 								question: this.getNodeParameter('question', i, '') as string,
 								state: this.getNodeParameter('state', i, '') as string,
 								min_confidence: this.getNodeParameter('minConfidence', i) as number,
-								branches: Object.fromEntries(branches.map((b) => [b.name, b.description || b.name])) as IDataObject,
-							}, i);
+								branches: Object.fromEntries(branches.map((b) => [b.name, b.description || b.name])),
+							} satisfies GatewayIn, i);
 				const taken = (reply.branches as string[]).map((b) => names.indexOf(b)).filter((o) => o >= 0);
 				return { json: item.json, outputs: taken.length ? taken : [defaultOutput] };
 			});

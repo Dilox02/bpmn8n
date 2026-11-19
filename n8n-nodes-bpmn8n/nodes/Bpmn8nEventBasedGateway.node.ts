@@ -1,6 +1,7 @@
 import { NodeOperationError } from 'n8n-workflow';
 import { branchOutputs, branchesProperty, readBranches } from './shared/branches';
 import { deadline, durationProperties } from './shared/duration';
+import type { SubscriptionIn } from './shared/contract';
 import { CORRELATION_KEY, SUBSCRIPTIONS } from './shared/messages';
 import { WaitingNode } from './shared/WaitingNode';
 
@@ -31,7 +32,7 @@ export class Bpmn8nEventBasedGateway extends WaitingNode {
 							resume_url: resumeUrl,
 							expires: until.toISOString(),
 							item,
-						}),
+						} satisfies SubscriptionIn),
 					),
 				),
 			route: (ctx, payload) => {

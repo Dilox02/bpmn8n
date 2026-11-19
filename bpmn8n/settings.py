@@ -70,6 +70,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "bpmn8n.core.audit.middleware",  # who acts, for the audit log
     "bpmn8n.api.openapi_cors",
+    "bpmn8n.api.contract.middleware",  # warns n8n nodes built for another contract
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

@@ -443,6 +443,15 @@ It runs on the Mac with Apple's Vision framework (`POST /v1/ocr` of the models s
 2. add the icon: the bpmn-font glyph in `GLYPHS` in `tools/build_icons.py`;
 3. add the node to `package.json` → `n8n.nodes` and re-run `./start.sh`.
 
+**The contract between the server and the nodes** (`bpmn8n/api/contract.py`): the `X-Bpmn8n-*` header names (one list,
+`bpmn8n/core/headers.py`, which the event log reads too), the request bodies the nodes send (`RunIn`, `GatewayIn`,
+`ConditionsIn`, `UserTaskIn`, `SubscriptionIn`) and the task reply (`RunOut`), and a version: the API version plus a
+digest of all of them. `python manage.py contract --ts` writes them into `n8n-nodes-bpmn8n/nodes/shared/contract.ts`
+(interfaces from the pydantic schemas); the nodes build their bodies against those types, so a changed field breaks
+`npm run build` rather than a running process, and a test fails while the file is stale. Every call sends
+`X-Bpmn8n-Contract: <version>`; a server that speaks another one still answers, with an `X-Bpmn8n-Warning` the node shows
+as a warning in its output: rebuild the nodes from that server's `contract.ts`.
+
 ## Local evaluations in n8n
 
 The **Evaluations** tab now runs bpmn8n's local implementation. Add a **Metrics** node after the step
