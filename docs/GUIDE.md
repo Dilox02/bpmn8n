@@ -844,6 +844,44 @@ scrape_configs:
       - targets: ["web:8000"]
 ```
 
+### Data safety
+
+- **A retried task runs once.** Every call an n8n node makes carries its run's identity (`X-Bpmn8n-Case`, `-Node`,
+  `-Run`, `-Item`). `/api/tasks/<name>/run` keeps the answer of each successful run under that identity (`TaskRun`) and
+  answers a repeated call (n8n's *Retry On Fail*, a worker restart) with it, without calling the function again: a send
+  task does not send twice. A failed run stores nothing, so its retry really runs; another run index (a loop) or item
+  runs again. Two identical calls at once never both run: the first creates the unique row, the second gets **409**
+  ("already running", n8n's retry then gets the stored answer). A row left `running` by a worker that died is taken over
+  after 15 minutes (gunicorn's graceful timeout); if that worker had already sent, the effect happens twice: the only
+  case where it can. Direct calls (`POST /api/tasks/<name>`, examples) carry no identity and always run. Rows are kept
+  until pruned (`TaskRun.objects.filter(created__lt=…).delete()` past n8n's execution retention) or erased with their case.
+- **LLM keys are encrypted at rest** (Fernet, from `cryptography`): the database holds `enc:v1:…`, the admin and the
+  code read the key in clear. The encryption key is derived (HKDF-SHA256) from `FIELD_ENCRYPTION_KEY`, or from
+  `SECRET_KEY` when that is empty. Changing whichever is in use leaves the stored keys unreadable: the server still starts
+  and the admin still opens, and using the provider says what to do. Run
+  `python manage.py rotate_keys --from-secret-key <the old value>` after the change (or type the keys again in the
+  admin). Setting `FIELD_ENCRYPTION_KEY` for the first time is such a change: its old value is `SECRET_KEY`. Migration
+  `0014_hardening` encrypts the keys already stored (and decrypts them if rolled back).
+- **Audit log** (`AuditEntry`): who (a username, `api` for the API token, `system`), what, on which object and case,
+  when and from which address (`REMOTE_ADDR`: the proxy's, behind one). Written by every user task transition (claim,
+  release, complete, suspend, resume, reassign, delegate, expire, cancel, whether from a page, the API or the admin), the
+  global variables set, deleted or incremented through the API or `/variables/`, a workflow version restored, a
+  simulation spec saved, the Settings and LLM providers changed in the admin (which fields: never a key), key rotations
+  and erasures. The details never hold process data (no variable values, no form results): the log outlives an erasure.
+  Append-only in the code and read-only in the admin, superusers included; `GET /api/audit?case_id=&actor=&action=&since=`
+  (`action=usertask.` for a prefix) reads it, and the case page shows a case's entries to staff. Nothing prunes it yet.
+- **Erasure by case** (GDPR art. 17): `python manage.py erase_case <case id> [--yes] [--force]` or
+  `POST /api/cases/<case id>/erase[?force=true]` (API token: for staff). It empties the case's variables, every step's
+  input and output (a gateway keeps its decider and branches, a failed step the type of its error), the user tasks'
+  description, context and result (the title goes back to the activity's name), the messages' payload and correlation key,
+  and its stored task answers, then writes an audit entry. Kept: the case id, process and version, every activity with
+  its times, status and resource. Resources stay because they are staff usernames, systems or message names: the people
+  who worked a case are not its data subject. Process mining and Insights keep working on erased cases (a gateway's
+  rules are no longer learnt from them). A case that still waits (open user tasks or messages, a running step) is refused
+  (409) unless `force`, which cancels its waits first (stop the n8n execution in n8n). Evaluation samples are not touched:
+  by design they hold no personal data. Not reached either: copies
+  already sent to the event stream and webhooks, backups, and n8n's own execution data (prune it in n8n).
+
 ### Workflows in git: diff, push, pull
 
 The open alternative to n8n's paid source control and environments: **the project folder in git is the source of
