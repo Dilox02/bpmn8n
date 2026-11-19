@@ -211,6 +211,21 @@ class WorkflowCheck:
                     before[name], after[name], changed = value, output, True
         return before
 
+    def data_lens(self):
+        """{step: (reads, writes)} in flow order (C14): the variables a step reads ({{variables}} in its fields and,
+        for a task, the inputs it binds by name from the data available there) and those it writes (its
+        outputs, or a person's answers)."""
+        lens = {}
+        for name in self.graph.order:
+            if name in self.subnodes:
+                continue
+            parameters = self.nodes[name]["parameters"]
+            reads, task = self.references(parameters), TASKS.get(str(parameters.get("task", "")).rsplit("/", 1)[-1])
+            if task and (available := self.available(name)) is not None:
+                reads |= {f.name for f in task.inputs} & available
+            lens[name] = (sorted(reads), sorted(self.produced_by(name) or ()))
+        return lens
+
     def carried(self, source, port, before, after, forms_only):
         """What leaves `source` on output `port`: on a "timeout" (an event-based gateway's, a user task's with a
         deadline) only what reached it, since nothing was answered; an event-based gateway's message outputs

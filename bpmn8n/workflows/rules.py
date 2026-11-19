@@ -633,6 +633,23 @@ def naming(name):
 
 
 @rule
+class Handoffs(Rule):
+    id, level, category = "handoffs", "info", "people"
+    doc = ("a path whose work changes lane (a person's lane, `System` for software), and how many times: each handoff "
+           "is where delay, errors and cost arise; `layout(\"lanes\")` draws the lanes")
+
+    def check(self, ctx):
+        seen = set()
+        for path in ctx.graph.paths():  # ponytail: the first 100 paths
+            lanes = ctx.graph.handoffs(path)
+            if len(lanes) > 1 and (key := (path[-1], tuple(lanes))) not in seen:
+                seen.add(key)
+                n = len(lanes) - 1
+                yield self.problem(path[-1], f"the path {' → '.join(path)} changes lane {n} time{'s' * (n > 1)}: "
+                                             f"{' → '.join(lanes)}")
+
+
+@rule
 class ActionNames(Rule):
     id, level, category = "naming", "info", "style"
     doc = ("a task, or the process, named with a mushy verb (`handle`, `process`, `review`…) or as an event or a "

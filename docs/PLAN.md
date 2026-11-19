@@ -259,9 +259,9 @@ The element inventory behind §3: activities, markers, task types, events, gatew
 | Sub-process: expanded embedded, transaction, ad-hoc | ⛔ | n8n canvas has no nesting; use call activity | C9 (transaction as a group), documented |
 | **Gateways**: exclusive · parallel · inclusive · event-based | ✅ | native + Merge v1 | — |
 | Gateways: instantiating event-based · complex · parallel event-based | ❌ / ⛔ | no general rule | non-goal |
-| **Data**: data object, data store, data association | ❌ | derive from variables read/written | C14 |
-| **Pools / lanes**: lane as a property | 🟡 | `lane` on human tasks only | C12 |
-| Pools / lanes as bands; message flow between pools | ❌ | sticky bands + derived dotted flows | C12 |
+| **Data**: data object, data store, data association | 🟡 (objects and associations: data lens; no stores) | derive from variables read/written | C14 |
+| **Pools / lanes**: lane as a property | ✅ | `lane` on human tasks only | C12 |
+| Pools / lanes as bands; message flow between pools | 🟡 (bands and one pool: yes; message flows: no) | sticky bands + derived dotted flows | C12 |
 | Collaboration of several workflows (message exchange) | ❌ | derived from `messages` + call activities | C18 |
 | Choreography · conversation diagrams | ⛔ | not executable | C18 (view only) |
 | **Artifacts**: text annotation | ✅ | sticky note | — |
@@ -345,9 +345,9 @@ Everything here must be expressible in n8n; what cannot is listed in §3 and sta
 | **C9** | **Transaction and compensation (saga)**: `@task(compensate="refund_payment")`, a compensation throw runs them in reverse over the case's completed tasks, `cancel` end | ledger = the `Event` table; transaction drawn as a group | [AW] §9 · [BO] §2.13 · [PO] | ❌ | P2 | L |
 | **C10** | **Conditional events** | Django poller over case variables | [AW] §6 | ❌ | P3 | M |
 | **C11** | **Link events** | only for XML round trip and long edges | [AW] §6.4 · [BO] §2.9 | ❌ | P3 | S |
-| **C12** | **Swimlane layout**: rows = lanes (customer, core actors, supporting actors, other processes, holding areas, systems), pool bands for external parties, handoffs highlighted; a *handoff view* that collapses consecutive boxes in one lane | `layout()` mode + sticky bands drawn by `bpmn.js` | [WM] A49–A52, A76–A80, B01–B31 · [AW] §5 · [BS] p.10–11 · [BO] §2.2.3–2.2.4 | 🟡 | P1 | L |
-| **C13** | **BPMN XML export with diagram interchange** (`bpmndi` shapes from the layout), then **import** (`.bpmn` → spec). Opens in bpmn.io, Camunda Modeler, Signavio, BIMP. | `ProcessGraph` + layout → XML writer; import maps tasks, gateways, timer/message/error events and lanes | [AW] §1.4 · [BS] p.80–82 (B42–B46) | ❌ | P1 export / P2 import | L |
-| **C14** | **Data lens**: show which variables each step reads and writes as data objects, toggled off by default (data flow on top of work flow hides the work flow) | derived from `data_before` in the checker | [AW] §10 · [BS] p.11 · [WM] A68–A69 | ❌ | P2 | M |
+| **C12** | **Swimlane layout**: rows = lanes (customer, core actors, supporting actors, other processes, holding areas, systems), pool bands for external parties, handoffs highlighted; a *handoff view* that collapses consecutive boxes in one lane | `layout()` mode + sticky bands drawn by `bpmn.js` | [WM] A49–A52, A76–A80, B01–B31 · [AW] §5 · [BS] p.10–11 · [BO] §2.2.3–2.2.4 | ✅ lanes layout, bands, `handoffs` rule (a handoff-collapsing view and message flows between pools are not built) | P1 | L |
+| **C13** | **BPMN XML export with diagram interchange** (`bpmndi` shapes from the layout), then **import** (`.bpmn` → spec). Opens in bpmn.io, Camunda Modeler, Signavio, BIMP. | `ProcessGraph` + layout → XML writer; import maps tasks, gateways, timer/message/error events and lanes | [AW] §1.4 · [BS] p.80–82 (B42–B46) | ✅ export and import (`bpmn_xml.py`, `bpmn_import.py`, `manage.py export_bpmn` / `import_bpmn`, `GET /api/workflows/{id}.bpmn`) | P1 export / P2 import | L |
+| **C14** | **Data lens**: show which variables each step reads and writes as data objects, toggled off by default (data flow on top of work flow hides the work flow) | derived from `data_before` in the checker | [AW] §10 · [BS] p.11 · [WM] A68–A69 | ✅ `manage.py data_lens`, `?data=1` (data objects and associations; no data stores) | P2 | M |
 | **C18** | **Process landscape**: all workflows as nodes; edges = call activities and message exchanges; "who waits for a message nobody sends". A derived conversation diagram, not an executable one. | `ProcessContract` (A4) over every workflow | [AW] §11–12, 5.4 · [WM] A30, A72 | ✅ | P1 | M |
 
 ### WS-D · Modeling quality and method
