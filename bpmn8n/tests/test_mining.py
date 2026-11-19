@@ -164,4 +164,4 @@ class WorkflowModelTest(SimpleTestCase):
         self.assertNotIn("Draft: model", wf.nodes)
         self.assertEqual(wf.outputs["Off"], [["Draft: prompt"]])  # not a gap in the flow
         net, _, _ = wf.petri_net()
-        self.assertEqual(sorted(t.label for t in net.transitions if t.label), ["Draft: prompt", "Read"])  # Off is silent
+        self.assertEqual(sorted(t.label for t in net.transitions if t.label), ["Draft: prompt", "Draft: usage", "Read"])  # Off is silent

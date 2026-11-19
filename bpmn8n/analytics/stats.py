@@ -184,13 +184,15 @@ def decision_rows(log):
 
 def decisions(log):
     """Per gateway: how many decisions, who decided, each branch's share, and Laya's confidence."""
-    per = defaultdict(lambda: {"branches": Counter(), "deciders": Counter(), "sure": []})
+    per = defaultdict(lambda: {"branches": Counter(), "deciders": Counter(), "sure": [], "reviewed": []})
     for activity, data in decision_rows(log):
         g = per[activity]
         g["branches"][" + ".join(data["output"].get("branches") or []) or "(default)"] += 1
         g["deciders"][str(data.get("decider"))] += 1
         if (c := certainty(data["output"].get("scores"))) is not None:
             g["sure"].append(c)
+        if "overridden" in data:  # J6: a person reviewed it
+            g["reviewed"].append(bool(data["overridden"]))
     rows = []
     for gateway, g in sorted(per.items()):
         n = sum(g["branches"].values())
@@ -198,7 +200,9 @@ def decisions(log):
         rows.append({"gateway": gateway, "decisions": n, "decided_by": dict(g["deciders"]),
                      "branches": [{"branch": b, "count": c, "share": r(c / n)} for b, c in g["branches"].most_common()],
                      "confidence": {"mean": mean(sure), "median": r(float(np.median(sure))),
-                                    "low": r(sum(c < LOW_CONFIDENCE for c in sure) / len(sure))} if sure else None})
+                                    "low": r(sum(c < LOW_CONFIDENCE for c in sure) / len(sure))} if sure else None,
+                     "override": {"reviewed": len(g["reviewed"]), "overridden": sum(g["reviewed"]),
+                                  "rate": r(sum(g["reviewed"]) / len(g["reviewed"]))} if g["reviewed"] else None})
     return rows
 
 

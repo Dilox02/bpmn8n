@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from django.contrib.auth.models import Group
 from django.test import RequestFactory, TestCase
 
+from ..api import discover
 from ..api.tasks import TASKS
 from ..core.observability import CASE_HEADER
 from ..studio.prompts import Prompts
@@ -46,8 +47,8 @@ class PatternsTest(TestCase):
     def test_a_prompt_chain_runs_its_agents_in_order_each_on_the_answer_before(self):
         w = reviewed("prompt_chain", prompts=["List the claims in {{message}}", "Draft a reply to {{previous}}"],
                      output="reply")
-        self.assertIn(("Pattern 1: answer", "main", "Pattern 2: prompt"), hops(w))
-        self.assertIn(("Pattern 2: answer", "main", "Approve Reply"), hops(w))
+        self.assertIn(("Pattern 1: usage", "main", "Pattern 2: prompt"), hops(w))
+        self.assertIn(("Pattern 2: usage", "main", "Approve Reply"), hops(w))
         self.assertEqual(w.node("Pattern 2: prompt")["parameters"]["input"]["value"]["prompt"],
                          "Draft a reply to {{reply_1}}")
         self.assertEqual(w.node("Pattern 2: answer")["parameters"]["assignments"]["assignments"][0]["name"], "reply")
@@ -74,8 +75,8 @@ class PatternsTest(TestCase):
     def test_reflection_loops_back_with_the_critique_until_it_passes_or_the_budget_ends(self):
         w = reviewed("reflection", prompt="Draft a reply to {{message}}", critique="Polite, under 100 words",
                      output="reply", max_rounds=3)
-        self.assertTrue({("Pattern: first round", "main", "Pattern: prompt"), ("Pattern: answer", "main", "Pattern: critic: prompt"),
-                         ("Pattern: critic: answer", "main", "Pattern: verdict"), ("Pattern: verdict", "main", "Pattern: again?"),
+        self.assertTrue({("Pattern: first round", "main", "Pattern: prompt"), ("Pattern: usage", "main", "Pattern: critic: prompt"),
+                         ("Pattern: critic: usage", "main", "Pattern: verdict"), ("Pattern: verdict", "main", "Pattern: again?"),
                          ("Pattern: again?", "again", "Pattern: prompt"), ("Pattern: again?", "done", "Approve Reply")}
                         <= hops(w))
         self.assertIn("{{reply_critique}}", w.node("Pattern: prompt")["parameters"]["input"]["value"]["prompt"])
@@ -99,7 +100,7 @@ class PatternsTest(TestCase):
                      output_checks={"pii": True, "schema": ["reply"]})
         self.assertTrue({("Pattern: input check: passed?", "passed", "Pattern: prompt"),
                          ("Pattern: input check: passed?", "blocked", "Pattern: blocked"),
-                         ("Pattern: answer", "main", "Pattern: output check"),
+                         ("Pattern: usage", "main", "Pattern: output check"),
                          ("Pattern: output check: passed?", "blocked", "Pattern: blocked"),
                          ("Pattern: output check: passed?", "passed", "Approve Reply")} <= hops(w))
         self.assertEqual(w.node("Pattern: prompt")["parameters"]["input"]["value"]["prompt"], "{{redacted}}")
@@ -250,14 +251,14 @@ class OversightTest(TestCase):
     def test_audit_draws_a_sample_and_the_rest_go_on(self):
         w = self.audited(risk="low", audit_rate=0.2)
         self.assertEqual(w.node("Draft: audit sample")["parameters"]["input"]["value"], {"rate": 0.2, "risk": "low"})
-        self.assertTrue({("Draft: answer", "main", "Draft: audit sample"), ("Draft: audit?", "continue", "Send Reply"),
+        self.assertTrue({("Draft: usage", "main", "Draft: audit sample"), ("Draft: audit?", "continue", "Send Reply"),
                          ("Draft: audit?", "audit", "Audit Reply")} <= hops(w))
 
     def test_a_low_risk_audited_agent_is_an_info_any_other_an_error(self):
         self.assertEqual(problems(self.audited(risk="low"), "human"), {("Draft", "human", "info")})
         self.assertEqual(problems(self.audited(), "human"), {("Draft", "human", "error")})
         bypass = self.audited(risk="low")  # a path that skips the sample is never audited
-        bypass.flow("Draft: answer", "Send Reply")
+        bypass.flow("Draft: usage", "Send Reply")
         self.assertEqual(problems(bypass, "human"), {("Draft", "human", "error")})
         with self.assertRaises(SpecError):
             self.audited(risk="medium")
@@ -271,3 +272,40 @@ class OversightTest(TestCase):
         self.assertEqual(drawn("42"), audit_share("42") < 0.1)
         self.assertTrue(all(drawn(str(i), rate=1) for i in range(20)))
         self.assertTrue(draw_audit_sample(RequestFactory().post("/"), AuditInput(rate=0.01)).audited)  # no case: audited
+
+
+class AgentToolsTest(TestCase):
+    """J2: an agent's tools are @tasks, as n8n's HTTP Request Tool sub-nodes."""
+
+    def setUp(self):
+        discover()
+
+    def agent(self, tool, review=True):
+        w = Workflow("Tools", credential={"id": "1", "name": "bpmn8n"}).start("In", "in")
+        w.llm_agent("Helper", "Help with {{message}}", "answer", tools=[tool])
+        if review:
+            w.user_task("Check", "Check {{answer}}", "staff", [("ok", "OK", "boolean")])
+        return w.flow("In", "Helper", *(["Check"] if review else [])).layout()
+
+    def test_a_task_becomes_an_http_request_tool_with_its_schema(self):
+        w = self.agent("send_notification")
+        nodes, links = {n["name"]: n for n in w.as_json()["nodes"]}, w.as_json()["connections"]
+        tool = nodes["Helper: send_notification"]
+        self.assertEqual(tool["type"], "@n8n/n8n-nodes-langchain.toolHttpRequest")
+        self.assertEqual(links[tool["name"]], {"ai_tool": [[{"node": "Helper", "type": "ai_tool", "index": 0}]]})
+        p = tool["parameters"]
+        self.assertEqual((p["method"], p["url"], p["nodeCredentialType"]),
+                         ("POST", "http://web:8000/api/tasks/send_notification", "bpmn8nApi"))
+        self.assertEqual(tool["credentials"], {"bpmn8nApi": {"id": "1", "name": "bpmn8n"}})
+        self.assertEqual(p["toolDescription"], TASKS["send_notification"].description)
+        self.assertEqual({v["name"] for v in p["parametersBody"]["values"]},
+                         {s.name for s in TASKS["send_notification"].inputs})
+        self.assertIn(tool["name"], ProcessGraph(w.as_json()).subnodes)  # not in the flow
+        self.assertGreater(tool["position"][1], nodes["Helper"]["position"][1])  # under its agent
+        with self.assertRaises(SpecError):
+            self.agent("no_such_task")
+
+    def test_a_tool_that_sends_needs_a_review_after_the_agent(self):
+        self.assertIn(("Helper", "agent-tool", "error"), problems(self.agent("send_notification", review=False)))
+        self.assertNotIn("agent-tool", {p[1] for p in problems(self.agent("send_notification"))})
+        self.assertNotIn("agent-tool", {p[1] for p in problems(self.agent("check_expense_policy", review=False))})

@@ -12,6 +12,7 @@ numpy, no Django."""
 import itertools
 import math
 import zlib
+from collections import Counter
 from functools import cached_property
 
 import numpy as np
@@ -81,13 +82,15 @@ class Sampled(Resolver):
 class Run:
     """One replication."""
 
-    def __init__(self, model: SimModel, replication=0, seed=None):
+    def __init__(self, model: SimModel, replication=0, seed=None, resolver=Sampled):
+        """resolver: Sampled, or functional.Functional (cases with data: E10)."""
         spec = model.spec
         self.model, self.seed = model, spec.seed if seed is None else seed
         self.resources = Resources(model.capacity, model.resource, model.priority, model.schedules)
-        self.engine = TokenEngine(model.graph, Sampled(model, self.seed, replication), self.resources, spec.visit_limit)
+        self.resolver = resolver(model, self.seed, replication)
+        self.engine = TokenEngine(model.graph, self.resolver, self.resources, spec.visit_limit)
         for t in spec.arrivals.arrival_times(_rng(self.seed, replication, "arrivals"), spec.horizon):
-            self.engine.start(at=t)
+            self.engine.start(at=t, data=self.resolver.new_case() if hasattr(self.resolver, "new_case") else None)
         self.engine.run(spec.horizon or math.inf)
         everything = self.engine.cases
         self.cases = [c for c in everything if c.started >= spec.warmup]
@@ -99,16 +102,23 @@ class Run:
     def length(self):
         return self.end - self.begin
 
-    def cost(self, visit):
-        """What one visit cost: per execution, plus the worker's time at the resource's hourly cost."""
+    def costs(self, visit):
+        """(people, models, other) of one visit: the worker's time at the resource's hourly cost, an LLM agent's
+        call at the model's price, and the per-execution cost of the step."""
         if visit.started is None or visit.ended is None:
-            return 0.0
+            return 0.0, 0.0, 0.0
         hours = (visit.ended - visit.started) * UNITS[self.model.unit] / 60
-        return self.model.cost[visit.node] + (self.model.cost_per_hour.get(visit.resource, 0.0) * hours
-                                              if visit.resource else 0.0)
+        return (self.model.cost_per_hour.get(visit.resource, 0.0) * hours if visit.resource else 0.0,
+                self.model.model_cost[visit.node], self.model.cost[visit.node])
+
+    def cost(self, visit):
+        return sum(self.costs(visit))
 
     def case_cost(self, case):
         return sum(self.cost(v) for v in case.trace)
+
+    def case_costs(self, case):
+        return tuple(map(sum, zip(*(self.costs(v) for v in case.trace), strict=False))) or (0.0, 0.0, 0.0)
 
     def utilisation(self, resource, begin=None, end=None):
         begin, end = self.begin if begin is None else begin, self.end if end is None else end
@@ -127,6 +137,8 @@ class Run:
         return {"completed": len(self.done), "unfinished": len(self.cases) - len(self.done),
                 "simulated_time": t, "total_cost": sum(self.case_cost(c) for c in self.cases),
                 "cost_per_case": float(np.mean([self.case_cost(c) for c in self.done])) if self.done else None,
+                "cost_people_per_case": float(np.mean([self.case_costs(c)[0] for c in self.done])) if self.done else None,
+                "cost_models_per_case": float(np.mean([self.case_costs(c)[1] for c in self.done])) if self.done else None,
                 "cycle_time": p["mean"], "cycle_time_p90": p["p90"], "cycle_time_max": p["max"],
                 "waiting_time": stats.summary([c.waiting_time for c in self.done])["mean"],
                 "throughput": len(self.done) / t if t > 0 else None, "in_system": in_system / t if t > 0 else None,
@@ -171,10 +183,28 @@ def _average(tables, count=("visits", "count", "cost")):
                   for f in rs[0] if not isinstance(rs[0][f], list)} for key, rs in rows.items()}
 
 
-def simulate(model: SimModel, replications=None, seed=None):
+def simulate(model: SimModel, replications=None, seed=None, functional=False):
+    """functional=True (E10): cases carry data and the steps work on it, so gateways decided by conditions take
+    real branches (functional.py: the real tasks run, then their writes are rolled back); capped."""
     spec = model.spec
     seed = spec.seed if seed is None else seed
-    runs = [Run(model, r, seed) for r in range(replications or spec.replications)]
+    if not functional:
+        return _simulate(model, [Run(model, r, seed) for r in range(replications or spec.replications)], seed)
+    from . import functional as f  # needs Django and the task registry
+    f.check(model, replications or spec.replications)
+    with f.sandbox():
+        runs = [Run(model, r, seed, f.Functional) for r in range(replications or spec.replications)]
+    result = _simulate(model, runs, seed)
+    reports = [r.resolver.report() for r in runs]
+    result["functional"] = {"cases": sum(r["cases"] for r in reports),
+                            **{k: dict(sum((Counter(r[k]) for r in reports), Counter()))
+                               for k in ("task_failures", "condition_fallbacks")},
+                            "errors": {n: e for r in reports for n, e in r["errors"].items()}}
+    return result
+
+
+def _simulate(model, runs, seed):
+    spec = model.spec
     tables = [run.tables() for run in runs]
     resources = _average([t["resources"] for t in tables])
     for r, row in resources.items():

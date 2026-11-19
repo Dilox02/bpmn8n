@@ -15,6 +15,7 @@ from . import (
     evaluations,
     executions,
     gateways,
+    goals,
     history,
     messages,
     mining,
@@ -41,7 +42,7 @@ api = NinjaAPI(title="bpmn8n", version=API_VERSION, auth=token_auth)
 for prefix, module in (("/tasks", tasks), ("/gateways", gateways), ("/usertasks", usertasks),
                        ("/messages", messages), ("/signals", signals),("/workflows", workflows), ("/evaluations", evaluations),
                        ("/executions", executions), ("/analytics", analytics), ("/variables", variables), ("/history", history),
-                       ("/simulation", simulation), ("/contracts", contracts),
+                       ("/simulation", simulation), ("/contracts", contracts), ("/goals", goals),
                        ("", observability), ("", cases), ("", mining), ("", ops)):
     api.add_router(prefix, module.router)
 api.add_router("", workflows.elements)

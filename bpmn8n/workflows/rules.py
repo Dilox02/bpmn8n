@@ -688,3 +688,22 @@ class CallInputs(Rule):
             if left := required - mapped:
                 yield self.problem(name, f"the sub-process needs {', '.join(sorted(left))}, which this step does not "
                                          "map in its inputs: it would run without", "warning")
+
+
+@rule
+class AgentActs(Rule):
+    """J2: an agent's task tool that acts on the world (a send task) runs on the model's own judgement, with
+    nobody between the call and its effect: a person has to review what the agent did afterwards."""
+    id, category = "agent-tool", "people"
+    doc = ("an LLM agent with a send task as a tool (it acts on the world) and no User or Manual Task after it "
+           "to review what it did")
+
+    def check(self, ctx):
+        for sub, agent in ctx.graph.parent.items():
+            node = ctx.nodes[sub]
+            if node["type"] != Workflow.TOOL or agent not in ctx.nodes:
+                continue
+            tool = str(node["parameters"].get("url", "")).rsplit("/", 1)[-1]
+            if tool in TASKS and TASKS[tool].kind == "sendTask" and not any(ctx.graph.element(n).human for n in ctx.after(agent) - {agent}):
+                yield self.problem(agent, f"its tool {tool!r} is a send task: it acts on the world on the model's "
+                                          "judgement. Put a user task after the agent, where a person reviews it")

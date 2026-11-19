@@ -3,6 +3,7 @@ patterns' guardrail, audit sample and critique, the loop step's round count, and
 import hashlib
 import json
 import re
+from typing import Any
 
 from ninja import Schema
 from pydantic import Field, field_validator
@@ -11,7 +12,7 @@ from .api import task
 from .api.errors import upstream
 from .clients.http import ModelClient
 from .conf import settings
-from .core.observability import Trace
+from .core.observability import Trace, record
 from .workflows.builder import GUARDRAIL_CHECKS
 
 
@@ -28,6 +29,49 @@ def compose_prompt(request, data: PromptInput) -> PromptResult:
     """Fills an LLM agent's prompt with the case's variables (the llm_agent step's first node): only the
     ones it names reach the LLM, and the event log keeps what it was sent."""
     return PromptResult(prompt=data.prompt)
+
+
+CHARS_PER_TOKEN = 4  # the estimate when n8n reports no usage: a token is about 4 characters of text
+
+
+class LLMCallInput(Schema):
+    agent: str = Field(description="The llm_agent step's name")
+    variable: str = Field(description="The process variable its answer became")
+    prompt: str = Field("", description="What the agent was sent")
+    answer: str = Field("", description="What it answered")
+    tokens: Any = Field(None, description="n8n's tokenUsage of the call, when the AI Agent's output carries it")
+
+
+class LLMCallResult(Schema):
+    llm_input_tokens: int = Field(description="Tokens sent")
+    llm_output_tokens: int = Field(description="Tokens answered")
+    llm_estimated: bool = Field(description="True when n8n reported no usage and the tokens are estimated from the text length")
+    llm_cost: float = Field(description="What the call cost at the default LLM provider's prices")
+
+
+def token_counts(tokens, prompt, answer):
+    """((input, output) tokens, whether estimated): n8n's tokenUsage (promptTokens, completionTokens) when it
+    gives numbers, else the text's length over CHARS_PER_TOKEN."""
+    if isinstance(tokens, dict):
+        sent = tokens.get("promptTokens", tokens.get("input_tokens"))
+        got = tokens.get("completionTokens", tokens.get("output_tokens"))
+        if isinstance(sent, int | float) and isinstance(got, int | float):
+            return (int(sent), int(got)), False
+    return (-(-len(prompt) // CHARS_PER_TOKEN), -(-len(answer) // CHARS_PER_TOKEN)), True
+
+
+@task("scriptTask")
+def record_llm_call(request, data: LLMCallInput) -> LLMCallResult:
+    """Keeps an LLM agent call in the event log (the llm_agent step's last node): the tokens (n8n's, or an
+    estimate marked as such), their cost at the default LLM provider's prices, and the draft, so that a person's
+    edit of it can be told from an acceptance (core/overrides.py) and the cost per case can be told."""
+    from .models import Settings
+    (sent, got), estimated = token_counts(data.tokens, data.prompt, data.answer)
+    provider = Settings.load().llm
+    cost = (float(provider.cost_per_1k_input) * sent + float(provider.cost_per_1k_output) * got) / 1000 if provider else 0.0
+    record(llm={"agent": data.agent, "variable": data.variable, "draft": data.answer, "input_tokens": sent,
+                "output_tokens": got, "estimated": estimated, "cost": cost})
+    return LLMCallResult(llm_input_tokens=sent, llm_output_tokens=got, llm_estimated=estimated, llm_cost=cost)
 
 
 # --- guardrails (J3): personal data by its shape, no model needed ---------------------------------------

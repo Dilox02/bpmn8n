@@ -123,7 +123,7 @@ class Workflow:
     # the @tasks (bpmn8n/tasks.py) that steps place on their own: llm_agent's prompt and audit, the patterns',
     # the loop's count
     STEP_TASKS = ("compose_prompt", "draw_audit_sample", "check_guardrails", "read_critique", "count_round",
-                  "throw_signal", "compensate_case")
+                  "throw_signal", "compensate_case", "record_llm_call")
     # what every LLM agent is told, whatever its instructions: it prepares, a person decides (GDPR art. 22)
     AGENT_RULES = ("You prepare work for a person, who reviews it and takes the decision: never present your answer "
                    "as a final decision. Use only the data you are given. Explain briefly how you reached your "
@@ -389,16 +389,46 @@ class Workflow:
         self.steps[name] = (count, name)
         return self
 
-    def llm_agent(self, name, prompt, output, instructions="", oversight="review", audit_rate=0.1, risk=None):
+    TOOL = "@n8n/n8n-nodes-langchain.toolHttpRequest"
+    TOOL_BASE = "http://web:8000"  # where the agent's task tools reach bpmn8n (the bpmn8n credential's default base URL)
+
+    def agent_tool(self, agent, task):
+        """J2: n8n's HTTP Request Tool that lets `agent` call the @task `task` (POST /api/tasks/<task>, with the
+        bpmn8n credential): the description is the task's docstring, the parameters its input Schema, so the agent
+        calls typed, logged functions. A sub-node: it is not in the flow."""
+        from ..api.tasks import TASKS  # tasks.py imports this module
+        from ..clients.extraction import field_specs
+        if task not in TASKS:
+            raise SpecError(f"{agent}: tool {task!r} is not a @task")
+        specs = field_specs(TASKS[task].schema)
+        kinds = {"int": "number", "float": "number", "bool": "boolean"}
+        name = f"{agent}: {task}"
+        self.add(name, self.TOOL, {
+            "toolDescription": TASKS[task].description or task.replace("_", " "), "method": "POST",
+            "url": f"{self.TOOL_BASE}/api/tasks/{task}", "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "bpmn8nApi", "sendBody": True, "specifyBody": "keypair",
+            "parametersBody": {"values": [{"name": s.name, "valueProvider": "modelRequired" if s.required else "modelOptional"}
+                                          for s in specs]},
+            "placeholderDefinitions": {"values": [{"name": s.name, "description": s.description,
+                                                   "type": kinds.get(s.kind, "string")} for s in specs]}},
+                 bpmn=False, version=1.1, same_column=True,
+                 **({"credentials": {"bpmn8nApi": self.credential}} if self.credential else {}))
+        self.connections[name] = {"ai_tool": [[{"node": agent, "type": "ai_tool", "index": 0}]]}
+
+    def llm_agent(self, name, prompt, output, instructions="", oversight="review", audit_rate=0.1, risk=None, tools=()):
         """An LLM (n8n's AI Agent, with the chat model of admin → Settings) drafts text that needs judgement:
         a summary, a reply, a proposal with its reasons. prompt: the task, with the {{variables}} it needs and
         only those (it sees nothing else: data minimisation); output: the variable its answer becomes;
         instructions: its role and constraints. It never decides: a person reviews its answer (a user_task
         after it). Four nodes: the prompt (filled in bpmn8n, so the event log keeps what the LLM was sent),
-        the agent with its chat model, and the answer as `output`. Retried 3 times, 5 s apart: up to 3 paid
+        the agent with its chat model, the answer as `output` and its usage record (tokens, cost: E9). Retried 3 times, 5 s apart: up to 3 paid
         calls per answer. oversight="audit" (human-on-the-loop, H10) only for a step declared risk="low", with
         no legal or similar effect on a person: a fixed share (audit_rate) of the cases, drawn from the case
-        id, goes out of the step's "audit" output to a person; the others go on (its first output)."""
+        id, goes out of the step's "audit" output to a person; the others go on (its first output).
+        tools: names of @tasks the agent may call (J2, agent_tool): typed, logged, governed functions; an agent
+        whose tool acts on the world (a send task) needs a person's review after it (rule `agent-tool`)."""
+        if isinstance(tools, str) or not all(isinstance(t, str) for t in tools):
+            raise SpecError(f"{name}: tools is a list of @task names")
         if oversight not in ("review", "audit") or risk not in (None, "low") or not 0 < audit_rate <= 1:
             raise SpecError(f"{name}: oversight is 'review' or 'audit', risk 'low' or omitted, audit_rate in (0, 1]")
         first, last = f"{name}: prompt", f"{name}: answer"
@@ -414,17 +444,24 @@ class Workflow:
                      **({"credentials": self.chat_model["credentials"]} if self.chat_model.get("credentials") else {}))
             self.connections[f"{name}: model"] = {"ai_languageModel": [[{"node": name, "type": "ai_languageModel",
                                                                          "index": 0}]]}
+        for tool in tools:
+            self.agent_tool(name, tool)
         self.add(last, SET, {"mode": "manual", "assignments": {"assignments": [
             {"id": self.stable_id(last, output), "name": output, "type": "string", "value":
              "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"}]},
             "includeOtherFields": False, "options": {}}, bpmn=False, version=3.4)
-        self.flow(first, name, last)
+        usage = f"{name}: usage"  # E9: tokens (n8n's, else estimated), cost and the draft, kept in the event log
+        self.task(usage, "scriptTask", "record_llm_call", output="merge", fields={
+            "agent": name, "variable": output, "prompt": f"={{{{ $('{first}').item.json.prompt }}}}",
+            "answer": f"={{{{ $json[{json.dumps(output)}] }}}}", "tokens": f"={{{{ $('{name}').item.json.tokenUsage ?? '' }}}}"})
+        self.flow(first, name, last, usage)
+        last = usage
         if oversight == "audit":  # the sample is a task, so the event log keeps which cases a person audits
             sample, last = f"{name}: audit sample", f"{name}: audit?"
             self.task(sample, "scriptTask", "draw_audit_sample", fields={"rate": audit_rate, "risk": risk or "not declared"})
             self.condition_gateway(last, "exclusive", {"continue": "not {{audited}}", "audit": "{{audited}}"},
                                    decision_scope="technical")
-            self.flow(f"{name}: answer", sample, last)
+            self.flow(usage, sample, last)
         self.steps[name] = (first, last)  # after its own flow: other steps' flows reach its first and leave its last
         return self
 
@@ -636,17 +673,19 @@ class Workflow:
             sibling later, whose flow would else pass behind it), then the longest."""
             nexts = forward[name]
             return sorted(nexts, key=lambda c: (any(o in downstream[c] for o in nexts if o != c), -tail[c]))
-        agents = {agent: model for model, agent in models.items()}
+        agents = defaultdict(list)  # agent -> its sub-nodes (chat model, tools)
+        for sub, agent in models.items():
+            agents[agent].append(sub)
         busy, offered, row = set(), defaultdict(list, {n: [i] for i, n in enumerate(starts)}), {}  # (column, row)
         for name in sorted(order, key=depth.get):
             row[name] = min(offered[name])
             busy.add((depth[name], row[name]))
-            if name in agents:  # its chat model, in the first free row under it
+            for sub in agents.get(name, ()):  # its chat model and tools, in the first free rows under it
                 below = row[name] + 1
                 while (depth[name], below) in busy:
                     below += 1
                 busy.add((depth[name], below))
-                row[agents[name]], depth[agents[name]] = below, depth[name]
+                row[sub], depth[sub] = below, depth[name]
             for i, child in enumerate(straight_first(name)):
                 lane, columns = row[name], own_columns(child)
                 if i and offered[child] and min(offered[child]) <= lane:  # placed higher already: no lane to keep

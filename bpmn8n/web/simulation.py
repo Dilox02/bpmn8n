@@ -22,8 +22,8 @@ from ..analytics.log import duration_text
 from ..api.simulation import MAX_CASES, STAFFING_BUDGET, cases, project_folder, source, sources
 from ..models import AuditEntry
 from ..simulation import analytic, des, optimise, scenarios
-from ..simulation.calibrate import calibrate
-from ..simulation.spec import UNITS, SimModel, SimSpec, SpecError, load
+from ..simulation.calibrate import calibrate, sim_model
+from ..simulation.spec import UNITS, SimSpec, SpecError, load
 from . import charts
 from .insights import day, link
 
@@ -36,7 +36,9 @@ METRICS = {"cycle_time": ("Mean cycle time", "time"), "cycle_time_p90": ("p90 cy
            "cycle_time_max": ("Longest cycle time", "time"), "waiting_time": ("Mean waiting time", "time"),
            "completed": ("Completed cases", "count"), "unfinished": ("Unfinished cases", "count"),
            "throughput": ("Throughput", "rate"), "in_system": ("Cases in the system", "count"),
-           "cost_per_case": ("Cost per case", "money"), "total_cost": ("Total cost", "money"),
+           "cost_per_case": ("Cost per case", "money"),
+           "cost_people_per_case": ("  of which people", "money"), "cost_models_per_case": ("  of which models", "money"),
+           "total_cost": ("Total cost", "money"),
            "simulated_time": ("Simulated time", "time")}
 
 
@@ -126,7 +128,8 @@ def effective(model):
         task = {"duration": model.duration[node].model_dump(exclude_none=True)}
         if model.resource[node] or g.element(node).human:
             task["resource"] = model.resource[node] or ""
-        task.update({k: v for k, v in (("cost", model.cost[node]), ("priority", model.priority[node])) if v})
+        task.update({k: v for k, v in (("cost", model.cost[node]), ("cost_per_call", model.model_cost[node]),
+                                       ("priority", model.priority[node])) if v})
         tasks[node] = task
     resources = {r: {"capacity": None if math.isinf(c) else int(c), "cost_per_hour": model.cost_per_hour[r],
                      **({"schedule": spec.resources[r].schedule} if r in spec.resources and spec.resources[r].schedule else {})}
@@ -153,7 +156,7 @@ def save(folder, text):
     workflow = (folder / (spec.workflow or "workflow.json")).resolve()
     if not workflow.is_relative_to(base) or not workflow.is_file():
         raise SpecError(f"no workflow {spec.workflow or 'workflow.json'} for this project")
-    SimModel(json.loads(workflow.read_text()), spec)  # it must fit the workflow
+    sim_model(json.loads(workflow.read_text()), spec)  # it must fit the workflow
     target.write_text(json.dumps(dump(spec), indent=2, ensure_ascii=False) + "\n")
     return target.relative_to(base)
 
@@ -162,7 +165,7 @@ def headline(slug):
     """Studio's Capacity card: the bottleneck and its utilisation, None while the project has no workflow."""
     try:
         workflow, spec = load(project_folder(slug))
-        a = analytic.analyse(SimModel(workflow, spec))
+        a = analytic.analyse(sim_model(workflow, spec))
     except (ValueError, OSError):
         return None
     station = a.get("stations", {}).get(a.get("bottleneck")) or {}
@@ -206,7 +209,7 @@ def what_if(workflow, spec, model, state):
             caps[r] = v
     if factor == 1 and not caps:
         return model, factor, caps
-    other = SimModel(workflow, spec.model_copy(update={"arrivals": faster(spec.arrivals, factor)})) if factor != 1 else model
+    other = sim_model(workflow, spec.model_copy(update={"arrivals": faster(spec.arrivals, factor)})) if factor != 1 else model
     return other.with_capacity(caps), factor, caps
 
 
@@ -401,7 +404,7 @@ def simulation(request):
     spec = file_spec if calibrated is None else calibrated.model_copy(
         update={"workflow": file_spec.workflow, "replications": file_spec.replications, "seed": file_spec.seed})
     try:
-        now_model = SimModel(workflow, spec)
+        now_model = sim_model(workflow, spec)
         what_model, factor, caps = what_if(workflow, spec, now_model, state)
         now = capacity(now_model)
         then = capacity(what_model) if what_model is not now_model else now

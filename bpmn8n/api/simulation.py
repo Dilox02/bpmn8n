@@ -17,7 +17,8 @@ from ..clients import n8n
 from ..models import Project
 from ..simulation import analytic, des, optimise, scenarios
 from ..simulation import calibrate as calibration
-from ..simulation.spec import UNITS, SimModel, SimSpec, SpecError, load
+from ..simulation.calibrate import sim_model
+from ..simulation.spec import UNITS, SimSpec, SpecError, load
 from .analytics import overlay_auth
 
 router = Router(tags=["simulation"])
@@ -96,7 +97,7 @@ def model_of(data, spec=None):
     else:
         raise SpecError("give a workflow or a project")
     spec = data.spec if spec is None else spec
-    return SimModel(workflow, SimSpec.model_validate(spec) if spec is not None else project_spec)
+    return sim_model(workflow, SimSpec.model_validate(spec) if spec is not None else project_spec)
 
 
 def cases(model):
@@ -175,7 +176,7 @@ def canvas_model(workflow_id):
     if project := Project.objects.filter(n8n_id=workflow_id).first():
         try:
             workflow, spec, _ = source(project.slug)
-            return SimModel(workflow, spec), project.slug
+            return sim_model(workflow, spec), project.slug
         except ValueError:
             pass
     if not (workflow := n8n.workflow(workflow_id)):
@@ -183,10 +184,10 @@ def canvas_model(workflow_id):
     key = next((k for k, name in sources().items() if name == workflow.get("name")), None)
     if key:
         try:
-            return SimModel(workflow, source(key)[1]), key
+            return sim_model(workflow, source(key)[1]), key
         except ValueError:
             pass
-    return SimModel(workflow), key
+    return sim_model(workflow), key
 
 
 @router.get("/overlay", auth=overlay_auth, response={200: dict, 404: dict, 422: dict})
