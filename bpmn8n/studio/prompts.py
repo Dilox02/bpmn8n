@@ -128,9 +128,12 @@ class Prompts:
     @cached_property
     def existing_code(self):
         """The code of the activities this server runs, with their Schemas, up to CODE_CONTEXT: the model
-        follows their conventions instead of inventing its own."""
+        follows their conventions instead of inventing its own. The tasks the builder's steps place on their
+        own (a guardrail's check, a reflection's verdict) are plumbing, not conventions: left out."""
         chunks, size = [], 0
         for t in self.tasks:
+            if t.name in Workflow.STEP_TASKS:
+                continue
             try:
                 code = "\n\n".join(inspect.getsource(c) for c in (t.schema, t.output, t.fn) if c is not None)
             except (OSError, TypeError):  # no source file
@@ -258,9 +261,24 @@ out, never recorded as 0) and units. Metrics preserve their input and write loca
 run folder. Reuse this step instead of generating a task that writes evaluation files or calls n8n's
 commercial evaluation endpoints.
 
+Agentic patterns, when an llm_agent has earned its place (each counts as "llm_agent" in the assessment and,
+like it, needs a user_task after it where a person reviews its output): prompt_chain when the work splits
+into steps that build on each other (list a complaint's claims, then draft the reply to them); parallel_llm
+for independent readings of the same input that a person compares; reflection when a draft must meet
+criteria a critic can check (max_rounds 2 or 3: each round is two LLM calls); guardrailed_agent when the
+prompt may carry personal data or the answer must be checked (schema, blocklist) before a person sees it.
+With an external provider and text that may hold personal data (a customer's message, a document), that
+text passes a guardrail before any llm_agent reads it, or the step is a guardrailed_agent (the LLM then
+gets the text with the personal data redacted): "pii" blocks such a text and sends it to a person instead.
+A task that calls a system outside bpmn8n (a booking, a payment) that may fail gets retry=2 and
+on_error="branch", its "error" output flowing to a user_task where a person takes the case over.
+oversight="audit" (a person sees a sample of the answers) only with risk="low", for drafts with no legal
+or similar effect on anyone; otherwise keep the default review of every answer.
+
 "workflow.flows": {{"from": step, "to": [the steps that follow, in sequence], "branch": the output it leaves
-from when "from" is a gateway: one of its branch names, "default" (exclusive/inclusive: taken when no
-branch applies) or "timeout" (event_gateway)}}.
+from when "from" is a gateway or a pattern: one of its branch names, "default" (exclusive/inclusive: taken
+when no branch applies), "timeout" (event_gateway), "blocked" (guardrail), "audit" (an audited llm_agent)
+or "error" (a task with on_error="branch")}}.
 
 "assessment" (in the brief's language) comes first: judge critically who or what should do each step
 that needs judgement or a decision, before writing the workflow.

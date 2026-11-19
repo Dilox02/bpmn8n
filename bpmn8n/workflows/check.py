@@ -70,9 +70,9 @@ class WorkflowCheck:
         seconds = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400, "weeks": 604800}
         return p.get("mode") == "until" or float(p.get("amount") or 0) * seconds.get(p.get("unit", "hours"), 3600) > 60
 
-    def end_without_person(self, name):
-        """The first end reached from `name` without passing a user or manual task, or None (breadth first,
-        in output order: the same end every time)."""
+    def end_without_person(self, name, stop=()):
+        """The first end reached from `name` without passing a user or manual task (nor a step in `stop`), or
+        None (breadth first, in output order: the same end every time)."""
         seen, queue = {name}, deque([name])
         while queue:
             current = queue.popleft()
@@ -81,7 +81,7 @@ class WorkflowCheck:
                 return current
             for n in dict.fromkeys(following):
                 seen.add(n)
-                if not self.graph.element(n).human:
+                if not self.graph.element(n).human and n not in stop:
                     queue.append(n)
         return None
 
@@ -213,8 +213,8 @@ class WorkflowCheck:
         deadline) only what reached it, since nothing was answered; an event-based gateway's message outputs
         carry a payload of unknown shape; any other output what the step produced too."""
         labels = self.graph.outputs(source)
-        if port < len(labels) and labels[port] == "timeout":
-            return before[source]
+        if port < len(labels) and labels[port] == "timeout" or port == self.graph.error_port(source):
+            return before[source]  # a failed step (its error output) produced nothing either
         if port and self.graph.element(source).kind == "eventBasedGateway":
             return set() if forms_only else None
         return after[source]

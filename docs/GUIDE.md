@@ -231,16 +231,17 @@ The rules are classes in `bpmn8n/workflows/rules.py`, run in this order; `python
 | `connection` | error | structure | a connection from or to a node that does not exist |
 | `reachable` | error | structure | a node no path from a trigger reaches, detached cycles included: it never runs |
 | `task` | error | structure | a `@task` that does not exist, or of another kind than its node |
-| `output` | warning | structure | an output that leads nowhere, on a gateway or any node with several outputs (not a conditions gateway's `default`; Laya's `default` must lead to a person) |
+| `output` | warning | structure | an output that leads nowhere, on a gateway or any node with several outputs, a task's `error` output included (not a conditions gateway's `default`, nor a task's `main`; Laya's `default` must lead to a person) |
 | `condition` | error | data | an invalid branch condition; a warning for a branch with no condition (never taken) |
 | `lane` | warning | people | a human task whose lane is no group: only superusers will see the task |
 | `subprocess` | error | structure | a Call Activity whose sub-process waits (people, messages); a warning when the sub-process cannot be read or is not published |
 | `input` | error | data | with the start data declared: a required input of a task that neither its node nor, on every path, an earlier step or the start data provides |
 | `variable` | error | data | with the start data declared: a `{{variable}}` nothing provides on every path (`{{vars.…}}` always exists); a warning for an optional entry of a human task's context, left out when empty |
 | `start-data` | info | data | without declared start data: the fields the webhook body must carry (the required inputs no step produces) |
-| `human` | error | people | after an LLM agent, a path that reaches an end without a person (User or Manual Task); a warning after a gateway (Laya or conditions), not after a conditions gateway that reads only form fields filled in before it or declares `decision_scope="technical"` (housekeeping, never decisions about people) |
+| `human` | error | people | after an LLM agent, a path that reaches an end without a person (User or Manual Task); a warning after a gateway (Laya or conditions), not after a conditions gateway that reads only form fields filled in before it or declares `decision_scope="technical"` (housekeeping, never decisions about people); an info for an LLM agent audited on a sample (`oversight="audit"`) declared `risk="low"` |
 | `wait` | error | structure | branches that run at once (a parallel or inclusive gateway, one output leading to several steps) where more than one waits (a person, a message, a timer over a minute) |
 | `metrics` | warning | metrics | a Metrics node with nothing produced before it, or without a threshold; an info when missing the threshold changes nothing (no conditions gateway after it) |
+| `error-path` | info | people | a step n8n retries whose last failure reaches no person: it stops the case (no `on_error`), or its error path ends without a User or Manual Task (an `error` output leading nowhere is the `output` rule's) |
 | `implicit-split` | info | structure | one output leading to several steps (not a Parallel Gateway's): they all run, a split nobody drew |
 | `implicit-join` | warning | structure | a step that is not a Merge, reached by branches that run at once: it runs once per arriving branch; the branches of an exclusive or event-based choice may meet anywhere |
 | `endless-loop` | error | structure | a loop no flow leaves (no output out of it, none left open): it never ends |
@@ -256,8 +257,8 @@ What BPMN 2.0's process diagrams have, and how bpmn8n has it:
 | | Elements |
 |---|---|
 | **Nodes of bpmn8n** | Service, Script, Business Rule, Send, Receive, User and Manual Task; Call Activity; Exclusive, Inclusive, Parallel and Event-Based Gateway; intermediate Timer Event; Error End Event; an interrupting **timer boundary event** on a User or Manual Task (a deadline: the node gets a `timeout` output); multi-instance with a completion condition (all, any, at least N); a Global Variable step (a data store shared by every workflow) |
-| **n8n itself, in the notation** | message start (Webhook), timer start (Schedule Trigger), none start (Execute Workflow Trigger); the join of parallel and inclusive branches (Merge, with execution order v1); multi-instance in parallel (n8n runs a node once per item: one User Task per item); loops (a flow back); text annotations (sticky notes); an error end's event sub-process (n8n's Error Trigger workflow) |
-| **Can be added** (n8n allows them, bpmn8n does not have them yet) | non-interrupting timer and message **boundary events** on a User Task (a reminder or an escalation while the task stays open: a separate execution, since n8n waits on one thing at a time); **error boundary** on a task (n8n's per-node error output); explicit none and **terminate** end events (the latter stops the execution's other branches through n8n's API); **signal** events (one message that resumes every waiting case, on the existing subscriptions); conditional events (a condition checked on a timer); sequential multi-instance (Loop Over Items); **pools and lanes** drawn as bands (sticky notes, laid out by lane); **import and export of .bpmn files** (BPMN XML, to and from Camunda, bpmn.io, Signavio); compensation and transactions (sagas: each completed task records how to undo it) |
+| **n8n itself, in the notation** | message start (Webhook), timer start (Schedule Trigger), none start (Execute Workflow Trigger); the join of parallel and inclusive branches (Merge, with execution order v1); multi-instance in parallel (n8n runs a node once per item: one User Task per item); loops (a flow back); text annotations (sticky notes); an error end's event sub-process (n8n's Error Trigger workflow); an **error boundary** on a task (n8n's per-node error output: `task(on_error="branch")`, see *Agentic patterns*) |
+| **Can be added** (n8n allows them, bpmn8n does not have them yet) | non-interrupting timer and message **boundary events** on a User Task (a reminder or an escalation while the task stays open: a separate execution, since n8n waits on one thing at a time); explicit none and **terminate** end events (the latter stops the execution's other branches through n8n's API); **signal** events (one message that resumes every waiting case, on the existing subscriptions); conditional events (a condition checked on a timer); sequential multi-instance (Loop Over Items); **pools and lanes** drawn as bands (sticky notes, laid out by lane); **import and export of .bpmn files** (BPMN XML, to and from Camunda, bpmn.io, Signavio); compensation and transactions (sagas: each completed task records how to undo it) |
 | **Not possible in n8n** (emulated at best) | containers: an expanded sub-process, an event sub-process inside the process, a transaction's box, pools as real containers (n8n's canvas has no nesting: a Call Activity or bands instead); an event drawn attached to an activity's border (it would be an output of the node); message flows between pools on the same canvas; complex gateways and parallel event-based gateways (no general rule to express them); choreography and conversation diagrams (not executable) |
 
 ## Studio: assisted design
@@ -292,7 +293,7 @@ For each step, the design picks the simplest solution that is reliable, explaina
 - **software** (a task) when the rule is known, or to read fields from a text (GLiNER, on the server);
 - **condition_gateway** when an explicit rule on the data decides: the first choice, it is fully explainable;
 - **Laya gateway** to route a free text among a few known branches: it runs on the server, gives a confidence and below the threshold hands over to a person;
-- **LLM agent** (`llm_agent`: n8n's *AI Agent* node with the default provider's chat model) only for open-ended work on text that no rule can do and that really saves a person time: summarising, drafting a reply, proposing a decision with its reasons. When it is not needed anywhere, the design leaves it out and explains why;
+- **LLM agent** (`llm_agent`: n8n's *AI Agent* node with the default provider's chat model) only for open-ended work on text that no rule can do and that really saves a person time: summarising, drafting a reply, proposing a decision with its reasons. When it is not needed anywhere, the design leaves it out and explains why; its patterns (a chain, parallel readings, reflection, guardrails, audit) are under *Agentic patterns* below;
 - **person** for every final decision.
 
 The constraints, which the check enforces:
@@ -328,6 +329,34 @@ Django (`:8000`) and n8n (`:5678`, its preview on `:5679`) are one product with 
 | lmstudio | OpenAI-compatible, a local model served by LM Studio (`host.docker.internal:1234`) | to be set (e.g. `qwen/qwen3.5-9b`) |
 | ollama | OpenAI-compatible, a local model (`host.docker.internal:11434`) | to be set |
 | custom | any OpenAI-compatible server (vLLM, LM Studio…) | to be set |
+
+## Agentic patterns
+
+When an LLM has earned its place, the builder offers the patterns of [AE] (Cimino, *Agentic Engineering*, 2026) as vetted templates: each is a step of `Workflow` (and of Studio's spec) that expands to the steps above, so the check judges it like any other workflow. None decides: like `llm_agent`, each needs a `user_task` after it where a person reviews the answer (the `human` rule), and each caps its LLM calls (J4: at most 5 links, branches or rounds).
+
+```python
+w.prompt_chain("Draft Reply", ["List the claims in {{complaint}}", "Draft a reply to these claims: {{previous}}"],
+               output="reply")                      # "Draft Reply 1", "Draft Reply 2"; {{reply_1}}, then {{reply}}
+w.parallel_llm("Read Claim", {"medical": "The medical facts in {{claim}}", "legal": "The legal issues in {{claim}}"},
+               output="readings")                   # a parallel gateway, two agents, a Merge: {{readings.medical}}
+w.reflection("Draft Notice", "Draft the notice for {{case_summary}}", critique="Plain words, every deadline stated",
+             output="notice", max_rounds=2)         # producer, critic (PASS or REVISE), back until it passes
+w.guardrailed_agent("Summarise Message", "Summarise {{message}}", output="summary", on_block="support",
+                    output_checks={"pii": True, "length": 1500})
+w.user_task("Approve Reply", "Approve the reply", "support", [("final", "Reply", "string")])
+w.flow("Complaint Received", "Draft Reply", "Approve Reply")
+```
+
+- **Prompt chaining** (`prompt_chain`, [AE] 20–28): agents in sequence, `{{previous}}` in a prompt is the answer before it. For work in steps that build on each other.
+- **Parallelisation** (`parallel_llm`, [AE] 34–35): independent agents at once, joined by a Merge that combines their answers into one item: `{{output}}` holds them by key, each is also `{{<output>_<key>}}`.
+- **Reflection** (`reflection`, [AE] 36–39): a producer drafts, a critic judges the draft against the criteria and starts its answer with PASS or REVISE; a technical condition gateway sends the draft back with the critique until it passes or `max_rounds` drafts were made (`read_critique` counts `{{reflection_round}}` in the case, so the loop always ends). The person sees the last draft whether it passed or not (`{{passed}}`, `{{<output>_critique}}`).
+- **Guardrails** (`guardrail`, `guardrailed_agent`, [AE] guardrails and safety, J3): the `check_guardrails` task checks a text, its `{{variables}}` filled: `pii` (emails, phone numbers, IBANs by mod 97, Italian fiscal codes, card numbers by Luhn: regular expressions, no model), `length`, `blocklist` (whole words), `schema` (a JSON object with the given keys; a code fence around it is fine). It returns `passed`, `findings` (check, what, where: the characters) and `redacted`, the text with its personal data replaced by placeholders such as `[EMAIL]`, whatever the checks; the event log keeps it like every task. `guardrail(name, text, checks, on_block=None)` adds a gateway: `passed` goes on, `blocked` goes to a user task in the lane `on_block`, or wherever it is flowed (`flow(name, step, output="blocked")`). `guardrailed_agent` checks the prompt, gives the LLM the **redacted** prompt, checks the answer (`output_checks`, by default the same checks), and sends a blocked text to a person instead of going on. With an external provider, a text that may hold personal data passes a guardrail before any agent reads it; it generalises the hospital project's pseudonymisation, which also replaces the patient id with a keyed pseudonym.
+
+**Error paths** (C3, J7, [AE] 61–62). `task(..., retry=2, retry_wait_ms=2000)` sets n8n's *Retry On Fail* (Max Tries = retry + 1, at most 5; waits up to 5 s), for a system that may be briefly down. After the last try, `on_error=None` stops the case, `"continue"` goes on with an `error` field, and `"branch"` gives the task a second output, `error` (an error boundary event): `w.flow("Book Slot", "Book By Phone", output="error")` sends the case to a person who takes it over. The check knows that output: left unconnected it is the `output` rule's warning, and the data on it is what the task received, not what it would have produced. The `error-path` rule notes (info) a retried step whose last failure reaches no person.
+
+**Oversight** (H10, [AE] 63–66). `llm_agent(..., oversight="review")`, the default, is human-in-the-loop: a person reviews every answer. `oversight="audit", audit_rate=0.1, risk="low"` is human-on-the-loop: the `draw_audit_sample` task decides from the case id alone (the same case always gets the same answer; about 10% of the cases) whether a person audits it, the event log records which, and the step's `audit` output goes to that person while its first output, `continue`, goes on. The `human` rule accepts an audited agent only when the step is declared `risk="low"`, and says so in an info; otherwise it stays an error, because a decision with legal or similar effects on a person needs a person every time (GDPR art. 22). Declare it only for drafts that commit no one (an internal summary, a suggested tag).
+
+**Cost.** Every LLM agent is retried up to 3 times, 5 s apart (a provider's 429 or 503 is often gone in seconds), so a failing answer can cost three calls. A prompt chain costs one call per prompt, a parallel step one per branch, a reflection two per round (up to `2 × max_rounds`), each times three in the worst case: `max_rounds` 2 or 3 is usually enough, and every bound is checked when the workflow is built.
 
 ## Extraction from text: GLiNER + Laya
 
