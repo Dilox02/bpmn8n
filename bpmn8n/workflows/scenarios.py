@@ -294,25 +294,34 @@ def record(case_id, workflow, name=None):
     gives the expected path; when it does not visit what the log has, the logged steps are the expectation.
     ponytail: an LLM agent's answer and a timeout leave no event: the replay names what is missing."""
     from ..models import Case, Event
-    graph = ProcessGraph(workflow)
-    events = list(Event.objects.cases().filter(case_id=case_id).order_by("started", "pk"))
+    events = list(Event.objects.cases().filter(case_id=case_id).order_by("started", "pk")
+                  .values("activity", "endpoint", "resource", "data"))
     if not events:
         raise ValueError(f"no event of case {case_id!r} in the log")
+    case = Case.objects.filter(case_id=case_id).first()
+    return from_log(events, case.variables if case else {}, workflow, name or f"case {case_id}")
+
+
+def from_log(events, variables, workflow, name):
+    """record() on a case's events, in the log's order ({"activity", "endpoint", "resource", "data"} each), and
+    its variables at the end: also for a log read through the API (e2e/test_differential.py)."""
+    graph = ProcessGraph(workflow)
     given, produced, start = {"decisions": {}, "people": {}, "messages": {}, "outputs": {}}, set(), {}
     for event in events:
-        node, output = event.activity, event.data.get("output")
+        node, endpoint, data = event["activity"], event["endpoint"], event["data"] or {}
+        output = data.get("output")
         if node not in graph.nodes:
             continue  # a step of another version of the workflow
-        if event.endpoint == "conditions_gateway":  # what the case's variables were when it decided
-            state = (event.data.get("input") or {}).get("state")
+        if endpoint == "conditions_gateway":  # what the case's variables were when it decided
+            state = (data.get("input") or {}).get("state")
             start |= {k: v for k, v in (state if isinstance(state, dict) else {}).items()
                       if k not in produced and k not in start}
-        if event.endpoint in GATEWAYS:
+        if endpoint in GATEWAYS:
             branches = (output or {}).get("branches") or ["default"]
             key, value = "decisions", branches if graph.element(node).kind == "inclusiveGateway" else branches[0]
-        elif event.endpoint in WAITS and event.resource.startswith("message:"):
-            key, value = "messages", {"name": event.resource.removeprefix("message:"), "payload": output or {}}
-        elif event.endpoint in WAITS:
+        elif endpoint in WAITS and event["resource"].startswith("message:"):
+            key, value = "messages", {"name": event["resource"].removeprefix("message:"), "payload": output or {}}
+        elif endpoint in WAITS:
             key, value = "people", output or {}
         elif graph.element(node).task and isinstance(output, dict):
             key, value = "outputs", output
@@ -321,12 +330,11 @@ def record(case_id, workflow, name=None):
         given[key].setdefault(node, []).append(value)
         if key != "decisions":
             produced |= set(value.get("payload", value) if key == "messages" else value)
-    case = Case.objects.filter(case_id=case_id).first()
-    start |= {k: v for k, v in (case.variables if case else {}).items() if k not in produced and k not in start}
-    scenario = {"name": name or f"case {case_id}", "start": start,
+    start |= {k: v for k, v in (variables or {}).items() if k not in produced and k not in start}
+    scenario = {"name": name, "start": start,
                 **{key: {node: values[0] if len(values) == 1 else values for node, values in found.items()}
                    for key, found in given.items() if found},
-                "expect": {"visits": list(dict.fromkeys(e.activity for e in events if e.activity in graph.nodes))}}
+                "expect": {"visits": list(dict.fromkeys(e["activity"] for e in events if e["activity"] in graph.nodes))}}
     report = ScenarioRunner(graph).run(scenario)
     if report["passed"]:
         scenario["expect"] = {"path": report["path"]}
