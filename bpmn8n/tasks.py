@@ -234,3 +234,42 @@ def read_document_text(request, data: DocumentImage) -> DocumentText:
     with upstream():
         reading = ModelClient(settings.OCR_URL, settings.MODELS_API_KEY, timeout=30).call({"image": data.image})
     return DocumentText(document_text=reading["text"], ocr_confidence=reading["confidence"])
+
+
+# --- signals and compensation (C4, C9) -------------------------------------------------------------------
+
+class SignalInput(Schema):
+    name: str = Field(description="The signal to throw")
+    payload: dict = Field({}, description="What it carries: variables for the cases that catch it")
+
+
+class SignalResult(Schema):
+    signal_delivered: int = Field(description="How many waiting cases it resumed")
+
+
+@task("sendTask")
+def throw_signal(request, data: SignalInput) -> SignalResult:
+    """Throws a signal (the signal_throw step): every case waiting at a Signal Catch for it resumes. Nobody
+    waiting is no error: a signal is not queued."""
+    from .api.signals import broadcast
+    return SignalResult(signal_delivered=broadcast(data.name, data.payload)[0])
+
+
+class CompensateInput(Schema):
+    pass
+
+
+class CompensateResult(Schema):
+    compensated: list[str] = Field(description="The tasks undone, newest first")
+
+
+@task("serviceTask")
+def compensate_case(request, data: CompensateInput) -> CompensateResult:
+    """Undoes the case's completed tasks that declared an undo (the compensate and cancel_end steps), newest
+    first, each once (POST /api/cases/<case>/compensate). Fails when an undo does: the rest are done."""
+    from .core import saga
+    case_id = Trace.of(request).case_id
+    result = saga.compensate(case_id, request) if case_id else {"compensated": [], "failed": []}
+    if result["failed"]:
+        raise RuntimeError("compensation failed: " + "; ".join(f"{f['task']}: {f['error']}" for f in result["failed"]))
+    return CompensateResult(compensated=[c["task"] for c in result["compensated"]])

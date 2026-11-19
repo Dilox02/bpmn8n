@@ -71,6 +71,7 @@ MIDDLEWARE = [
     "bpmn8n.core.audit.middleware",  # who acts, for the audit log
     "bpmn8n.api.openapi_cors",
     "bpmn8n.api.contract.middleware",  # warns n8n nodes built for another contract
+    "bpmn8n.api.cases.middleware",  # a terminated case answers 409
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

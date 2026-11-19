@@ -31,7 +31,9 @@ GLYPHS = {  # n8n icon name -> bpmn-font glyph
     "timerEvent": "source/symbols/events/intermediate-event-catch-timer.svg",
     "eventBasedGateway": "source/symbols/gateways/gateway-eventbased.svg",
     "errorEndEvent": "source/symbols/events/end-event-error.svg",
-    "callActivity": "source/symbols/activities/call-activity.svg",
+    "terminateEndEvent": "source/symbols/events/end-event-terminate.svg",
+    "signalCatch": "source/symbols/events/intermediate-event-catch-signal.svg",
+    "callActivity":"source/symbols/activities/call-activity.svg",
     "globalVariable": "source/symbols/data/data-store.svg",
 }
 TREE = "https://api.github.com/repos/bpmn-io/bpmn-font/git/trees/main?recursive=1"
