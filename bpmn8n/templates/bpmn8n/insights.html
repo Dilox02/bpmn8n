@@ -84,6 +84,16 @@
   <div class="tile"><span class="label">Arrivals</span><span class="value num">{{ queues.process.arrival_rate|number }} /h</span><span class="meta">{{ queues.process.little.in_progress|number }} cases in progress on average</span></div>
 </section>
 
+<section class="block" aria-labelledby="pmap">
+  <div class="section-head"><h2 id="pmap">Process map</h2><span class="meta">{{ pmap.acts_shown }} of {{ pmap.acts_total }} activities, {{ pmap.paths_shown }} of {{ pmap.paths_total }} paths</span></div>
+  <form method="get" class="inline-form pmap-form" aria-label="Level of detail">{% for key, value in state.items %}{% if value and key != "acts" and key != "paths" and key != "map" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+    <label>Activities <input type="range" name="acts" min="0" max="100" step="5" value="{{ pmap.acts_pct }}"> {{ pmap.acts_pct }} %</label>
+    <label>Paths <input type="range" name="paths" min="0" max="100" step="5" value="{{ pmap.paths_pct }}"> {{ pmap.paths_pct }} %</label>
+    <label><select class="input" name="map"><option value="frequency" {% if pmap.measure == "frequency" %}selected{% endif %}>Frequency</option><option value="performance" {% if pmap.measure == "performance" %}selected{% endif %}>Performance (mean time)</option></select></label>
+    <button class="btn" type="submit">Apply</button></form>
+  <div class="pmap-wrap">{{ pmap.svg }}</div>
+</section>
+
 <section class="block" aria-labelledby="time">
   <div class="section-head"><h2 id="time">Over time</h2><span class="meta">one point per {{ bucket }}</span></div>
   <div class="pair">{{ events_chart }}{{ active_chart }}</div>

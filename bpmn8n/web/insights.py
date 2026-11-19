@@ -13,9 +13,9 @@ from django.urls import reverse
 
 from ..analytics import FilterError, FilterStack, Log, Scope, queues, stats
 from ..analytics.log import duration_text
-from . import charts
+from . import charts, processmap
 
-STATE = ("process", "since", "until", "filters", "vs", "target")
+STATE = ("process", "since", "until", "filters", "vs", "target", "acts", "paths", "map")
 UNITS = {"s": 1, "min": 60, "h": 3600, "d": 86400}
 BUCKET_NAMES = {60: "minute", 300: "5 minutes", 900: "15 minutes", 3600: "hour", 3 * 3600: "3 hours",
                 6 * 3600: "6 hours", 86400: "day", 7 * 86400: "week", 30 * 86400: "30 days"}
@@ -105,7 +105,7 @@ def insights(request):
         context.update(vs_chips=chips(state, "vs", stacks["vs"], vs_steps), comparison=stats.compare(log, cohort),
                        vs_cases=len(cohort.traces))
     if log.traces:
-        context.update(page(log, target))
+        context.update(page(log, target), pmap=processmap.section(log, state))
     return render(request, "bpmn8n/insights.html", context)
 
 

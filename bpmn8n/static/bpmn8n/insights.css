@@ -103,3 +103,14 @@
   .variants .meter-cell, .variants .meta { grid-column: 2; }
   .meter { width: 56px; }
 }
+
+/* process map: server-drawn SVG (web/processmap.py); --heat tints, --w sizes a line */
+.pmap-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+.pmap-form label { display: inline-flex; align-items: center; gap: 6px; color: var(--b8-muted); }
+.pmap-wrap { overflow-x: auto; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); background: var(--b8-surface); padding: 8px; }
+.pmap { display: block; min-width: 640px; width: 100%; height: auto; font-size: 12px; fill: var(--b8-text); }
+.pmap .edge path { fill: none; stroke: color-mix(in srgb, var(--b8-accent) var(--heat), var(--b8-rule)); stroke-width: var(--w); }
+.pmap .edge text { fill: var(--b8-muted); font-size: 11px; }
+.pmap marker path { fill: var(--b8-muted); stroke: none; }
+.pmap .act rect { fill: color-mix(in srgb, var(--b8-accent) calc(var(--heat) * .35), var(--b8-surface)); stroke: var(--b8-border); }
+.pmap .act .sub { fill: var(--b8-muted); font-size: 11px; }
