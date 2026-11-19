@@ -271,3 +271,37 @@ class OversightTest(TestCase):
         self.assertEqual(drawn("42"), audit_share("42") < 0.1)
         self.assertTrue(all(drawn(str(i), rate=1) for i in range(20)))
         self.assertTrue(draw_audit_sample(RequestFactory().post("/"), AuditInput(rate=0.01)).audited)  # no case: audited
+
+
+class AgentToolsTest(TestCase):
+    """J2: an agent's tools are @tasks, as n8n's HTTP Request Tool sub-nodes."""
+
+    def agent(self, tool, review=True):
+        w = Workflow("Tools", credential={"id": "1", "name": "bpmn8n"}).start("In", "in")
+        w.llm_agent("Helper", "Help with {{message}}", "answer", tools=[tool])
+        if review:
+            w.user_task("Check", "Check {{answer}}", "staff", [("ok", "OK", "boolean")])
+        return w.flow("In", "Helper", *(["Check"] if review else [])).layout()
+
+    def test_a_task_becomes_an_http_request_tool_with_its_schema(self):
+        w = self.agent("send_notification")
+        nodes, links = {n["name"]: n for n in w.as_json()["nodes"]}, w.as_json()["connections"]
+        tool = nodes["Helper: send_notification"]
+        self.assertEqual(tool["type"], "@n8n/n8n-nodes-langchain.toolHttpRequest")
+        self.assertEqual(links[tool["name"]], {"ai_tool": [[{"node": "Helper", "type": "ai_tool", "index": 0}]]})
+        p = tool["parameters"]
+        self.assertEqual((p["method"], p["url"], p["nodeCredentialType"]),
+                         ("POST", "http://web:8000/api/tasks/send_notification", "bpmn8nApi"))
+        self.assertEqual(tool["credentials"], {"bpmn8nApi": {"id": "1", "name": "bpmn8n"}})
+        self.assertEqual(p["toolDescription"], TASKS["send_notification"].description)
+        self.assertEqual({v["name"] for v in p["parametersBody"]["values"]},
+                         {s.name for s in TASKS["send_notification"].inputs})
+        self.assertIn(tool["name"], ProcessGraph(w.as_json()).subnodes)  # not in the flow
+        self.assertGreater(tool["position"][1], nodes["Helper"]["position"][1])  # under its agent
+        with self.assertRaises(SpecError):
+            self.agent("no_such_task")
+
+    def test_a_tool_that_sends_needs_a_review_after_the_agent(self):
+        self.assertIn(("Helper", "agent-tool", "error"), problems(self.agent("send_notification", review=False)))
+        self.assertNotIn("agent-tool", {p[1] for p in problems(self.agent("send_notification"))})
+        self.assertNotIn("agent-tool", {p[1] for p in problems(self.agent("check_expense_policy", review=False))})
