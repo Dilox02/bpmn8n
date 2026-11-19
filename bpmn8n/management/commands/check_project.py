@@ -1,6 +1,7 @@
 """Checks a project folder before it is loaded (see bpmn8n.workflows.check.ProjectCheck): its
-activities import and pass their examples (examples.json), its workflow (workflow.json) passes the
-workflow check. Exits with 1 on errors; --json prints the report, as bpmn8n Studio reads it."""
+activities import and pass their examples (examples.json), its process passes its scenarios
+(scenarios.json), its workflow (workflow.json) passes the workflow check. Exits with 1 on errors;
+--json prints the report, as bpmn8n Studio reads it."""
 import json
 import sys
 from contextlib import redirect_stdout
@@ -9,6 +10,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from bpmn8n.workflows.check import ProjectCheck
+from bpmn8n.workflows.scenarios import summary
 
 
 class Command(BaseCommand):
@@ -29,6 +31,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"import  {module}:\n{error}")
             for task, problems in check.examples.items():
                 self.stdout.write("".join(f"example {task}: {p}\n" for p in problems))
+            for report in check.scenarios:
+                self.stdout.write(summary(report))
             for p in check.problems:
                 self.stdout.write(f"{p.level:7} {p.node or '(workflow)'}: {p.message}")
             self.stdout.write(f"{folder}: {'ok' if check.ok else 'errors found'}")

@@ -195,8 +195,9 @@ class ProjectBuilder:
             self.project.save(update_fields=["spec", "updated"])
 
     def check(self):
-        """The draft written out and checked: {"imports", "examples", "problems"} (ProjectCheck). A spec
-        the builder rejects is a problem too; the activities are tested all the same."""
+        """The draft written out and checked: {"imports", "examples", "scenarios", "problems"} (ProjectCheck).
+        A spec the builder rejects is a problem too, and so is a failing scenario; the activities are tested
+        all the same."""
         self.write_spec()
         path, spec_problems = self.draft / "workflow.json", []
         try:
@@ -212,7 +213,9 @@ class ProjectBuilder:
             report = json.loads(result.stdout)
         except ValueError:  # it did not get to the report: Django itself failed to start
             raise BuildError(f"the check did not run:\n{(result.stderr or result.stdout)[-3000:]}") from None
-        report["problems"] += spec_problems
+        report["problems"] += spec_problems + [  # a scenario the process fails is the workflow's error
+            {"node": "", "rule": "scenario", "level": "error", "message": f"scenario {s['name']!r}: {s['failure']}"}
+            for s in report.get("scenarios", []) if not s["passed"]]
         return report
 
     def publish(self):

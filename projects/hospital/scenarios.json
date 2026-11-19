@@ -1,0 +1,86 @@
+[
+  {
+    "name": "a registered patient books the first slot offered",
+    "start": {"request_id": "scenario-booked", "patient_id": "DEMO-1", "registered": true,
+              "message": "I need a cardiology visit next week, mornings if possible"},
+    "outputs": {
+      "A · Clarify request": {"service": "Cardiology", "earliest": "2026-12-07", "latest": "2026-12-11", "morning": true},
+      "B · Check requirements": {"valid": true, "reason": "Ready to search"},
+      "C · Find slots": {"slots": [{"slot_id": 7, "doctor": "Dr. Bianchi"}], "slots_available": true},
+      "C · Reserve slot": {"booked": true, "booking_id": 1, "confirmation": "2026-12-08T09:00:00, Dr. Bianchi, Room 3"}
+    },
+    "people": {
+      "Patient reviews details": {"service": "Cardiology", "earliest": "2026-12-07", "latest": "2026-12-11",
+                                  "morning": true, "continue_booking": true},
+      "Patient chooses slot": {"slot_id": 7, "selected": true}
+    },
+    "expect": {
+      "path": ["Patient request", "A · Clarify request", "Patient reviews details", "Continue?",
+               "B · Check requirements", "Valid?", "C · Find slots", "Slots available?", "Patient chooses slot",
+               "Selected?", "C · Reserve slot", "Booked?", "Patient sees confirmation"],
+      "variables": {"booked": true, "booking_id": 1}
+    }
+  },
+  {
+    "name": "an unregistered patient goes to staff, decided by the real business rule",
+    "start": {"request_id": "scenario-staff", "patient_id": "DEMO-2", "registered": false,
+              "message": "Dermatology please"},
+    "outputs": {"A · Clarify request": {"service": "Dermatology", "earliest": "2026-12-01", "latest": "2026-12-04",
+                                         "morning": false}},
+    "people": {
+      "Patient reviews details": {"service": "Dermatology", "earliest": "2026-12-01", "latest": "2026-12-04",
+                                  "morning": false, "continue_booking": true},
+      "0 · Staff referral": {"resolution": "registered at the desk, booked by phone"}
+    },
+    "expect": {
+      "ends": "0 · Staff referral",
+      "not": ["C · Find slots"],
+      "variables": {"valid": false, "reason": "Staff must check registration or referral"}
+    }
+  },
+  {
+    "name": "a slot taken meanwhile sends the patient back to the search, the second reservation holds",
+    "start": {"request_id": "scenario-retry", "patient_id": "DEMO-3", "registered": true,
+              "message": "Orthopaedics, any day in December"},
+    "outputs": {
+      "A · Clarify request": {"service": "Orthopaedics", "earliest": "2026-12-01", "latest": "2026-12-31", "morning": false},
+      "B · Check requirements": {"valid": true, "reason": "Ready to search"},
+      "C · Find slots": [{"slots": [{"slot_id": 11}, {"slot_id": 12}], "slots_available": true},
+                         {"slots": [{"slot_id": 12}], "slots_available": true}],
+      "C · Reserve slot": [{"booked": false}, {"booked": true, "booking_id": 2, "confirmation": "2026-12-14T15:00:00"}]
+    },
+    "people": {
+      "Patient reviews details": {"service": "Orthopaedics", "earliest": "2026-12-01", "latest": "2026-12-31",
+                                  "morning": false, "continue_booking": true},
+      "Patient chooses slot": [{"slot_id": 11, "selected": true}, {"slot_id": 12, "selected": true}]
+    },
+    "expect": {
+      "path": ["Patient request", "A · Clarify request", "Patient reviews details", "Continue?",
+               "B · Check requirements", "Valid?", "C · Find slots", "Slots available?", "Patient chooses slot",
+               "Selected?", "C · Reserve slot", "Booked?", "C · Find slots", "Slots available?",
+               "Patient chooses slot", "Selected?", "C · Reserve slot", "Booked?", "Patient sees confirmation"],
+      "variables": {"slot_id": 12, "booking_id": 2}
+    }
+  },
+  {
+    "name": "no slot matches: the patient changes preferences, then gives up",
+    "start": {"request_id": "scenario-closed", "patient_id": "DEMO-4", "registered": true,
+              "message": "Neurology on Sunday"},
+    "outputs": {
+      "A · Clarify request": {"service": "Neurology", "earliest": "2026-12-06", "latest": "2026-12-06", "morning": false},
+      "B · Check requirements": {"valid": true, "reason": "Ready to search"}
+    },
+    "people": {
+      "Patient reviews details": {"service": "Neurology", "earliest": "2026-12-06", "latest": "2026-12-06",
+                                  "morning": false, "continue_booking": true},
+      "Patient changes preferences": {"service": "Neurology", "earliest": "2026-12-06", "latest": "2026-12-06",
+                                      "morning": false, "continue_booking": false}
+    },
+    "expect": {
+      "path": ["Patient request", "A · Clarify request", "Patient reviews details", "Continue?",
+               "B · Check requirements", "Valid?", "C · Find slots", "Slots available?",
+               "Patient changes preferences", "Continue?", "Request closed"],
+      "variables": {"slots_available": false, "continue_booking": false}
+    }
+  }
+]

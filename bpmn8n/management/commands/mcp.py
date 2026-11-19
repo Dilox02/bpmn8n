@@ -92,8 +92,9 @@ TOOLS = {
                     SaveArguments),
     "studio_write": ("Writes one activity's module (the whole Python file) into the project's draft.",
                      WriteArguments),
-    "studio_check": ("Imports the draft's modules, runs each activity's examples and checks the workflow: "
-                     "{imports, examples, problems}. Fix with studio_write / studio_save until it is clean.",
+    "studio_check": ("Imports the draft's modules, runs each activity's examples, plays its scenarios "
+                     "(scenarios.json) and checks the workflow: {imports, examples, scenarios, problems}; a failing "
+                     "scenario is also a problem. Fix with studio_write / studio_save until it is clean.",
                      ProjectArguments),
     "studio_publish": ("Once studio_check is clean: publishes projects/<slug>, imports the workflow into n8n and "
                        "reloads the server's tasks. The project becomes ready.", ProjectArguments),

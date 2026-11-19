@@ -1,0 +1,75 @@
+[
+  {
+    "name": "a book on the shelf is lent",
+    "workflow": "../../examples/workflows/library-lending.json",
+    "start": {"request_id": "scenario-shelf", "book": "Il Gattopardo", "reader": "ada@acme.test"},
+    "people": {"Check Out Book": {"due_date": "2026-12-15"}},
+    "expect": {
+      "path": ["Request Received", "Get Book Status", "Is Book Available?", "Fetch Book", "Check Out Book",
+               "Lend Book", "Send Checkout Reply", "Update Catalogue"],
+      "variables": {"available": true, "status": "on loan", "subject": "Il Gattopardo is ready for you, due 2026-12-15"}
+    }
+  },
+  {
+    "name": "a book on loan is held, comes back after two weeks and is lent",
+    "workflow": "../../examples/workflows/library-lending.json",
+    "start": {"request_id": "scenario-hold", "book": "Dune", "reader": "bob@acme.test"},
+    "outputs": {"Get Book Status": [{"available": false}, {"available": true}]},
+    "messages": {"Wait for Reader": {"name": "hold-book", "payload": {"note": "I can wait"}}},
+    "people": {"Check Out Book": {"due_date": "2027-01-10"}},
+    "expect": {
+      "path": ["Request Received", "Get Book Status", "Is Book Available?", "Send On-Loan Reply", "Wait for Reader",
+               "Hold Book", "Send Hold Reply", "Wait Two Weeks", "Get Book Status", "Is Book Available?",
+               "Fetch Book", "Check Out Book", "Lend Book", "Send Checkout Reply", "Update Catalogue"],
+      "variables": {"held": true, "note": "I can wait", "status": "on loan"}
+    }
+  },
+  {
+    "name": "a reader who does not answer has the request cancelled",
+    "workflow": "../../examples/workflows/library-lending.json",
+    "start": {"request_id": "scenario-silent", "book": "Dune", "reader": "eve@acme.test"},
+    "decisions": {"Wait for Reader": "timeout"},
+    "expect": {
+      "visits": ["Send On-Loan Reply", "Cancel Request"],
+      "not": ["Hold Book", "Fetch Book"],
+      "ends": "Cancel Request",
+      "variables": {"available": false, "subject": "Your request for Dune is cancelled"}
+    }
+  },
+  {
+    "name": "a billing ticket Laya is sure about gets an automatic refund",
+    "workflow": "../../examples/workflows/ticket-triage.json",
+    "start": {"customer": "Northwind", "message": "You charged me twice for the March invoice", "channel": "email",
+              "amount": 49, "duplicate_charge": true},
+    "decisions": {"Route Ticket": "billing"},
+    "expect": {
+      "path": ["Ticket Received", "Register Ticket", "Route Ticket", "Calculate Refund"],
+      "variables": {"refund": 49, "automatic": true, "customer": "Northwind"}
+    }
+  },
+  {
+    "name": "a personal expense is rejected without an approver",
+    "workflow": "../../examples/workflows/expense-approval.json",
+    "start": {"employee": "ann@acme.test", "category": "meal", "amount": 180, "attendees": 2,
+              "justification": "dinner with my family"},
+    "decisions": {"Assess Justification": "personal"},
+    "expect": {
+      "path": ["Expense Submitted", "Check Expense Policy", "Assess Justification", "Notify Rejection"],
+      "not": ["Approve Expense", "Record Expense"],
+      "variables": {"within_policy": false, "excess": 60, "subject": "Expense rejected: personal purpose"}
+    }
+  },
+  {
+    "name": "a business expense Laya is unsure about is approved by a person and booked",
+    "workflow": "../../examples/workflows/expense-approval.json",
+    "start": {"employee": "bob@acme.test", "category": "other", "amount": 95, "attendees": 1,
+              "justification": "a gift"},
+    "decisions": {"Assess Justification": "default"},
+    "people": {"Approve Expense": {"approved": true, "note": "client gift, fine"}},
+    "expect": {
+      "path": ["Expense Submitted", "Check Expense Policy", "Assess Justification", "Approve Expense",
+               "Record Expense", "Notify Employee"],
+      "variables": {"within_policy": true, "status": "queued for payment", "subject": "Expense queued for payment"}
+    }
+  }
+]

@@ -205,7 +205,7 @@ class TokenEngine:
             for case in self.cases:
                 if not case.done:
                     self._finish(case, STUCK, "tokens wait for what never comes: "
-                                 + ", ".join(sorted({*case.at, *(m for (c, m) in self._waiting if c == case.id)})))
+                                 + ", ".join(sorted({*+case.at, *(m for (c, m) in self._waiting if c == case.id)})))
         return self.cases
 
     # --- a token's life ---------------------------------------------------------------------
