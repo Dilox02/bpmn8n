@@ -22,6 +22,9 @@ from ..models import (
 from ..workflows.changes import changes, content_hash
 
 
+# The tests describe behaviour, not the host: inside Docker REDIS_URL, N8N_API_KEY and webhooks are set.
+HERMETIC = override_settings(REDIS_URL="", N8N_API_KEY="", EVENT_WEBHOOKS=[])
+
 class StoreContract:
     """The same behaviour from both backends; `make()` returns a fresh store."""
 
@@ -114,6 +117,7 @@ class StoreContract:
             pass
 
 
+@HERMETIC
 class RedisStoreTest(StoreContract, TestCase):
     def make(self):
         return shared.RedisStore(fakeredis.FakeRedis(decode_responses=True))
@@ -138,6 +142,7 @@ class RedisStoreTest(StoreContract, TestCase):
         self.assertEqual(self.store.r.hget("bpmn8n:var:rate", "value"), "1.5")
 
 
+@HERMETIC
 class DatabaseStoreTest(StoreContract, TestCase):
     def make(self):
         return shared.DatabaseStore()
@@ -147,6 +152,7 @@ class DatabaseStoreTest(StoreContract, TestCase):
         self.assertEqual(GlobalVariable.objects.get(pk="rate").value, [1, 2])
 
 
+@HERMETIC
 class ConfiguredStoreTest(TestCase):
     def test_redis_when_configured_else_the_database(self):
         self.assertIsInstance(shared.store(), shared.DatabaseStore)
@@ -154,6 +160,7 @@ class ConfiguredStoreTest(TestCase):
             self.assertIsInstance(shared.store(), shared.RedisStore)
 
 
+@HERMETIC
 @override_settings(N8N_URL="http://n8n:5678")
 class GlobalTemplatesTest(TestCase):
     """{{vars.<key>}} reads a global variable wherever bpmn8n fills templates."""
@@ -203,6 +210,7 @@ class GlobalTemplatesTest(TestCase):
             self.assertEqual(set(get_many.call_args.args[0]), {"x", "x.y"})
 
 
+@HERMETIC
 class VariablesApiTest(TestCase):
     def test_status_codes(self):
         c = self.client
@@ -257,6 +265,7 @@ V2 = workflow("v2", [
     name="Refunds v2")
 
 
+@HERMETIC
 class ChangesTest(TestCase):
     def test_a_readable_change_list(self):
         found = changes(V1, V2)
@@ -276,6 +285,7 @@ class ChangesTest(TestCase):
         self.assertNotEqual(content_hash(V1), content_hash(V2))
 
 
+@HERMETIC
 class HistoryApiTest(TestCase):
     def test_versions_and_diff(self):
         old = history.record(V1)
@@ -295,6 +305,7 @@ class HistoryApiTest(TestCase):
 N8N = "bpmn8n.clients.n8n.request"
 
 
+@HERMETIC
 class ProcessVersionTest(TestCase):
     CASE = {"X-Bpmn8n-Case": "wf1:7", "X-Bpmn8n-Process": "Refunds"}
 
@@ -350,7 +361,15 @@ class ProcessVersionTest(TestCase):
         self.assertNotIn("active", body)
 
 
+@HERMETIC
 class StreamingTest(TestCase):
+    def setUp(self):
+        # the poller closes stale connections between polls: on Postgres that would end the test's transaction
+        for target in ("bpmn8n.core.streaming.close_old_connections", "bpmn8n.api.stream.close_old_connections"):
+            patcher = patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def event(self, status="complete", minutes_ago=1, **fields):
         at = timezone.now() - timedelta(minutes=minutes_ago)
         return Event.objects.create(case_id="wf1:1", activity="Pay", process="Refunds", endpoint="pay", started=at,
@@ -447,6 +466,7 @@ class StreamingTest(TestCase):
         self.assertTrue(b"".join(r.streaming_content).startswith(b"retry:"))
 
 
+@HERMETIC
 class CaseSearchTest(TestCase):
     def setUp(self):
         now = timezone.now()
@@ -490,6 +510,7 @@ class CaseSearchTest(TestCase):
         self.assertEqual(self.client.get("/api/cases", {"var.a b": "1"}).status_code, 422)
 
 
+@HERMETIC
 class SnapshotCommandTest(TestCase):
     def run_command(self, *args):
         from io import StringIO
@@ -516,6 +537,7 @@ class SnapshotCommandTest(TestCase):
             self.run_command()
 
 
+@HERMETIC
 class PagesTest(TestCase):
     def setUp(self):
         self.staff = User.objects.create_user("ops", password="pw", is_staff=True)
@@ -568,6 +590,7 @@ class PagesTest(TestCase):
         self.assertTrue(WorkflowVersion.objects.filter(version_id="v3").exists())
 
 
+@HERMETIC
 class GlobalVariableElementTest(TestCase):
     def test_a_task_that_produces_data(self):
         from ..workflows.elements import element
