@@ -76,3 +76,26 @@ def test_a_deadline_escalates_through_the_timeout_output(deploy, n8n_api, web_ap
     waiting = web_api.get("/api/usertasks").json()
     assert not [t for t in waiting if t["activity"] == "Pay Claim" and claim in t["title"]]
     assert web_api.post(f"/api/usertasks/{escalation['id']}/complete", data={}).ok  # the escalation is a real task
+
+
+def failing_notification(credential, path):
+    """The notification lacks its recipient: the task fails, and its error output takes the case to a person."""
+    return (
+        Workflow("e2e error path", credential)
+        .start("Order Received", path)
+        .task("Notify Customer", "sendTask", "send_notification", subject="Order {{order}}", on_error="branch")
+        .manual_task("Fix Notification", "Fix the notification of order {{order}}", "", row=1)
+        .manual_task("Close Order", "Close order {{order}}", "")
+        .flow("Order Received", "Notify Customer", "Close Order")
+        .flow("Notify Customer", "Fix Notification", output="error")
+    )
+
+
+def test_a_failing_task_takes_its_error_output_to_a_person(deploy, n8n_api, web_api):
+    from conftest import N8N
+    path = deploy(failing_notification)
+    order = uuid.uuid4().hex[:6]
+    assert n8n_api.post(f"{N8N}/webhook/{path}", data={"order": order}).ok  # no "to": the task cannot run
+    fix = wait_open(web_api, "/api/usertasks", lambda t: t["activity"] == "Fix Notification" and order in t["title"])
+    assert not [t for t in web_api.get("/api/usertasks").json() if t["activity"] == "Close Order" and order in t["title"]]
+    assert web_api.post(f"/api/usertasks/{fix['id']}/complete", data={}).ok
