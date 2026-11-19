@@ -75,7 +75,7 @@ services:
       N8N_RUNNERS_ENABLED: "true"
       # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
       # ?bpmn8n=); n8n caches /static for a day: bump v on edits
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-evaluations.js?v=8&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-executions.js?v=6&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};/static/bpmn8n-insights.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-evaluations.js?v=9&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-executions.js?v=6&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};/static/bpmn8n-insights.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
       N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
