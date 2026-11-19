@@ -973,6 +973,35 @@ This table is generated (`python manage.py config --md`; a test fails when it is
 | `SEARXNG_SECRET` | `bpmn8n-dev-searxng` | SearXNG's secret (compose) |
 | `BPMN8N_WEB_IMAGE` | `bpmn8n-web:latest` | The web image of `docker-compose.prod.yml` |
 
+### One origin (optional)
+
+By default bpmn8n and n8n are two origins (`:8000`, `:5678`, the preview `:5679`). The `gateway` service of
+`docker-compose.yml` (Caddy, compose profile `one-origin`, never started otherwise) puts them on one: set `PUBLIC_URL`
+(e.g. `PUBLIC_URL=http://localhost:8090` in `.env`) and run `python -m bpmn8n up`. `bpmn8n/config.py` (`compose_env`)
+then hands compose the profile and n8n's variables: `N8N_PATH=/n8n/`, `N8N_EDITOR_BASE_URL=<PUBLIC_URL>/n8n/`,
+`N8N_WEBHOOK_URL=<PUBLIC_URL>/`, `PREVIEW_ADDRESS`, `GATEWAY_PORT` (the URL's port; `8090` behind a TLS proxy) and
+`N8N_PREVIEW_SECURE_COOKIE`. Plain `docker compose` needs the same variables set by hand.
+
+- **What goes where** (`deploy/Caddyfile`): Django at `/`; the editor at `/n8n/` (n8n serves at its root, the gateway
+  strips the prefix); `/webhook/`, `/webhook-test/`, `/webhook-waiting/` (the Wait node's resume URLs), `/form*/` and
+  `/mcp*/` to n8n at the root; the read-only preview on its own host, `preview.<host>` (`preview.localhost` resolves to
+  this machine in Chromium with no `/etc/hosts` entry).
+- **What changes**: the editor hooks take n8n's base path (`window.BASE_PATH`) for the tokens, the BPMN glyphs, `/rest`
+  and their links; links from bpmn8n to the editor go through `N8N_PUBLIC_URL` (`clients/n8n.py`, `editor_url`; it may
+  also be a path such as `/n8n`); the editor's reads of `/api/evaluations/…` and the rest are same-origin, so
+  `openapi_cors` adds no header and the rule that both must use the same host name stops mattering. Port `5678` still
+  answers n8n's REST API and webhooks (the CLI uses it), but its editor works only through the gateway.
+- **What does not**: the preview cannot join the origin (its anonymous session would clear the editor's `n8n-auth`
+  cookie, which has `Path=/`), so it keeps its own host; the gateway sets its `frame-ancestors` to `BPMN8N_PUBLIC_URL`.
+  Over plain HTTP the preview runs without a Secure cookie (n8n's editor refuses plain HTTP with one on any host but
+  `localhost`, and always on Safari). One login is not possible on n8n Community Edition (its SSO is licensed): the two
+  logins stay, with one account. `python manage.py n8n_sync_owner <staff user>` sets the same email and password on
+  both sides (n8n's owner on a fresh instance, else a member created or reset by the owner, `N8N_EMAIL`/`N8N_PASSWORD`);
+  the CLI can call `bpmn8n.clients.n8n.sync_account`. Details and evidence: `docs/spikes/one-origin.md`.
+- **Production**: the gateway speaks plain HTTP on `127.0.0.1:${GATEWAY_PORT}`; the TLS proxy in front sends it both
+  host names (`bpmn8n.example.org`, `preview.bpmn8n.example.org`) with `X-Forwarded-Proto`, which the gateway keeps
+  (`trusted_proxies`), so `SECURE_PROXY_SSL_HEADER=X-Forwarded-Proto` still applies. `PUBLIC_URL` must have no path.
+
 ### Data safety
 
 - **A retried task runs once.** Every call an n8n node makes carries its run's identity (`X-Bpmn8n-Case`, `-Node`,
@@ -1099,7 +1128,9 @@ keeps the original execution inspector available.
 Local preview iframes use `credentialless` isolation and `localhost` to prevent the anonymous preview
 instance from clearing the main editor's cookies (cookies are shared across ports). The supplied
 Chrome/Chromium setup is verified; other browsers need credentialless support or a separate HTTPS
-preview origin. The preview CSP explicitly allows the two local editor origins.
+preview origin. The preview CSP explicitly allows the two local editor origins. Behind the one-origin
+gateway ("One origin (optional)") the preview has a host of its own and the editor shares bpmn8n's origin, so
+neither trick is needed.
 
 Checks: `python manage.py test bpmn8n.tests`, `npm --prefix n8n-nodes-bpmn8n test`, and
 `node --test n8n-editor/test/*.test.mjs`. Browser checks exercise live SSE updates, retained focus,
