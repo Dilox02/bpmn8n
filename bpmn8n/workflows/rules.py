@@ -10,11 +10,12 @@ import re
 from dataclasses import asdict, dataclass
 from itertools import combinations
 
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, User
 
 from ..api.tasks import MUSHY_VERBS, TASKS
 from ..core.variables import Condition, ConditionError
 from ..engine import LOOP_LIMIT, STUCK, Outcome, Resolver, TokenEngine
+from .builder import Workflow
 from .elements import element
 
 CATEGORIES = ("structure", "data", "people", "metrics", "style")
@@ -378,6 +379,46 @@ class ErrorPath(Rule):
                                          "put a user task on its error path")
 
 
+# a step that approves or decides, by its words ("Sign-off Contract", "Accept Claim"), or a yes/no field "approved"
+APPROVES = re.compile(r"\b(?:approv\w*|authori[sz]\w*|sign(?:s|ed|ing|atures?)?|decid\w*|decision\w*|accept\w*|reject\w*)\b", re.I)
+
+
+def approves(name, params):
+    fields = params.get("form", {}).get("fields", [])
+    return any(APPROVES.search(text) for text in (name, str(params.get("title", "")))) or any(
+        f.get("type") == "boolean" and APPROVES.search(str(f.get("name", "")).replace("_", " ")) for f in fields)
+
+
+def one_person(lane, other):
+    """Whether one person may work tasks of both lanes: the same lane, no lane (only superusers see such a
+    task, and they see every task), or a member of both groups."""
+    return lane == other or not lane or not other or \
+        User.objects.filter(groups__name=lane).filter(groups__name=other).exists()
+
+
+@rule
+class SeparationOfDuties(Rule):
+    """D7, four-eyes ([BO] §2.3.4.1): who asks for something should not be who approves it. The task page
+    enforces `notSameAs` (H3); this notes where it is missing. ponytail: by the step's words, conservative:
+    an info, never an error (only a policy knows that a step needs four eyes)."""
+    id, level, category = "separation-of-duties", "info", "people"
+    doc = ("a human task that approves or decides (approve, authorise, sign, decide, accept or reject in its name "
+           "or title, or a yes/no field such as `approved`) after another human task one person may also work (the "
+           "same lane, no lane, or lanes with a member in common), that task not in its `not_same_as`")
+
+    def check(self, ctx):
+        people = set(ctx.graph.of(human=True))
+        for name in sorted(people):
+            params = ctx.nodes[name]["parameters"]
+            if not approves(name, params):
+                continue
+            lane, excluded = params.get("lane", ""), set(params.get("notSameAs") or [])
+            if earlier := sorted(n for n in ctx.graph.before(name) & people - {name} - excluded
+                                 if one_person(lane, ctx.nodes[n]["parameters"].get("lane", ""))):
+                yield self.problem(name, f"separation of duties: add not_same_as={json.dumps(earlier)} so one person "
+                                         "cannot request and approve")
+
+
 # --- implicit gateways ([AW] §2.3, §3.3, §4.2) ----------------------------------------------------
 
 @rule
@@ -600,6 +641,7 @@ class ActionNames(Rule):
     def check(self, ctx):
         if why := naming(ctx.graph.name):
             yield self.problem("", f"the process's name: {why}")
-        for name in ctx.graph.flow_nodes:
-            if ctx.graph.element(name).category == "task" and (why := naming(name)):
+        for name in ctx.graph.flow_nodes:  # not the tasks a step places on its own: named after that step
+            if ctx.graph.element(name).category == "task" and task_name(ctx.nodes[name]) not in Workflow.STEP_TASKS \
+                    and (why := naming(name)):
                 yield self.problem(name, why)

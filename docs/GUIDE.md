@@ -242,6 +242,7 @@ The rules are classes in `bpmn8n/workflows/rules.py`, run in this order; `python
 | `wait` | error | structure | branches that run at once (a parallel or inclusive gateway, one output leading to several steps) where more than one waits (a person, a message, a timer over a minute) |
 | `metrics` | warning | metrics | a Metrics node with nothing produced before it, or without a threshold; an info when missing the threshold changes nothing (no conditions gateway after it) |
 | `error-path` | info | people | a step n8n retries whose last failure reaches no person: it stops the case (no `on_error`), or its error path ends without a User or Manual Task (an `error` output leading nowhere is the `output` rule's) |
+| `separation-of-duties` | info | people | a human task that approves or decides (approve, authorise, sign, decide, accept or reject in its name or title, or a yes/no field such as `approved`) after another human task one person may also work (the same lane, no lane, or lanes with a member in common), that task not in its `not_same_as` |
 | `implicit-split` | info | structure | one output leading to several steps (not a Parallel Gateway's): they all run, a split nobody drew |
 | `implicit-join` | warning | structure | a step that is not a Merge, reached by branches that run at once: it runs once per arriving branch; the branches of an exclusive or event-based choice may meet anywhere |
 | `endless-loop` | error | structure | a loop no flow leaves (no output out of it, none left open): it never ends |
@@ -290,7 +291,7 @@ What BPMN 2.0's process diagrams have, and how bpmn8n has it:
 | | Elements |
 |---|---|
 | **Nodes of bpmn8n** | Service, Script, Business Rule, Send, Receive, User and Manual Task; Call Activity; Exclusive, Inclusive, Parallel and Event-Based Gateway; intermediate Timer Event; Error End Event; an interrupting **timer boundary event** on a User or Manual Task (a deadline: the node gets a `timeout` output); multi-instance with a completion condition (all, any, at least N); a Global Variable step (a data store shared by every workflow) |
-| **n8n itself, in the notation** | message start (Webhook), timer start (Schedule Trigger), none start (Execute Workflow Trigger); the join of parallel and inclusive branches (Merge, with execution order v1); multi-instance in parallel (n8n runs a node once per item: one User Task per item); loops (a flow back); text annotations (sticky notes); an error end's event sub-process (n8n's Error Trigger workflow); an **error boundary** on a task (n8n's per-node error output: `task(on_error="branch")`, see *Agentic patterns*) |
+| **n8n itself, in the notation** | message start (Webhook), timer start (Schedule Trigger), none start (Execute Workflow Trigger); the join of parallel and inclusive branches (Merge, with execution order v1); multi-instance in parallel (n8n runs a node once per item: one User Task per item); loops (a flow back; the `loop` step adds the loop maximum, see *Agentic patterns*); text annotations (sticky notes); an error end's event sub-process (n8n's Error Trigger workflow); an **error boundary** on a task (n8n's per-node error output: `task(on_error="branch")`, see *Agentic patterns*) |
 | **Can be added** (n8n allows them, bpmn8n does not have them yet) | non-interrupting timer and message **boundary events** on a User Task (a reminder or an escalation while the task stays open: a separate execution, since n8n waits on one thing at a time); explicit none and **terminate** end events (the latter stops the execution's other branches through n8n's API); **signal** events (one message that resumes every waiting case, on the existing subscriptions); conditional events (a condition checked on a timer); sequential multi-instance (Loop Over Items); **pools and lanes** drawn as bands (sticky notes, laid out by lane); **import and export of .bpmn files** (BPMN XML, to and from Camunda, bpmn.io, Signavio); compensation and transactions (sagas: each completed task records how to undo it) |
 | **Not possible in n8n** (emulated at best) | containers: an expanded sub-process, an event sub-process inside the process, a transaction's box, pools as real containers (n8n's canvas has no nesting: a Call Activity or bands instead); an event drawn attached to an activity's border (it would be an output of the node); message flows between pools on the same canvas; complex gateways and parallel event-based gateways (no general rule to express them); choreography and conversation diagrams (not executable) |
 
@@ -387,6 +388,14 @@ w.flow("Complaint Received", "Draft Reply", "Approve Reply")
 
 **Error paths** (C3, J7, [AE] 61–62). `task(..., retry=2, retry_wait_ms=2000)` sets n8n's *Retry On Fail* (Max Tries = retry + 1, at most 5; waits up to 5 s), for a system that may be briefly down. After the last try, `on_error=None` stops the case, `"continue"` goes on with an `error` field, and `"branch"` gives the task a second output, `error` (an error boundary event): `w.flow("Book Slot", "Book By Phone", output="error")` sends the case to a person who takes it over. The check knows that output: left unconnected it is the `output` rule's warning, and the data on it is what the task received, not what it would have produced. The `error-path` rule notes (info) a retried step whose last failure reaches no person.
 
+**Loops** (C7, [AW] §7.2, [BO] §2.6). `loop(name, back_to, until, max_rounds=3)` closes a loop with its guard: flow the step whose result decides into it, and the case goes on through `done` when `until` (a condition, as a `condition_gateway`'s) holds, back to `back_to` through `again` otherwise, and out through `limit` once `max_rounds` rounds were made, which you flow to a person or an end. The `count_round` task counts the rounds in the case (`{{loop_rounds}}`, by loop name, so loops one after the other or one inside the other count apart; the same count as a reflection's), then a conditions gateway reads `until` and `{{rounds_left}}`: the loop always ends, so the loop rules and the deadlock search stay quiet, and when `until` reads only a person's answers the `human` rule treats it as that person's decision (the count is a budget, not a decision). `decision_scope="technical"` as a `condition_gateway`'s. A case that enters the same loop again from outside it (an outer loop) goes on counting where it stopped.
+
+```python
+w.loop("Approved?", back_to="Draft Letter", until="{{approved}}", max_rounds=3)
+w.flow("Approve Letter", "Approved?", "Send Letter")         # "done" is the first output
+w.flow("Approved?", "Write Letter", output="limit")          # after 3 refusals a person writes it
+```
+
 **Oversight** (H10, [AE] 63–66). `llm_agent(..., oversight="review")`, the default, is human-in-the-loop: a person reviews every answer. `oversight="audit", audit_rate=0.1, risk="low"` is human-on-the-loop: the `draw_audit_sample` task decides from the case id alone (the same case always gets the same answer; about 10% of the cases) whether a person audits it, the event log records which, and the step's `audit` output goes to that person while its first output, `continue`, goes on. The `human` rule accepts an audited agent only when the step is declared `risk="low"`, and says so in an info; otherwise it stays an error, because a decision with legal or similar effects on a person needs a person every time (GDPR art. 22). Declare it only for drafts that commit no one (an internal summary, a suggested tag).
 
 **Cost.** Every LLM agent is retried up to 3 times, 5 s apart (a provider's 429 or 503 is often gone in seconds), so a failing answer can cost three calls. A prompt chain costs one call per prompt, a parallel step one per branch, a reflection two per round (up to `2 × max_rounds`), each times three in the worst case: `max_rounds` 2 or 3 is usually enough, and every bound is checked when the workflow is built.
@@ -466,6 +475,12 @@ ports); cross-host deployments need a same-host reverse proxy. CORS permits only
 The editor hook replaces the Evaluation route component; it does not change n8n's licence flags or
 enable its commercial evaluation backend. As with the other editor hooks, verify router integration
 when upgrading n8n. If assets remain cached after editing a hook, restart the n8n editor container.
+
+**Evaluation gate** (F9). `python manage.py eval_gate [--project P] [--workflow W] [--last N]` judges the
+N newest runs (default 1) of each project's workflow in the local store against their thresholds: it exits
+1 when one missed a threshold, listing the run, the node, the metric, its value and the threshold; 0 when
+every threshold held; 2 when there is nothing to judge (no run, or runs without a threshold). CI runs it
+after the tests when a project has committed runs (`projects/*/run/`), and lets "nothing to judge" pass.
 
 ## Simulation and capacity
 
@@ -759,16 +774,20 @@ The hypotheses were verified on the real stack (n8n 2.42, Apple M5) with the tes
 ## Tests
 
 ```bash
-python manage.py test bpmn8n --parallel 1             # 384 tests: API, states, check, Studio (real build), mining, every project's examples and scenarios
+python manage.py test bpmn8n --parallel 1             # 447 tests: API, states, check, Studio (real build), mining, every project's examples and scenarios
 python manage.py check_project projects/<name>        # one project: imports, examples, scenarios, workflow
 python manage.py test_scenarios projects/<name>       # only its scenarios (scenarios.json) on the token engine
 python manage.py record_scenario <case id> projects/<name>  # a real case becomes a scenario (regression test)
+python manage.py eval_gate                            # the newest evaluation runs meet their thresholds (exit 1 if not)
 cd n8n-nodes-bpmn8n && npm test                       # 12 tests: schema → fields, input, output, waits, errors
 .venv-models/bin/python -m unittest discover tools    # micro-batcher
 pip install -r requirements-dev.txt && playwright install chromium
 pytest e2e                                            # 37 E2E tests on the ./start.sh stack (UI included)
+pytest e2e/test_differential.py                       # engine vs n8n: ACME's real cases replayed on the engine
 python tools/bench.py                                 # throughput of an endpoint
 ```
+
+**Engine vs n8n** (F5). `e2e/test_differential.py` runs real cases of the four ACME processes on the stack (Laya deciding; people, the manager's approval and the reader's `hold-book` message answered through the API), rebuilds each from its event log with `record_scenario`'s logic (`scenarios.from_log`) and replays it on the token engine: the steps the engine takes must be the ones n8n logged, in the same order (ten cases, in about 15 s). It is what keeps scenario tests, the deadlock search and the simulator honest about n8n's semantics.
 
 The datasets in `e2e/datasets/` and some E2E tickets are in several languages on purpose (`"lang"`: en, it, es…): they measure Laya and GLiNER on multilingual text.
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from ..api.tasks import TASKS, discover
 from ..clients import n8n
 from ..core.variables import TEMPLATE
+from .builder import ROUNDS_LEFT
 from .graph import ProcessGraph
 from .rules import RULES, Problem, Rule
 from .scenarios import run_scenarios
@@ -87,8 +88,9 @@ class WorkflowCheck:
         return None
 
     def reads_only_forms(self, name):
-        """Whether every path supplies a human answer that no later automated step overwrites."""
-        used = self.references(self.nodes[name]["parameters"])
+        """Whether every path supplies a human answer that no later automated step overwrites (a loop step's
+        count of rounds aside: its budget decides nothing about a person)."""
+        used = self.references(self.nodes[name]["parameters"]) - {ROUNDS_LEFT}
         return bool(used) and used <= (self.form_data[name] or set())
 
     @staticmethod

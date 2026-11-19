@@ -11,11 +11,13 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.contrib.auth.models import Group
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from ..models import Case, Event
-from ..workflows.builder import Workflow
+from ..tasks import RoundInput, count_round
+from ..workflows.builder import SpecError, Workflow
 from ..workflows.check import ProjectCheck, WorkflowCheck
 from ..workflows.rules import SEARCH_CASES
 from ..workflows.scenarios import ScenarioRunner, record
@@ -220,6 +222,69 @@ class ProjectScenariosTest(TestCase):
             call_command("test_scenarios", folder, stdout=io.StringIO())  # passes: no CommandError
         with self.assertRaisesRegex(ValueError, "no event of case 'wf:0'"):
             record("wf:0", expense())
+
+
+def rework(max_rounds=3):
+    """Start → Draft → Approve (a person) → loop Approved?: done → Send | again → Draft | limit → Write."""
+    return (Workflow("Answer Customer").start("Start", "rework")
+            .task("Draft Letter", "scriptTask", "compose_prompt", prompt="A letter to {{customer}}")
+            .user_task("Approve Letter", "Approve the letter", "staff", [("approved", "Approved", "boolean")])
+            .loop("Approved?", back_to="Draft Letter", until="{{approved}}", max_rounds=max_rounds)
+            .task("Send Letter", "sendTask", "send_notification", to="{{customer}}", subject="Your letter")
+            .manual_task("Write Letter", "Write the letter yourself", "staff")
+            .flow("Start", "Draft Letter", "Approve Letter", "Approved?", "Send Letter")
+            .flow("Approved?", "Write Letter", output="limit"))
+
+
+ROUND = ["Draft Letter", "Approve Letter", "Approved?: count", "Approved?"]
+
+
+class LoopTest(TestCase):
+    """C7: a standard loop and its guard, the loop step."""
+
+    def test_its_gateway_goes_again_until_done_or_the_limit(self):
+        w = rework()
+        self.assertEqual(w.node("Approved?: count")["parameters"]["input"]["value"], {"loop": "Approved?", "max_rounds": 3})
+        self.assertEqual([(b["name"], b["condition"]) for b in w.node("Approved?")["parameters"]["branches"]["values"]],
+                         [("done", "{{approved}}"), ("again", "{{rounds_left}}"), ("limit", "not {{rounds_left}}")])
+        self.assertEqual(w.connections["Approve Letter"]["main"][0][0]["node"], "Approved?: count")
+        self.assertEqual([[c["node"] for c in port] for port in w.connections["Approved?"]["main"]],
+                         [["Send Letter"], ["Draft Letter"], ["Write Letter"]])
+        Group.objects.create(name="staff")
+        problems = {(p.rule, p.node) for p in WorkflowCheck(w.as_json(), fetch=lambda _: None, start_data=["customer"]).problems}
+        self.assertEqual(problems, set())  # a guaranteed exit (loop rules), data on the first round, a person's decision
+        spec = Workflow.from_spec({"name": "Answer Customer", "steps": [
+            {"type": "start", "name": "Start", "path": "p"},
+            {"type": "user_task", "name": "Write Letter", "title": "Write it", "lane": "staff",
+             "form": [["letter", "Letter", "string"]]},
+            {"type": "loop", "name": "Done?", "back_to": "Write Letter", "until": "{{letter}} != ''", "max_rounds": 2}],
+            "flows": [{"from": "Start", "to": ["Write Letter", "Done?"]},
+                      {"from": "Done?", "branch": "limit", "to": ["Write Letter"]}]})
+        self.assertEqual(spec.node("Done?: count")["parameters"]["input"]["value"]["max_rounds"], 2)
+        for wrong in ({"max_rounds": 0}, {"max_rounds": True}, {"until": " "}, {"back_to": "Later"}):
+            with self.assertRaises(SpecError):
+                Workflow("w").start("Start", "p").loop("Again?", **{"back_to": "Start", "until": "{{ok}}", **wrong})
+
+    def test_a_case_goes_round_twice_then_leaves_when_until_holds(self):
+        no, yes = {"approved": False}, {"approved": True}
+        report = play(rework().as_json(), start={"customer": "ann@acme.test"}, people={"Approve Letter": [no, no, yes]},
+                      expect={"path": ["Start", *ROUND * 3, "Send Letter"], "ends": "Send Letter",
+                              "variables": {"loop_rounds": {"Approved?": 3}}})
+        self.assertTrue(report["passed"], report["failure"])  # the last round: until wins over the limit
+
+    def test_a_case_that_never_meets_until_leaves_at_the_limit(self):
+        report = play(rework(max_rounds=2).as_json(), start={"customer": "ann@acme.test"},
+                      people={"Approve Letter": [{"approved": False}] * 2},
+                      expect={"path": ["Start", *ROUND * 2, "Write Letter"], "not": ["Send Letter"],
+                              "ends": "Write Letter", "variables": {"rounds_left": False}})
+        self.assertTrue(report["passed"], report["failure"])
+
+    def test_each_loop_of_a_case_counts_its_own_rounds(self):
+        def count(rounds, loop):
+            return count_round(RequestFactory().post("/"), RoundInput(loop=loop, loop_rounds=rounds, max_rounds=2)).model_dump()
+        self.assertEqual(count({}, "A"), {"loop_rounds": {"A": 1}, "rounds_left": True})
+        self.assertEqual(count({"A": 1}, "A"), {"loop_rounds": {"A": 2}, "rounds_left": False})
+        self.assertEqual(count({"A": 2}, "B"), {"loop_rounds": {"A": 2, "B": 1}, "rounds_left": True})
 
 
 def deadlocks(workflow):
