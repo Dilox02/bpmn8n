@@ -1,6 +1,6 @@
 """Insights N4: the process map's level of detail, replay, the import wizard, the anonymised export, snapshots."""
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from ..analytics import Log, dfg
 from .support import add_events, step
@@ -52,3 +52,26 @@ class ProcessMapTest(TestCase):
         self.assertIn("performance", page)
         self.assertNotIn("E: ", self.client.get("/insights/?process=P&acts=50").content.decode())  # E is dropped
         self.assertIn("pmap", self.client.get("/insights/?process=P&acts=junk&paths=-3").content.decode())
+
+
+@override_settings(API_TOKEN="secret", N8N_PUBLIC_URL="http://localhost:5678")
+class ReplayApiTest(TestCase):
+    def setUp(self):
+        cases()
+
+    def get(self, **query):
+        return self.client.get("/api/analytics/replay", {"workflow_id": "w", **query}, HTTP_AUTHORIZATION="Bearer secret")
+
+    def test_needs_the_overlay_auth(self):
+        self.assertEqual(self.client.get("/api/analytics/replay", {"workflow_id": "w"}).status_code, 401)
+
+    def test_ordered_steps_per_case_bounded_by_the_limit(self):
+        body = self.get(limit=3).json()
+        self.assertEqual(len(body["cases"]), 3)
+        first = body["cases"][0]["steps"]
+        self.assertEqual([s["node"] for s in first][:2], ["A", "B"])
+        self.assertTrue(all(s["end"] >= s["start"] for s in first))
+        self.assertEqual([s["start"] for s in first], sorted(s["start"] for s in first))
+        self.assertEqual(len(self.get().json()["cases"]), 8)
+        self.assertEqual(self.get(workflow_id="other").json()["cases"], [])
+        self.assertEqual(self.get(limit=0).status_code, 422)

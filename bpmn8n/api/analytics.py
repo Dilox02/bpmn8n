@@ -110,3 +110,17 @@ def overlay(request, workflow_id: str, since: datetime | None = None, until: dat
     and a 0–1 heat for frequency and for duration."""
     log, scope = scoped(None, since, until, filters, workflow=workflow_id)
     return {"scope": {**scope, "workflow_id": workflow_id}, "nodes": stats.overlay(log)}
+
+
+REPLAY_STEPS = 200  # steps kept per case: the animation is a picture of the flow, not the whole log
+
+
+@router.get("/replay", auth=overlay_auth)
+def replay(request, workflow_id: str, since: datetime | None = None, limit: int = Query(50, ge=1, le=200)):
+    """The latest `limit` cases of a workflow (that started at or after `since`), each its ordered steps as
+    {node, start, end} in epoch seconds: what the editor's Replay animates over the canvas."""
+    log, scope = scoped(None, since, None, None, workflow=workflow_id)
+    traces = sorted(log.traces, key=lambda t: t.start)[-limit:]
+    return {"scope": {**scope, "workflow_id": workflow_id}, "cases": [
+        {"case_id": t.case_id, "steps": [{"node": s.activity, "start": s.started, "end": s.ended} for s in t.steps[:REPLAY_STEPS]]}
+        for t in traces]}

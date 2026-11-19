@@ -79,8 +79,42 @@
     if (loopback.has(url.hostname) && loopback.has(location.hostname)) url.hostname = location.hostname;
     return url.href.replace(/\/$/, '');
   };
+  // Replay ([DI] 4.1.6): the latest cases of the workflow as dots moving along its nodes on a compressed clock.
+  const DWELL = 0.4;  // animation seconds a dot stays on a node at least, so a 10 ms step is still seen
+  const replayURL = (base, id, { since, limit = 50 } = {}) => `${String(base).replace(/\/$/, '')}/api/analytics/replay` +
+    `?workflow_id=${encodeURIComponent(id)}&limit=${limit}${since ? `&since=${encodeURIComponent(since)}` : ''}`;
+  /** Real time to animation time: the whole window fits in `length` seconds (at speed 1); all cases keep their order. */
+  const compress = (cases, length = 40) => {
+    const starts = cases.flatMap(c => c.steps.map(s => s.start)), ends = cases.flatMap(c => c.steps.map(s => s.end));
+    if (!starts.length) return { length: 0, cases: [] };
+    const t0 = Math.min(...starts), span = Math.max(...ends) - t0, k = span > 0 ? length / span : 0;
+    return { length, cases: cases.map(c => ({ id: c.case_id, steps: c.steps.map(s => {
+      const start = (s.start - t0) * k;
+      return { node: s.node, start, end: Math.max((s.end - t0) * k, start + DWELL) };
+    }) })) };
+  };
+  /** Where a case's dot is at animation time t: on a node while it runs, between two while it waits, null before
+   * it starts or after it ends (or when a node is not on the canvas). `pos`: node name to {x, y}. */
+  const positionAt = (c, t, pos) => {
+    let i = -1;
+    c.steps.forEach((s, n) => { if (s.start <= t) i = n; });
+    const here = c.steps[i], from = here && pos[here.node];
+    if (!from) return null;
+    if (t <= here.end) return { x: from.x, y: from.y, node: here.node, moving: false };
+    const next = c.steps[i + 1], to = next && pos[next.node];
+    if (!to) return null;
+    const f = Math.min(1, Math.max(0, (t - here.end) / Math.max(next.start - here.end, 1e-9)));
+    return { x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f, node: next.node, moving: true };
+  };
+  /** The animation time after dt milliseconds at `speed`, wrapping to the start past the end of the longest case. */
+  const advance = (t, dt, speed, length) => { const n = t + dt / 1000 * speed; return length > 0 && n > length + 1 ? 0 : n; };
+  /** The next moment something starts or ends after t (the step-by-step mode for reduced motion); null at the end. */
+  const nextBoundary = (replay, t) => {
+    const times = replay.cases.flatMap(c => c.steps.flatMap(s => [s.start, s.end])).filter(x => x > t + 1e-9);
+    return times.length ? Math.min(...times) : null;
+  };
   const Heat = { MODES, NEAR, scale, measure, heat, colour, count, duration, badge, describe, legend, workflowId, overlayURL, sameHost,
-    capacityColour, capacityBadge, capacityDescribe, capacityLegend };
+    capacityColour, capacityBadge, capacityDescribe, capacityLegend, replayURL, compress, positionAt, advance, nextBoundary, DWELL };
   if (typeof module === 'object' && module.exports) { module.exports = Heat; return; }  // node --test
 
   const BPMN8N = sameHost(new URL(document.currentScript?.src || location.href).searchParams.get('bpmn8n') || 'http://localhost:8000', location.href);
@@ -95,6 +129,12 @@
     .bpmn8n-heat .ramp { display: inline-block; width: 72px; height: 8px; border-radius: 4px; vertical-align: middle; margin: 0 6px; }
     .bpmn8n-heat .legend, .bpmn8n-heat .state { flex-basis: 100%; opacity: .8; }
     .bpmn8n-heat .legend:empty, .bpmn8n-heat .state:empty { display: none; }
+    .bpmn8n-replay { position: fixed; inset: 0; z-index: 19; pointer-events: none; }
+    .bpmn8n-replay .dot { position: absolute; left: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; background: hsl(212 90% 62%);
+      box-shadow: 0 0 0 2px rgba(22, 22, 28, .8); pointer-events: auto; }
+    .bpmn8n-replay .dot[hidden] { display: none; }
+    .bpmn8n-heat .replay { display: inline-flex; align-items: center; gap: 6px; }
+    .bpmn8n-heat select { font: inherit; color: inherit; background: transparent; border: 1px solid rgba(255, 255, 255, .2); border-radius: 6px; }
     [data-bpmn8n-heat] [data-canvas-node-render-type] { transition: box-shadow .2s, opacity .2s; }
     [data-bpmn8n-heat=hot] [data-canvas-node-render-type] {
       box-shadow: 0 0 0 3px var(--bpmn8n-heat), 0 0 16px 3px var(--bpmn8n-heat) !important; }
@@ -133,8 +173,14 @@
     panel = document.createElement('div');
     panel.className = 'bpmn8n-heat'; panel.setAttribute('role', 'group'); panel.setAttribute('aria-label', 'Heatmap of the event log and capacity');
     panel.innerHTML = `<span>Heat</span>${MODES.map(m => `<button type="button" data-mode="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}
+      <button type="button" data-replay="toggle" aria-pressed="false">Replay</button>
+      <span class="replay" hidden><button type="button" data-replay="play">Pause</button><button type="button" data-replay="step">Step</button>
+        <label>Speed <select data-replay="speed"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label></span>
       <span class="legend"></span><span class="state" role="status"></span>`;
+    panel.querySelector('[data-replay=speed]').addEventListener('change', event => { if (rp) rp.speed = Number(event.target.value); });
     panel.addEventListener('click', event => {
+      const control = event.target.closest('button')?.dataset.replay;
+      if (control) return replayControl(control);
       const next = event.target.closest('button')?.dataset.mode;
       if (!next) return;
       mode = next;
@@ -145,8 +191,67 @@
     return panel;
   }
 
+  // Replay: dots on a fixed layer over the canvas, at the nodes' screen centres, read again at every frame.
+  let rp = null;  // { replay, t, playing, speed, last, raf, layer, dots }
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function drawReplay() {
+    if (!rp) return;
+    const pos = {};
+    document.querySelectorAll('[data-test-id=canvas-node][data-node-name]').forEach(el => {
+      const b = el.getBoundingClientRect();
+      pos[el.dataset.nodeName] = { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    });
+    rp.replay.cases.forEach((c, i) => {
+      const dot = rp.dots[i] || (rp.dots[i] = rp.layer.appendChild(Object.assign(document.createElement('i'), { className: 'dot' })));
+      const at = positionAt(c, rp.t, pos);
+      dot.hidden = !at;
+      if (at) { dot.style.transform = `translate(${at.x - 5}px, ${at.y - 5}px)`; dot.title = `${c.id} \u00b7 ${at.node}`; }
+    });
+  }
+  function frame(now) {
+    if (!rp?.playing) return;
+    rp.t = advance(rp.t, now - rp.last, rp.speed, rp.replay.length);
+    rp.last = now;
+    drawReplay();
+    rp.raf = requestAnimationFrame(frame);
+  }
+  function setPlaying(on) {
+    if (!rp) return;
+    rp.playing = on && !reduced();  // reduced motion: only the Step button moves the dots
+    panel.querySelector('[data-replay=play]').textContent = rp.playing ? 'Pause' : 'Play';
+    cancelAnimationFrame(rp.raf);
+    if (rp.playing) { rp.last = performance.now(); rp.raf = requestAnimationFrame(frame); }
+  }
+  async function replayControl(control) {
+    if (control === 'toggle') {
+      if (rp) { cancelAnimationFrame(rp.raf); rp.layer.remove(); rp = null; panel.querySelector('.replay').hidden = true; panel.querySelector('[data-replay=toggle]').setAttribute('aria-pressed', 'false'); say(''); return; }
+      const id = workflowId(location.pathname);
+      say('Reading the cases\u2026');
+      try {
+        const browserId = (() => { try { return localStorage.getItem('n8n-browserId') || ''; } catch { return ''; } })();
+        const response = await fetch(replayURL(BPMN8N, id), { credentials: 'include', headers: browserId ? { 'browser-id': browserId } : {} });
+        if (!response.ok) throw Error((await response.json().catch(() => ({}))).detail || `bpmn8n did not answer (HTTP ${response.status}).`);
+        const replay = compress((await response.json()).cases);
+        if (!replay.cases.length) return say('No case of this workflow in the event log yet.');
+        const layer = Object.assign(document.createElement('div'), { className: 'bpmn8n-replay' });
+        document.body.append(layer);
+        rp = { replay, t: 0, speed: Number(panel.querySelector('[data-replay=speed]').value), layer, dots: [] };
+        panel.querySelector('.replay').hidden = false;
+        panel.querySelector('[data-replay=toggle]').setAttribute('aria-pressed', 'true');
+        say(`${replay.cases.length} cases${reduced() ? ', step by step (reduced motion)' : ''}`);
+        drawReplay(); setPlaying(true);
+      } catch (error) { say(error.message === 'Failed to fetch' ? `bpmn8n is unreachable at ${BPMN8N}.` : error.message); }
+    } else if (control === 'play' && rp) setPlaying(!rp.playing);
+    else if (control === 'step' && rp) {
+      setPlaying(false);
+      rp.t = nextBoundary(rp.replay, rp.t) ?? 0;
+      drawReplay();
+    }
+  }
+
   function paint() {
     queued = false;
+    drawReplay();
     const flow = document.querySelector('.vue-flow');
     const id = workflowId(location.pathname);
     const ours = flow && id && flow.querySelector('[data-test-id=canvas-node][data-node-type^="CUSTOM.bpmn8n"]');

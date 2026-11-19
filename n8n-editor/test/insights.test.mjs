@@ -85,3 +85,43 @@ test('capacity badges, titles and legend say ρ, people, the wait and the bottle
   assert.equal(Heat.capacityLegend({ nodes: {}, note: 'a peak of cases at once has no steady state: simulate it' }),
     'a peak of cases at once has no steady state: simulate it');
 });
+
+const cases = [
+  { case_id: 'w:1', steps: [{ node: 'A', start: 1000, end: 1010 }, { node: 'B', start: 1030, end: 1040 }] },
+  { case_id: 'w:2', steps: [{ node: 'A', start: 1050, end: 1060 }] },
+];
+const centres = { A: { x: 0, y: 0 }, B: { x: 100, y: 200 } };
+
+test('replay compresses the window into the animation length and keeps every step visible', () => {
+  const r = Heat.compress(cases, 10);  // 60 real seconds -> 10
+  assert.equal(r.length, 10);
+  assert.deepEqual(r.cases[0].steps.map(s => [s.node, +s.start.toFixed(3)]), [['A', 0], ['B', 5]]);
+  assert.equal(+r.cases[1].steps[0].start.toFixed(3), 8.333);
+  const tiny = Heat.compress([{ case_id: 'x', steps: [{ node: 'A', start: 5, end: 5 }, { node: 'B', start: 6, end: 6 }] }], 10);
+  assert.ok(tiny.cases[0].steps[0].end - tiny.cases[0].steps[0].start >= Heat.DWELL);
+  assert.deepEqual(Heat.compress([], 10), { length: 0, cases: [] });
+});
+
+test('a token sits on its node, travels between two, and is gone before and after', () => {
+  const all = Heat.compress(cases, 60).cases;  // 1 s per real second: A 0-10, B 30-40
+  assert.equal(Heat.positionAt(all[0], 5, centres).node, 'A');
+  assert.deepEqual(Heat.positionAt(all[0], 20, centres), { x: 50, y: 100, node: 'B', moving: true });  // halfway
+  assert.equal(Heat.positionAt(all[0], 35, centres).moving, false);
+  assert.equal(Heat.positionAt(all[0], 45, centres), null);
+  assert.equal(Heat.positionAt(all[1], 10, centres), null);  // w:2 has not started
+  assert.equal(Heat.positionAt(all[0], 5, { B: centres.B }), null);  // node not on the canvas
+});
+
+test('the clock advances by speed and wraps; step mode jumps to the next boundary', () => {
+  assert.equal(Heat.advance(1, 500, 2, 10), 2);
+  assert.equal(Heat.advance(10.5, 1000, 1, 10), 0);
+  const r = Heat.compress(cases, 60);
+  assert.equal(Heat.nextBoundary(r, 0), 10);
+  assert.equal(Heat.nextBoundary(r, 10), 30);
+  assert.equal(Heat.nextBoundary(r, 60), null);
+});
+
+test('replay reads the replay endpoint of the workflow', () => {
+  assert.equal(Heat.replayURL('http://b/', 'wf 1', { since: '2026-01-01', limit: 20 }),
+    'http://b/api/analytics/replay?workflow_id=wf%201&limit=20&since=2026-01-01');
+});
