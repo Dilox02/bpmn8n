@@ -9,11 +9,20 @@
   import   workflows/*.json -> n8n (published workflows stay published)
   deploy   `manage.py workflows push` (every project, or the folders given) in the web container
   diff     `manage.py workflows diff`: drift between git and n8n (exits with 1 on drift)
+  pull     `manage.py workflows pull`: n8n's workflows back into projects/*/workflow.json
+  backup   both Postgres databases and the projects' folders (run/, the evaluations index) -> backups/<timestamp>/
+  restore  <dir>: puts a backup back, after asking (--yes: without); replaces both databases
+  schedule run_deadlines every minute (and the daily digest, and `prune` when PRUNE_DAYS is set) from this shell;
+           the `scheduler` compose service does the same in a container
+  version  bpmn8n's version
 The n8n owner login that creates the credential: N8N_EMAIL and N8N_PASSWORD (the environment, else .env)."""
 import argparse
 import subprocess
 import sys
+import time
 
+from . import __version__
+from .ops import scheduler
 from .ops.bootstrap import Bootstrap, N8nSession
 from .ops.services import HOST_MODELS, SERVICES, CliError, Models, N8n, Postgres, Preview, Stack, Web, need, update_env
 
@@ -127,8 +136,63 @@ def diff(stack, args):
     return manage(stack, "workflows", "diff", *args.args)
 
 
+def pull(stack, args):
+    return manage(stack, "workflows", "pull", *args.args)
+
+
+DATABASES = ("bpmn8n", "n8n")  # the two on the Postgres server
+
+
+def backup(stack, args):
+    """pg_dump of both databases (inside the postgres container, copied out) and the projects' folders, which hold
+    the run/ samples and the evaluations index, in backups/<timestamp>/."""
+    folder = stack.root / "backups" / time.strftime("%Y%m%d-%H%M%S", time.localtime(stack.now()))
+    folder.mkdir(parents=True)
+    for name in DATABASES:
+        stack.compose("exec", "-T", "postgres", "sh", "-c",
+                      f"pg_dump -U bpmn8n --clean --if-exists {name} > /tmp/{name}.sql", capture=True)
+        stack.compose("cp", f"postgres:/tmp/{name}.sql", f"{folder}/{name}.sql", capture=True)
+    stack.compose("cp", "web:/app/projects/.", f"{folder}/projects/", capture=True)
+    stack.say(f"✓ backup in {folder.relative_to(stack.root)}/")
+
+
+def restore(stack, args):
+    """Replaces both databases and the projects' folders with a backup's. Asks first: this overwrites."""
+    folder = stack.root / args.args[0] if args.args else None
+    if not folder or not all((folder / f"{name}.sql").exists() for name in DATABASES):
+        raise CliError("restore <backups/timestamp>: a folder `bpmn8n backup` made")
+    if not args.yes and input(f"This replaces both databases and the projects' folders with {folder}. Type yes: ") != "yes":
+        raise CliError("not restored")
+    live = ("web", "n8n", "n8n-worker", "scheduler")
+    stack.compose("stop", *live, capture=True)
+    for name in DATABASES:
+        stack.compose("cp", f"{folder}/{name}.sql", f"postgres:/tmp/{name}.sql", capture=True)
+        stack.compose("exec", "-T", "postgres", "psql", "-U", "bpmn8n", "-d", name, "-v", "ON_ERROR_STOP=1", "-q", "-f",
+                      f"/tmp/{name}.sql", capture=True)  # the dump drops what it recreates
+    if (folder / "projects").exists():
+        stack.compose("cp", f"{folder}/projects/.", "web:/app/projects/", capture=True)
+    stack.compose("up", "-d", *live, capture=True)
+    stack.say(f"✓ restored from {folder.relative_to(stack.root)}/")
+
+
+def schedule(stack, args):
+    """The jobs of ops/scheduler.py, through the web container, until Ctrl-C."""
+    todo = scheduler.jobs(stack.root, stack.config().PRUNE_DAYS)
+
+    def run(job):
+        stack.say(f"{'✓' if not manage(stack, job.name, *job.args) else '✗'} {job.name}")
+    stack.say("scheduler: " + ", ".join(f"{j.name} every {j.every}s" for j in todo))
+    scheduler.loop(todo, run, clock=stack.now, sleep=stack.sleep, ticks=args.ticks)
+
+
+def version(stack, args):
+    stack.say(__version__)
+
+
 COMMANDS = {"up": up, "down": down, "status": status, "doctor": doctor, "logs": logs, "export": export,
-            "import": import_, "deploy": deploy, "diff": diff}
+            "import": import_, "deploy": deploy, "diff": diff, "pull": pull, "backup": backup, "restore": restore,
+            "schedule": schedule, "version": version}
+PASSING = ("deploy", "diff", "pull", "restore")  # the arguments after them are theirs
 
 
 def parser():
@@ -136,15 +200,19 @@ def parser():
     commands = p.add_subparsers(dest="command", required=True, metavar="command")
     for name in COMMANDS:
         sub = commands.add_parser(name)
-        if name in ("deploy", "diff"):
+        if name in PASSING:
             sub.add_argument("args", nargs="*", help="projects/<name> ..., --json: passed to `workflows`")
+        if name == "restore":
+            sub.add_argument("--yes", action="store_true", help="do not ask")
+        if name == "schedule":
+            sub.add_argument("--ticks", type=int, help=argparse.SUPPRESS)
     return p
 
 
 def main(argv=None, stack=None):
     cli = parser()
     args, extra = cli.parse_known_args(argv)  # deploy and diff pass their options on to `manage.py workflows`
-    if extra and args.command not in ("deploy", "diff"):
+    if extra and args.command not in PASSING:
         cli.error(f"unrecognized arguments: {' '.join(extra)}")
     args.args = [*getattr(args, "args", []), *extra]
     try:

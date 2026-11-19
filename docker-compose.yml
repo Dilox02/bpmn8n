@@ -1,6 +1,6 @@
 # bpmn8n stack: Django (tasks API, inbox, Studio, docs) + n8n with the BPMN nodes + Laya and GLiNER models.
 services:
-  web:
+  web: &web
     image: python:3.12-slim
     working_dir: /app
     volumes: [".:/app"]
@@ -11,7 +11,7 @@ services:
     # the graceful timeout covers bounded local generation + critic calls, including JSON repair (up to 720 s);
     # requirements.local.txt (git-ignored) holds the packages of local projects that are not in the repository
     ports: ["127.0.0.1:8000:8000"]
-    environment:
+    environment: &web-env
       DEBUG: "1"  # development: docker-compose.prod.yml runs the built image with DEBUG=0
       # ./start.sh sets them: the models server on the Mac (host.docker.internal:8001) or containers
       LAYA_URL: ${LAYA_URL:-http://laya:8000/v1/systemone}
@@ -34,6 +34,22 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+
+  # The jobs on a clock (docs/GUIDE.md, "Production"): run_deadlines every minute, `prune` daily. PRUNE_DAYS:
+  # archive events and delete task runs older than that many days; empty: nothing is pruned. A second scheduler
+  # (`python -m bpmn8n schedule` included) waits on a database lock
+  scheduler:
+    <<: *web
+    ports: []
+    command: sh -c "pip install -q --root-user-action=ignore -r requirements.txt && until python manage.py migrate --check >/dev/null 2>&1; do sleep 3; done && exec python manage.py run_scheduler"
+    restart: unless-stopped
+    environment:
+      <<: *web-env
+      PRUNE_DAYS: ${PRUNE_DAYS:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      web: {condition: service_started}
 
   postgres:
     image: postgres:17-alpine
@@ -80,7 +96,7 @@ services:
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
       # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
       # ?bpmn8n=); under N8N_PATH; n8n caches /static for a day: bump v on edits
-      EXTERNAL_FRONTEND_HOOKS_URLS: ${N8N_PATH:-/}static/bpmn8n-bpmn.js?v=7;${N8N_PATH:-/}static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-evaluations.js?v=10&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-executions.js?v=7&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};${N8N_PATH:-/}static/bpmn8n-insights.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
+      EXTERNAL_FRONTEND_HOOKS_URLS: ${N8N_PATH:-/}static/bpmn8n-bpmn.js?v=7;${N8N_PATH:-/}static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-evaluations.js?v=10&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-executions.js?v=7&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};${N8N_PATH:-/}static/bpmn8n-insights.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-strip.js?v=1&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
       N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
@@ -94,6 +110,7 @@ services:
       - ./n8n-editor/executions.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-executions.js:ro
       - ./n8n-editor/executions.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-executions.css:ro
       - ./n8n-editor/insights.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-insights.js:ro
+      - ./n8n-editor/strip.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-strip.js:ro
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}

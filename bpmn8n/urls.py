@@ -29,6 +29,7 @@ urlpatterns = [
     path("studio/<slug:slug>/build/", studio.build, name="build"),
     path("studio/<slug:slug>/events/", studio.events, name="events"),
     path("landscape/", landscape.landscape, name="landscape"),
+    path("status/", operations.status, name="status"),
     path("variables/", operations.variables, name="variables"),
     path("cases/", operations.cases, name="cases"),
     path("workflows/", operations.workflows, name="workflows"),

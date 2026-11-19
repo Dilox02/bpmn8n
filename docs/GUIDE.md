@@ -38,6 +38,11 @@ python -m bpmn8n export         # n8n workflows -> workflows/*.json (to version 
 python -m bpmn8n import         # workflows/*.json -> n8n (published workflows stay published)
 python -m bpmn8n deploy         # every project's workflow.json -> n8n (`manage.py workflows push`)
 python -m bpmn8n diff           # drift between git and n8n (`manage.py workflows diff`)
+python -m bpmn8n pull           # n8n's workflows back into projects/*/workflow.json (`manage.py workflows pull`)
+python -m bpmn8n backup         # both databases + the projects' folders -> backups/<timestamp>/
+python -m bpmn8n restore backups/<timestamp>   # puts a backup back (asks first; --yes skips the question)
+python -m bpmn8n schedule       # the jobs on a clock from this shell, until Ctrl-C (the `scheduler` service does it in Docker)
+python -m bpmn8n version        # 0.2.0: pyproject.toml, bpmn8n/__init__.py and the nodes package, kept equal by a test
 ```
 
 `bpmn8n` (the console script, after `pip install -e .`) is the same command, and `./start.sh <command>` passes it on
@@ -50,7 +55,11 @@ python -m bpmn8n diff           # drift between git and n8n (`manage.py workflow
 The CLI (`bpmn8n/cli.py`) drives one `Service` per part of the stack (`bpmn8n/ops/services.py`: `Postgres`, `Redis`,
 `Models`, `Web`, `N8n`, `Preview`, `Search`), each with `ensure()`, `start()`, `stop()` and `health()` over docker compose
 and the health checks of `/api/health`; n8n's bootstrap is `bpmn8n/ops/bootstrap.py`. `doctor`, `deploy` and `diff` run
-`manage.py` in the web container, where the stack's configuration is.
+`manage.py` in the web container, where the stack's configuration is, and so do `pull` and `schedule`.
+`backup` dumps `bpmn8n` and `n8n` with `pg_dump` inside the postgres container and copies `/app/projects` out of web
+(`run/` samples and the evaluations index among them) into `backups/<timestamp>/`; `restore` stops web, n8n and the
+scheduler, replaces both databases and the projects' folders, and starts them again. `backups/` and `archive/` are
+git-ignored. Redis is not in the backup: it holds the global variables and n8n's queue, and persists on its own volume.
 
 Then:
 - **http://localhost:8000/docs/**: this guide;
@@ -400,6 +409,14 @@ Django (`:8000`) and n8n (`:5678`, its preview on `:5679`) are one product with 
 
 - **Tokens**: `bpmn8n/static/bpmn8n/tokens.css` is the only place that defines colours (light and dark), status colours, type sizes, spacing, radii and the canvas palette, all named `--b8-*`. `app.css` uses only those. n8n gets the same file as `/static/bpmn8n-tokens.css` (mounted read-only in `docker-compose.yml`), linked once by `bpmn.js`; every hook writes `var(--b8-…, <its old colour>)`, so a missing file only brings back the hooks' own colours. The pages follow taste-skill v2's *framed-sheet* style (coloured L-shaped frame, white sheet, colour only on data, IBM Plex Sans; Plex Mono only for IDs, keys and code), checked at 1440, 768 and 390 px with text at 4.5:1 or more in both themes.
 - **Theme**: the sidebar's *System / Light / Dark* switch is kept in the `b8-theme` cookie and sets `data-theme` on the page; embedded canvases are drawn in it. n8n keeps its own theme setting (`bpmn.js` no longer overrides it): in dark mode its canvas is flat and each node a tint from its name, in light mode n8n's own colours.
+- **Status dots**: the top bar of every page shows the health of n8n, the models, Redis and search as four dots (green up,
+  red down, grey not configured), each labelled for screen readers ("n8n: up"). They come from the same checks as
+  `/api/health`, read on the server and cached for 15 seconds, so no script runs in the page. For staff the dots link to
+  `/status/`: every check with its latency and error, and the hints of `doctor`.
+- **The strip in n8n**: `n8n-editor/strip.js`, a hook like the others (`bpmn8n-strip.js`, loaded with `?bpmn8n=<public URL>`),
+  puts a slim bar on top of the editor with Inbox, Cases, Insights, Simulation and Docs (they open in a new tab), in the same tokens.
+  On a workflow's page Inbox carries how many tasks wait (`GET /api/executions/<workflow>/waiting`, read with the n8n
+  session like the evaluations; refreshed every 30 s). The bar sits above `#app`; an n8n upgrade that renames it lets the bar cover n8n's top 24 px.
 - **Navigation**: the sidebar is the `NAV` list in `bpmn8n/web/views.py` (URL name, label, icon, staff only). An entry shows once its URL name resolves, so a new page appears by adding its route; *Editor* (staff) opens n8n.
 - **Vocabulary**: `bpmn8n/web/vocab.py` names every status once, with its colour family; templates write `{{ status|status_pill }}`. Everything is in English.
 - **Shared components**: `bpmn8n/static/bpmn8n/components.js`, three vanilla custom elements with their own styles (only `--b8-*` tokens): `<b8-pill tone="positive|negative|warning|accent|neutral">` (what `status_pill` writes), `<b8-timeline>` (around an `<ol>` of `<li data-status>`, as the case page's steps, or from an `items` JSON attribute) and `<b8-process-map>` (the landscape). A classic script, loaded in the head of every page; an n8n hook on another origin loads it with a `<script src>` (the evaluations view does, for its run statuses: without it the words stay, uncoloured). `n8n-editor/test/components.test.mjs` tests its logic.
@@ -912,6 +929,18 @@ SECRET_KEY=… BPMN8N_API_TOKEN=… ALLOWED_HOSTS=bpmn8n.example.org \
   only when the database is down, since restarting `web` cannot fix the others. `python manage.py doctor` prints the same
   as a table with the errors, plus hints from the configuration (no `N8N_API_KEY`, no n8n credential id, no LLM provider,
   an open API with `DEBUG` on, no search), and exits with 1 when the database, Redis or n8n is down.
+- **The scheduler**: a `scheduler` service (dev and prod) runs `python manage.py run_scheduler`: `run_deadlines` every
+  minute (reminders and escalations), the daily digest when the checkout has one, and `prune` daily when `PRUNE_DAYS` is set.
+  A Postgres advisory lock keeps two schedulers (the service and a `python -m bpmn8n schedule` in a shell) from running
+  the same job: the second waits. Without the service nothing sends reminders: run `run_deadlines` from cron instead.
+- **Backup and restore**: `python -m bpmn8n backup` before every upgrade and on a schedule of your own (cron);
+  `restore <dir>` after a loss. Test a restore on a copy of the stack before you need it.
+- **Housekeeping and retention**: `python manage.py prune --events-older-than DAYS --taskruns-older-than DAYS [--dry-run]`
+  deletes old `TaskRun` rows (a retried n8n run is idempotent only within n8n's own retention: 30 days is plenty) and
+  writes `Event` rows older than the limit to `archive/events-<time>.csv.gz` (the columns `manage.py import_eventlog`
+  reads back) before deleting them; process mining keeps working on what is left. A case that still waits for a person
+  or a message keeps all its rows. Suggested retention: events 365 days, task runs 30. `PRUNE_DAYS=365` makes the
+  scheduler do it daily for both. Evaluation samples under `projects/*/run/` are not pruned: delete a run folder by hand.
 - **Prometheus**: `GET /api/metrics/prometheus` (text format, the API token like the rest of the API) exposes, from the
   database so every worker counts: `bpmn8n_endpoint_calls_total`, `bpmn8n_endpoint_errors_total` and
   `bpmn8n_endpoint_duration_seconds` (sum and count) per endpoint, `bpmn8n_cases_started_total` per process,
@@ -976,6 +1005,7 @@ This table is generated (`python manage.py config --md`; a test fails when it is
 | `DB_PATH` | (empty) | SQLite file; empty: `db.sqlite3` in the checkout |
 | `N8N_URL` | `http://localhost:5678` | Where bpmn8n reaches n8n (compose: `http://n8n:5678`) |
 | `N8N_API_KEY` | (empty) | n8n's public API key (the CLI creates it): conformance, Studio and `workflows diff/push/pull` |
+| `PRUNE_DAYS` | (empty) | Days of events and task runs the scheduler keeps; older ones are archived (events) or deleted by `manage.py prune` daily. Empty: nothing is pruned |
 | `N8N_CREDENTIAL` | (empty) | Id of the n8n credential bpmn8n's nodes use (the CLI creates it) |
 | `N8N_EMAIL` | (empty) | n8n owner login the CLI uses to create the credential and the API key |
 | `N8N_PASSWORD` | (empty) | Its password |
@@ -1092,6 +1122,13 @@ Without folders it takes every `projects/<name>/` with a `workflow.json`. The wo
 - **pull** writes n8n's name, nodes, connections and settings into `workflow.json` in the file's own key order, so
   `git diff` shows only what the editor changed (positions included); an unchanged workflow leaves the file untouched.
   Settings n8n adds on its own show up as drift until the first pull.
+
+## Releases
+
+Versions follow semver and live in one place, `bpmn8n/__init__.py` (`__version__`), mirrored in `pyproject.toml` and
+`n8n-nodes-bpmn8n/package.json`; `bpmn8n.tests.test_housekeeping` fails when the three differ. `python -m bpmn8n version`
+prints it. To release: bump the three, add a section to `CHANGELOG.md`, tag `v<version>`. Publishing the Python package
+and the nodes to PyPI and npm is not automated yet.
 
 ## Licences
 

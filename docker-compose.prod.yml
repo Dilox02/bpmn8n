@@ -9,7 +9,7 @@ services:
     volumes: !reset []
     command: !reset null  # the image's: migrate, then gunicorn
     restart: unless-stopped
-    environment:
+    environment: &web-prod-env
       DEBUG: "0"
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY, a long random string (python -c "import secrets; print(secrets.token_urlsafe(50))")}
       BPMN8N_API_TOKEN: ${BPMN8N_API_TOKEN:?set BPMN8N_API_TOKEN, the token n8n's bpmn8n credential and Prometheus send}
@@ -24,6 +24,14 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
     # ponytail: Metrics samples (projects/*/run/, projects/.evaluations.sqlite3) live in the container and go
     # with it on a redeploy; mount a volume on a project's run/ folder to keep them
+
+  scheduler:  # the same image and settings as web, running the jobs on a clock (run_deadlines, prune)
+    image: ${BPMN8N_WEB_IMAGE:-bpmn8n-web:latest}
+    volumes: !reset []
+    command: sh -c "until python manage.py migrate --check >/dev/null 2>&1; do sleep 3; done && exec python manage.py run_scheduler"
+    healthcheck: {disable: true}  # the image's checks web's port
+    environment:
+      <<: *web-prod-env
 
   postgres:
     restart: unless-stopped

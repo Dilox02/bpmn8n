@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bpmn8n"
-version = "0.1.0"
+version = "0.2.0"
 description = "BPMN on n8n: Django tasks as n8n nodes, checked workflows, LLM-assisted design (Studio), process mining (PM4Py)"
 license = {text = "AGPL-3.0-or-later"}
 requires-python = ">=3.11"
