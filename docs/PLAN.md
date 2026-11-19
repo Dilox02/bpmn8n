@@ -604,3 +604,31 @@ form theming à la Bonita §3.4–3.6 · a native modeller replacing the n8n can
 
 [BO] and [DI] are old products: their *concepts* are taken, not their interfaces. Items marked *spike* depend on a
 behaviour of n8n 2.42 that was not verified while writing this plan; each has a fallback.
+
+---
+
+## 8. Implementation status (2026-11-19, branch `feat/framework-v2`)
+
+Built by ten engineers in parallel (one worktree each), merged, then verified: 426 Django tests green on SQLite and on
+Postgres inside the web container, 25 node tests, 17 editor tests, ruff clean, every tracked project's
+`check_project` ok (examples + scenarios + workflow check), 30 of 31 end-to-end tests green on the running stack
+(the one failure, UC3 "phishing", is the decision model's choice, unchanged code).
+
+| Workstream | Done | Partial | Not yet |
+|---|---|---|---|
+| A Foundation | A1 registry + `/api/elements` + drift test, A2 `ProcessGraph`, A3 `TokenEngine` | A5 (rules are classes; `ProjectBuilder` not split) | A4 process contract |
+| B One platform | B3 tokens, B4 theme, B6 deep links, B10 vocabulary, B12 case page | B5 (Django nav; no strip in n8n), B9 (`/api/health`, `doctor`; no `bpmn8n` CLI) | B1 one origin, B2 one identity (spikes), B7, B8, B11 |
+| C BPMN coverage | C1 deadline boundary (`timeout`), C3 error boundary (`on_error`) | C6 (quorum; no sequential multi-instance), C7 (loop lint; no `loop()` macro) | C2, C4, C5, C8, C9, C12, C13, C14, C18 |
+| D Method | D1 rule classes, D2 naming, D5 implicit gateways, D6 deadlock search | D7 (four-eyes enforced on tasks; no lint rule), D10 (Studio knows the patterns) | D3, D4, D8, D9, D11 |
+| E Simulation | E1 spec, E2 scenarios, E3 DES, E4 confidence intervals, E5 queueing network, E6 staffing, E7 calibration, E8 model vs reality, E11 page + API + CLI + canvas mode, E12, E13 | E9 (costs per task and lane; not LLM usage) | E10 |
+| F Testing | F3 scenario tests, F6 drift, F10 CI, F11 `seed_events` | F2, F4 (`record_scenario`; no model cassettes), F7 (token conservation), F12 | F1, F5 differential vs n8n, F8, F9 |
+| G Production | G1 image + prod override + pinned n8n, G2 secure settings, G3 `workflows diff/push/pull`, G4 process version + history, G7 Prometheus + JSON logs | G5 (scenarios gate Studio; no PR flow), G6 (scoped secrets, audit log, erasure not yet) | G8, G9, G10, G11 |
+| H People | H1 SLA/priority, H2 suspend/resume/reassign/delegate, H3 assignee + four-eyes, H4 quorum, H5 form types, H6 case page, H10 HITL/HOTL | H12 | H7, H8, H9, H11 |
+| I Intelligence | I1 heatmap, I3 filter stack, I5 statistics, I6 cases/variants, I9 cohorts, I10 queueing on the log | | I2, I4, I7, I8, I11, I12 |
+| J Agents | J1 pattern macros, J3 guardrails, J4 budgets, J7 error paths and retries | | J2, J5, J6, J8, J9, J10–J13 |
+| n8n's paid features | Variables → global variables on Redis; workflow history → versions, diff, restore; log streaming → Redis stream, webhooks, SSE; advanced execution search → `/api/cases`, `/cases/`; Insights → `/insights/`; source control and environments → `workflows diff/push/pull` | | SSO, project RBAC, external secrets |
+
+Bugs found and fixed on the way: the hospital process no longer built (its user task contexts were text); the
+data-breach process skipped the Garante notification for a high risk without risk to people; process mining crashed on
+a gateway that read a list; the check credited form answers to a user task's timeout path; editing a technical
+condition gateway in n8n dropped its decision scope; a chat model counted as a second start in conformance.
