@@ -351,12 +351,44 @@
       }
     },
     {
+      "id": "8a84be70-496b-563b-a4d4-a21382fc478a",
+      "name": "Draft Authority Notification: usage",
+      "type": "CUSTOM.bpmn8nScriptTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        400
+      ],
+      "parameters": {
+        "task": "/api/tasks/record_llm_call",
+        "output": "merge",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "agent": "Draft Authority Notification",
+            "variable": "draft_notification",
+            "prompt": "={{ $('Draft Authority Notification: prompt').item.json.prompt }}",
+            "answer": "={{ $json[\"draft_notification\"] }}",
+            "tokens": "={{ $('Draft Authority Notification').item.json.tokenUsage ?? '' }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
       "id": "b82f4038-fe16-5d77-ad74-3e65525e5f3a",
       "name": "Review and Send to Garante",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3080,
+        3360,
         400
       ],
       "parameters": {
@@ -395,7 +427,7 @@
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        3360,
+        3640,
         400
       ],
       "parameters": {
@@ -426,7 +458,7 @@
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3640,
+        3920,
         600
       ],
       "parameters": {
@@ -463,7 +495,7 @@
       "type": "CUSTOM.bpmn8nBusinessRuleTask",
       "typeVersion": 1,
       "position": [
-        3920,
+        4200,
         0
       ],
       "parameters": {
@@ -512,6 +544,17 @@
         [
           {
             "node": "Draft Authority Notification: answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Authority Notification: answer": {
+      "main": [
+        [
+          {
+            "node": "Draft Authority Notification: usage",
             "type": "main",
             "index": 0
           }
@@ -634,7 +677,7 @@
         ]
       ]
     },
-    "Draft Authority Notification: answer": {
+    "Draft Authority Notification: usage": {
       "main": [
         [
           {

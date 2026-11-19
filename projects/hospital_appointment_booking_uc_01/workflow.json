@@ -140,12 +140,44 @@
       }
     },
     {
+      "id": "651749b1-03af-5b8b-a24f-e40d5f79c66c",
+      "name": "AI Agent collects patient information and preferences: usage",
+      "type": "CUSTOM.bpmn8nScriptTask",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        0
+      ],
+      "parameters": {
+        "task": "/api/tasks/record_llm_call",
+        "output": "merge",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "agent": "AI Agent collects patient information and preferences",
+            "variable": "agent_reply",
+            "prompt": "={{ $('AI Agent collects patient information and preferences: prompt').item.json.prompt }}",
+            "answer": "={{ $json[\"agent_reply\"] }}",
+            "tokens": "={{ $('AI Agent collects patient information and preferences').item.json.tokenUsage ?? '' }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
       "id": "7e7a332b-7e5a-5ca9-8b5e-875ced89bdaf",
       "name": "Read booking preferences",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
       "position": [
-        1400,
+        1680,
         0
       ],
       "parameters": {
@@ -172,7 +204,7 @@
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        1680,
+        1960,
         0
       ],
       "parameters": {
@@ -203,7 +235,7 @@
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        1960,
+        2240,
         200
       ],
       "parameters": {
@@ -235,7 +267,7 @@
       "type": "CUSTOM.bpmn8nBusinessRuleTask",
       "typeVersion": 1,
       "position": [
-        1960,
+        2240,
         0
       ],
       "parameters": {
@@ -262,7 +294,7 @@
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        2240,
+        2520,
         0
       ],
       "parameters": {
@@ -296,7 +328,7 @@
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
       "position": [
-        2520,
+        2800,
         200
       ],
       "parameters": {
@@ -323,7 +355,7 @@
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3640,
+        3920,
         200
       ],
       "parameters": {
@@ -360,7 +392,7 @@
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
       "position": [
-        2520,
+        2800,
         0
       ],
       "parameters": {
@@ -387,7 +419,7 @@
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        2800,
+        3080,
         0
       ],
       "parameters": {
@@ -418,7 +450,7 @@
       "type": "CUSTOM.bpmn8nSendTask",
       "typeVersion": 1,
       "position": [
-        3080,
+        3360,
         0
       ],
       "parameters": {
@@ -445,7 +477,7 @@
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3360,
+        3640,
         0
       ],
       "parameters": {
@@ -477,7 +509,7 @@
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
       "position": [
-        3640,
+        3920,
         0
       ],
       "parameters": {
@@ -507,7 +539,7 @@
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        3920,
+        4200,
         0
       ],
       "parameters": {
@@ -538,7 +570,7 @@
       "type": "CUSTOM.bpmn8nSendTask",
       "typeVersion": 1,
       "position": [
-        4200,
+        4480,
         0
       ],
       "parameters": {
@@ -569,7 +601,7 @@
       "type": "CUSTOM.bpmn8nManualTask",
       "typeVersion": 1,
       "position": [
-        4480,
+        4760,
         0
       ],
       "parameters": {
@@ -595,7 +627,7 @@
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3080,
+        3360,
         400
       ],
       "parameters": {
@@ -647,7 +679,7 @@
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        3360,
+        3640,
         400
       ],
       "parameters": {
@@ -707,6 +739,17 @@
         ]
       ]
     },
+    "AI Agent collects patient information and preferences: answer": {
+      "main": [
+        [
+          {
+            "node": "AI Agent collects patient information and preferences: usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Patient requests an appointment": {
       "main": [
         [
@@ -729,7 +772,7 @@
         ]
       ]
     },
-    "AI Agent collects patient information and preferences: answer": {
+    "AI Agent collects patient information and preferences: usage": {
       "main": [
         [
           {

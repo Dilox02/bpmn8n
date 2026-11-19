@@ -32,7 +32,7 @@
     "expect": {
       "path": ["Incident Reported", "Register Incident", "Contain Incident", "Personal Data Involved?",
                "DPO Risk Assessment", "Notify Authority?", "Draft Authority Notification: prompt",
-               "Draft Authority Notification", "Draft Authority Notification: answer", "Review and Send to Garante",
+               "Draft Authority Notification", "Draft Authority Notification: answer", "Draft Authority Notification: usage", "Review and Send to Garante",
                "Inform People?", "Inform Data Subjects", "Record in Breach Register"],
       "variables": {"authority_notified": true, "people_informed": true,
                     "register_entry": "INC-20261117T0800: personal data yes; risk high; authority notified; reasons: unencrypted names, addresses and IBANs"}
