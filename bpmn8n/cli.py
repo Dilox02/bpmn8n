@@ -155,3 +155,5 @@ def main(argv=None, stack=None):
     except subprocess.CalledProcessError as e:
         print(f"✗ {' '.join(map(str, e.cmd))}: exit {e.returncode}\n{e.stderr or ''}".rstrip(), file=sys.stderr)
         return e.returncode or 1
+    except KeyboardInterrupt:  # Ctrl-C ends `logs -f`
+        return 130
