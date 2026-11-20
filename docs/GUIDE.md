@@ -257,7 +257,7 @@ The same states apply to messages: the losers of an Event-Based Gateway become *
 
 **Workload** (`/workload/`, in the sidebar). Per lane: tasks open, claimed and suspended now, overdue, due within 24 hours, the mean wait before a claim and the mean work time (claim to completion) over a window of 7, 30 or 90 days, two bar charts, the claimed and completed tasks per person, and the ten oldest overdue tasks with links. Staff see every lane, other people their own.
 
-**Notifications.** A person is told by e-mail (Django's mail backend) when a task is assigned to them (a reassignment, a delegation, or a task created already assigned), is due within a day, is overdue, or is escalated (a reminder fired while they hold it); a task nobody holds tells the members of its lane, except for escalation, which keeps going to the lane or workflow the reminder names. Each person is told at most once per task and kind (`Notification` row; a mail that cannot be sent is logged and tried again), and every mail is audited (`usertask.notify`). The time-based kinds run inside `python manage.py run_deadlines`. `/notifications/` lets a person turn the e-mails off and a **daily digest** on; `python manage.py send_digests` (once a day) sends it to those who opted in and have something waiting, at most one per 20 hours.
+**Notifications.** A person is told by e-mail (Django's mail backend) when a task is assigned to them (a reassignment, a delegation, or a task created already assigned), is due within a day, is overdue, or is escalated (a reminder fired while they hold it); a task nobody holds tells the members of its lane, except for escalation, which keeps going to the lane or workflow the reminder names. Each person is told at most once per task and kind (`Notification` row; a mail that cannot be sent is logged and tried again), and every mail is audited (`usertask.notify`). The time-based kinds run inside `python manage.py run_deadlines`. `/notifications/` lets a person turn the e-mails off and a **daily digest** on; `python manage.py send_digests` (once a day) sends it to those who opted in and have something waiting, at most one per 20 hours. The `scheduler` service runs both. Out of the box the mails are only printed in the log (the console backend): to send them, set `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL` (table in "Configuration"), and give people an e-mail address.
 
 **Start a case** (`/start/`, in the sidebar). Lists the processes a POST webhook starts (the projects, and n8n's workflows when its API answers) with a form generated from the process contract's start data: strings, numbers (whole numbers for an integer), booleans, choices, dates, and lists or objects as JSON; required as the contract declares. Submitting posts the JSON of the declared fields (never anything else) to n8n's production webhook `/webhook/<path>`, shows n8n's answer, and links the case when the answer names an `executionId`, else the inbox. Errors show next to their fields; a start is audited (`case.start`). Not covered: GET webhooks, public intake forms.
 
@@ -1055,7 +1055,13 @@ This table is generated (`python manage.py config --md`; a test fails when it is
 | `REDIS_URL` | (empty) | Global variables and the event stream; empty: the database |
 | `EVENT_STREAM_MAXLEN` | `100000` | Length of the Redis stream `bpmn8n:events` |
 | `EVENT_WEBHOOKS` | (empty) | URLs that receive every finished step, comma-separated |
-| `EMAIL_BACKEND` | `django.core.mail.backends.console.EmailBackend` | Django's e-mail backend |
+| `EMAIL_BACKEND` | `django.core.mail.backends.console.EmailBackend` | Django's e-mail backend; `django.core.mail.backends.smtp.EmailBackend` sends people's notifications |
+| `EMAIL_HOST` | (empty) | The SMTP server notifications and digests go through |
+| `EMAIL_PORT` | `587` | Its port |
+| `EMAIL_HOST_USER` | (empty) | Its login |
+| `EMAIL_HOST_PASSWORD` | (empty) | Its password |
+| `EMAIL_USE_TLS` | `1` | STARTTLS to the SMTP server |
+| `DEFAULT_FROM_EMAIL` | `bpmn8n@localhost` | The sender of notifications and digests |
 | `LOG_FORMAT` | (empty) | `json`: one JSON object per log line |
 | `STATIC_ROOT` | (empty) | Where collectstatic writes; empty: `staticfiles/` in the checkout |
 | `GUNICORN_PID` | `/tmp/gunicorn.pid` | gunicorn's pid file: Studio reloads it with new tasks |

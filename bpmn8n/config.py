@@ -26,7 +26,8 @@ N8N_PATH = "/n8n"
 LOCAL = {"BPMN8N_PUBLIC_URL": "http://localhost:8000", "N8N_PUBLIC_URL": "http://localhost:5678",
          "N8N_PREVIEW_URL": "http://localhost:5679"}
 SECRETS = frozenset({"SECRET_KEY", "BPMN8N_API_TOKEN", "FIELD_ENCRYPTION_KEY", "N8N_API_KEY", "N8N_PASSWORD",
-                     "LAYA_API_KEY", "MODELS_API_KEY", "POSTGRES_PASSWORD", "SEARXNG_SECRET"})
+                     "LAYA_API_KEY", "MODELS_API_KEY", "POSTGRES_PASSWORD", "SEARXNG_SECRET",
+                     "EMAIL_HOST_PASSWORD"})
 # bpmn8n.conf.settings: the names Django's settings know them by (API_TOKEN: BPMN8N_API_TOKEN in the environment)
 APP_SETTINGS = {"API_TOKEN": "BPMN8N_API_TOKEN", **{name: name for name in (
     "LAYA_URL", "LAYA_API_KEY", "EXTRACTOR_URL", "OCR_URL", "MODELS_API_KEY", "LAYA_TIMEOUT", "LAYA_BUSY_TIMEOUT",
@@ -108,7 +109,13 @@ class Config(BaseModel):
     EVENT_STREAM_MAXLEN: int = Field(100_000, description="Length of the Redis stream `bpmn8n:events`")
     EVENT_WEBHOOKS: Items = Field([], description="URLs that receive every finished step, comma-separated")
     EMAIL_BACKEND: str = Field("django.core.mail.backends.console.EmailBackend", description="Django's e-mail "
-                               "backend")
+                               "backend; `django.core.mail.backends.smtp.EmailBackend` sends people's notifications")
+    EMAIL_HOST: str = Field("", description="The SMTP server notifications and digests go through")
+    EMAIL_PORT: int = Field(587, description="Its port")
+    EMAIL_HOST_USER: str = Field("", description="Its login")
+    EMAIL_HOST_PASSWORD: str = Field("", description="Its password")
+    EMAIL_USE_TLS: bool = Field(True, description="STARTTLS to the SMTP server")
+    DEFAULT_FROM_EMAIL: str = Field("bpmn8n@localhost", description="The sender of notifications and digests")
     # operations
     LOG_FORMAT: str = Field("", description="`json`: one JSON object per log line")
     STATIC_ROOT: str = Field("", description="Where collectstatic writes; empty: `staticfiles/` in the checkout")
