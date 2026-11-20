@@ -122,3 +122,9 @@
 .readiness { margin: 16px 0; padding: 12px 16px; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); }
 .readiness ul { margin: 0; padding-left: 18px; }
 .readiness .warn { color: var(--b8-warning); }
+/* the less frequent variants, and a long variant's steps past the eighth, open on demand */
+.more-variants > summary, .steps-more > summary { width: max-content; color: var(--b8-muted); cursor: pointer; font-size: var(--b8-fs-small); }
+.more-variants > summary:hover, .steps-more > summary:hover { color: var(--b8-text); }
+.more-variants { margin-top: 8px; }
+.steps-more { display: inline; }
+.steps-more[open] { display: contents; }

@@ -342,10 +342,20 @@ class InsightsPageTest(TestCase):
         generate("Claim Handling", 80, seed=2)
         r = self.client.get("/insights/", {"process": "Claim Handling"})
         self.assertEqual(r.status_code, 200)
-        for text in ("Claim Handling", "Cases in progress", "Closed cases by duration", "Bottlenecks", "assessors",
-                     "Where the cycle time goes", "Variants", "Handoffs", "Route Claim", "Compare two groups"):
+        for text in ("Claim Handling", "Process map", "Bottlenecks", "assessors", "Share of the cycle time", "Variants",
+                     "Handoffs", "Route Claim"):
             self.assertContains(r, text)
-        self.assertContains(r, 'class="plot"', count=3)  # two timelines and the histogram
+        for gone in ("Over time", "Cases in progress", "Where the cycle time goes", "Compare two groups"):
+            self.assertNotContains(r, gone)  # no charts over time; one activity table; Compare only once a cohort is set
+        self.assertNotContains(r, 'class="plot"')
+
+    def test_a_workflow_with_no_people_shows_no_queues_and_no_resources(self):
+        from .support import add_events, step
+        add_events(*((f"auto:{i}", "Nightly batch", [step("Plan", i * 60), step("Generate", i * 60 + 1)]) for i in range(6)))
+        r = self.client.get("/insights/", {"process": "Nightly batch"})  # every step automatic: nobody queues
+        self.assertNotContains(r, 'id="bottlenecks"')
+        self.assertNotContains(r, "Resources and handoffs")
+        self.assertContains(r, "Variants")
 
     def test_filters_are_added_by_form_and_removed_by_link(self):
         tiny()

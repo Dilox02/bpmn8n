@@ -13,16 +13,13 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from ..analytics import FilterError, FilterStack, Log, Scope, queues, stats
-from ..analytics.log import duration_text
 from ..models import Snapshot
-from . import charts, processmap
+from . import processmap
 
+VARIANT_STEPS = 8  # a variant's steps shown before "+N steps"
 STATE = ("process", "since", "until", "filters", "vs", "target", "acts", "paths", "map")
 SNAPSHOTS = 20  # listed on the page
 UNITS = {"s": 1, "min": 60, "h": 3600, "d": 86400}
-BUCKET_NAMES = {60: "minute", 300: "5 minutes", 900: "15 minutes", 3600: "hour", 3 * 3600: "3 hours",
-                6 * 3600: "6 hours", 86400: "day", 7 * 86400: "week", 30 * 86400: "30 days"}
-
 
 def day(text, end=False):
     """A date input (YYYY-MM-DD) as a UTC instant: its start, or for `until` the next day's start."""
@@ -156,27 +153,21 @@ def names(log):
 
 
 def page(log, target):
-    """Every section's figures, and the charts drawn from them."""
-    overview, timeline, bins = stats.overview(log), stats.timeline(log), stats.histogram(log)
-    bucket = timeline["bucket"]
-    stamp = "%d %b %H:%M" if bucket < 86400 else "%d %b %Y"
-    when = lambda p: datetime.fromisoformat(p["start"]).strftime(stamp)  # noqa: E731
-    activities, variants = stats.activities(log), stats.variants(log, 10)
-    q = queues.queues(log, target)
-    edges = [duration_text(bins[0]["from"]), duration_text(bins[len(bins) // 2]["from"]), duration_text(bins[-1]["to"])] \
-        if bins else []
+    """Every section's figures: the overview, the map's are drawn elsewhere (processmap), the activities with the share
+    of the cycle time each takes, the variants, the people's queues, resources, handoffs and decisions."""
+    activities, variants, q = stats.activities(log), stats.variants(log, 10), queues.queues(log, target)
+    share = {a["name"]: a["share"] for a in q["activities"]}  # of the cycle time, from the queueing view of the log
+    for a in activities:
+        a["share"] = share.get(a["activity"])
+    for v in variants["rows"]:  # a looping case lists dozens of steps: its first ones, the rest on demand
+        v["head"], v["more"] = v["activities"][:VARIANT_STEPS], max(0, len(v["activities"]) - VARIANT_STEPS)
+    resources = stats.resources(log)[:12]
     return {
-        "overview": overview, "activities": activities, "variants": variants, "queues": q,
+        "overview": stats.overview(log), "activities": activities, "variants": variants, "queues": q,
         "most_executions": max((a["executions"] for a in activities), default=0),
         "longest_wait": max((a["wait"] or 0 for a in activities), default=0),
-        "resources": stats.resources(log)[:12], "handoffs": stats.handoffs(log), "decisions": stats.decisions(log),
-        "bucket": BUCKET_NAMES.get(bucket, duration_text(bucket)),
-        "events_chart": charts.series(timeline["points"], label=f"Events per {BUCKET_NAMES.get(bucket, 'bucket')}",
-                                      value=lambda p: p["events"], when=when, fmt=lambda v: f"{v:g}", area=False),
-        "active_chart": charts.series(timeline["points"], label="Cases in progress", value=lambda p: p["active"],
-                                      when=when, fmt=lambda v: f"{v:g}"),
-        "histogram_chart": charts.bars(bins, label="Closed cases by duration", value=lambda b: b["cases"],
-                                       name=lambda b: f"{duration_text(b['from'])} – {duration_text(b['to'])}",
-                                       fmt=lambda v: f"{v:g}", edges=edges),
+        "resources": resources, "people_involved": any(r["resource"] != "system" for r in resources),
+        "handoffs": stats.handoffs(log), "decisions": stats.decisions(log),
     }
+
 
