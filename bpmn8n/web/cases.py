@@ -167,16 +167,20 @@ def case(request, case_id):
     graph = ProcessGraph(workflow) if workflow else None
     llm = llm_outputs(graph) if graph else set()
     waits = [*tasks, *messages]
-    moments = [e.ended for e in events] + [w.completed or w.created for w in waits] + ([record.updated] if record else [])
+    # where the case is now, from all its events: the page lists only the first STEPS of a long (looping) case
+    running, latest = list(every.filter(status="running")), every.order_by("-ended", "-pk").first()
+    moments = [e.ended for e in [*running, latest] if e] + [w.completed or w.created for w in waits] + ([record.updated] if record else [])
     started = min([e.started for e in events] + [w.created for w in waits] + ([record.created] if record else []))
     last = max(moments)
-    status = case_status(events, tasks, messages, last)
-    open_at = {e.activity for e in events if e.status == "running"} | {w.activity for w in waits if w.status in w.WAITING}
-    states = node_states(graph, {e.activity for e in events if e.status != "running"} - open_at, open_at) if graph else {}
+    status = case_status([*running, *([latest] if latest else [])], tasks, messages, last)
+    open_at = {e.activity for e in running} | {w.activity for w in waits if w.status in w.WAITING}
+    passed = set(every.exclude(status="running").values_list("activity", flat=True).distinct())
+    states = node_states(graph, passed - open_at, open_at) if graph else {}
+    until = last if status in ("completed", "failed") else timezone.now()  # a case still going: up to now
 
     return render(request, "bpmn8n/case.html", {
         "case_id": case_id, "workflow_id": workflow_id, "execution_id": execution_id, "status": status, "started": started, "last": last,
-        "duration_ms": (last - started).total_seconds() * 1000,
+        "duration_ms": (until - started).total_seconds() * 1000, "here": sorted(open_at),
         "process": (record and record.process) or next((e.process for e in events if e.process), "") or
                    (workflow or {}).get("name") or next((w.process for w in waits if w.process), ""),
         "steps": [step(e, graph, llm) for e in events], "more_steps": total - len(events),

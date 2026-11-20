@@ -117,6 +117,8 @@ class Config(BaseModel):
     EMAIL_USE_TLS: bool = Field(True, description="STARTTLS to the SMTP server")
     DEFAULT_FROM_EMAIL: str = Field("bpmn8n@localhost", description="The sender of notifications and digests")
     # operations
+    TIME_ZONE: str = Field("UTC", description="The time zone pages show times in (IANA name, e.g. `Europe/Rome`); "
+                           "stored times are UTC")
     LOG_FORMAT: str = Field("", description="`json`: one JSON object per log line")
     STATIC_ROOT: str = Field("", description="Where collectstatic writes; empty: `staticfiles/` in the checkout")
     GUNICORN_PID: str = Field("/tmp/gunicorn.pid", description="gunicorn's pid file: Studio reloads it with new "

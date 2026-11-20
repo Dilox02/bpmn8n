@@ -42,25 +42,40 @@ def csv_cell(value):
 
 
 class EventIn(Schema):
-    status: Literal["complete", "error"] = "complete"
+    status: Literal["running", "complete", "error"] = "complete"
     message: str = ""  # {{variable}} templates allowed
     item: dict[str, Any] = {}
+    event: int | None = None  # a running event of this case to finish (its id, as this call returned it)
 
 
-@router.post("/events", response={200: dict, 400: dict})
+@router.post("/events", response={200: dict, 400: dict, 404: dict})
 def record_event(request, data: EventIn):
-    """An instant event of the calling case (n8n execution) in the event log, e.g. a BPMN Error
-    End Event; the activity is the X-Bpmn8n-Activity header (the n8n node name). Returns the
-    message with its variables filled in."""
+    """An event of the calling case (n8n execution) in the event log; the activity is the X-Bpmn8n-Activity
+    header (the n8n node name). An instant one (a BPMN Error End Event), or a step that takes time (a Call
+    Activity): "running" when it starts, then "complete" or "error" with the id it returned. Returns the message
+    with its variables filled in, and the event's id."""
     case = CaseData(request, data.item)
     if not case.trace.case_id:
         return 400, {"detail": f"{CASE_HEADER} header required"}
     at = timezone.now()
     message = case.text(data.message)
-    publish(Event.objects.create(case_id=case.trace.case_id, activity=case.trace.activity or "event",
-                                 process=case.trace.process, endpoint="event", started=at, ended=at, duration_ms=0,
-                                 status=data.status, resource="system", data={"output": {"message": message}}))
-    return 200, {"message": message}
+    if data.event is not None:  # only the case's own running event: one case never edits another's log
+        event = Event.objects.filter(pk=data.event, case_id=case.trace.case_id, status="running").first()
+        if not event:
+            return 404, {"detail": f"no running event {data.event} in this case"}
+        event.status, event.ended = data.status, at
+        event.duration_ms = (at - event.started).total_seconds() * 1000
+        event.data = {**event.data, "output": {"message": message}} if message else event.data
+        event.save(update_fields=["status", "ended", "duration_ms", "data"])
+        publish(event)
+        return 200, {"message": message, "event": event.pk}
+    event = Event.objects.create(case_id=case.trace.case_id, activity=case.trace.activity or "event",
+                                 process=case.trace.process, endpoint="event", started=at,
+                                 ended=at, duration_ms=0,  # a running one's end moves when it finishes
+                                 status=data.status, resource="system", data={"output": {"message": message}})
+    if data.status != "running":  # the sinks hear of a step once it has finished
+        publish(event)
+    return 200, {"message": message, "event": event.pk}
 
 
 @router.get("/events/stream")

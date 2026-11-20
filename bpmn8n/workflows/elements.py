@@ -110,7 +110,8 @@ ELEMENTS = {e.n8n_type: e for e in (
             "activities/user-task", human=True, waits=True, logged=True),
     _bpmn8n("manualTask", "task", "Manual task", "A person does it and confirms it in the bpmn8n inbox; the case waits.",
             "activities/manual-task", human=True, waits=True, logged=True),
-    _bpmn8n("callActivity", "task", "Call activity", "Runs another workflow as a sub-process.", "activities/call-activity"),
+    _bpmn8n("callActivity", "task", "Call activity", "Runs another workflow as a sub-process.", "activities/call-activity",
+            logged=True),  # a running event while the sub-process works, finished when it returns
     _bpmn8n("exclusiveGateway", "gateway", "Exclusive gateway", "The case takes one branch.", "gateways/gateway-xor",
             decides=True, chooses=True, transparent=True, logged=True, default_last=True),
     _bpmn8n("inclusiveGateway", "gateway", "Inclusive gateway", "The case takes every branch that applies.",

@@ -229,6 +229,17 @@ class EventBasedGatewayTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(Event.objects.filter(case_id="9", activity="Partner Failure", status="error").exists())
 
+    def test_a_step_that_takes_time_runs_then_finishes_and_only_its_own_case_finishes_it(self):
+        post = lambda body, case="wf:9": self.client.post("/api/events", body, content_type="application/json",  # noqa: E731
+                                                          headers={"X-Bpmn8n-Case": case, "X-Bpmn8n-Activity": "Batch"})
+        event = post({"status": "running"}).json()["event"]
+        self.assertEqual(Event.objects.get(pk=event).status, "running")
+        self.assertEqual(post({"status": "complete", "event": event}, case="wf:10").status_code, 404)  # another case's
+        self.assertEqual(post({"status": "complete", "event": event}).status_code, 200)
+        done = Event.objects.get(pk=event)
+        self.assertEqual((done.status, done.activity, done.duration_ms >= 0, done.ended >= done.started), ("complete", "Batch", True, True))
+        self.assertEqual(post({"status": "error", "event": event}).status_code, 404)  # finished once
+
 
 @override_settings(N8N_URL="http://n8n:5678", N8N_API_KEY="")
 class ManyWorkflowsTest(TestCase):

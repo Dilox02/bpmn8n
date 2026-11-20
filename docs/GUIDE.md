@@ -146,7 +146,7 @@ The icons are the official symbols of the BPMN 2.0 notation (the same as the pos
 | Service / Script / Business Rule / Send Task | automated tasks | runs the `@task` chosen from the menu |
 | User Task / Manual Task | human tasks | one task per item in the lane; the process **suspends** and resumes when they are all completed. Opened, the node links the task page (below) |
 | Receive Task | waiting for a message | resumes when a system calls `POST /api/messages/<name>` with the *correlation key* |
-| Call Activity | sub-process | runs another workflow (trigger "When Executed by Another Workflow") and continues with its result; **Inputs** and **Outputs** map the data in and out (below) |
+| Call Activity | sub-process | runs another workflow (trigger "When Executed by Another Workflow") and continues with its result; **Inputs** and **Outputs** map the data in and out (below). With the bpmn8n credential (the builder sets it) the call is a step of the case: running while the sub-process works, so the case page says the case is there, then complete or error with its duration |
 | Exclusive / Inclusive Gateway | XOR / OR | **Decide With**: *Laya* (reads text) or *Conditions* (`{{amount}} > 1000`); no branch → `default` |
 | Parallel Gateway | AND | every item goes on along all branches |
 | Event-Based Gateway | race between events | the first of several messages wins, or `timeout` (output 0); the losers are cancelled |
@@ -1111,6 +1111,7 @@ This table is generated (`python manage.py config --md`; a test fails when it is
 | `EMAIL_HOST_PASSWORD` | (empty) | Its password |
 | `EMAIL_USE_TLS` | `1` | STARTTLS to the SMTP server |
 | `DEFAULT_FROM_EMAIL` | `bpmn8n@localhost` | The sender of notifications and digests |
+| `TIME_ZONE` | `UTC` | The time zone pages show times in (IANA name, e.g. `Europe/Rome`); stored times are UTC |
 | `LOG_FORMAT` | (empty) | `json`: one JSON object per log line |
 | `STATIC_ROOT` | (empty) | Where collectstatic writes; empty: `staticfiles/` in the checkout |
 | `GUNICORN_PID` | `/tmp/gunicorn.pid` | gunicorn's pid file: Studio reloads it with new tasks |

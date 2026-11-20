@@ -20,8 +20,11 @@
     [data-test-id=canvas-minimap], .vue-flow__minimap, [class*=minimap] { display: none !important; }
     [data-canvas-node-render-type] { transition: opacity .35s, filter .35s; }
     [data-state=waiting] [data-canvas-node-render-type] { opacity: .3; filter: grayscale(1); }
-    [data-state=active] [data-canvas-node-render-type] { animation: bpmn8n-active .45s ease-in-out infinite alternate; }
-    @keyframes bpmn8n-active { to { filter: brightness(1.45); } }
+    [data-state=active] [data-canvas-node-render-type] {  /* the legend's orange, in either theme */
+      outline: 4px solid var(--b8-accent, #ff6900) !important; outline-offset: 4px;
+      animation: bpmn8n-active .6s ease-in-out infinite alternate;
+    }
+    @keyframes bpmn8n-active { to { outline-color: transparent; } }
     @media (prefers-reduced-motion: reduce) { [data-state=active] [data-canvas-node-render-type] { animation: none; } }
     ${light ? `body, .vue-flow { background: var(--b8-canvas, #f4f6f8) !important; }` : `
     body, .vue-flow { background: var(--b8-canvas, #0d0d12) !important; }

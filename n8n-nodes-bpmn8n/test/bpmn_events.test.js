@@ -76,15 +76,34 @@ test('mergeOutputs merges back only the listed outputs into the parent item', ()
 	assert.deepStrictEqual(mergeOutputs([{ id: 1 }], [{ r: 1 }, { r: 2 }], ['r']), [{ id: 1, r: 1 }, { id: 1, r: 2 }]);
 });
 
-function callRun(parameters, child) {
+function callRun(parameters, child, extra = {}) {
 	const sent = [];
-	const { ctx } = context({ workflowId: { value: '7' }, ...parameters }, [{ json: { amount: 5, text: 'hi' } }], {
+	const { ctx, posted } = context({ workflowId: { value: '7' }, ...parameters }, [{ json: { amount: 5, text: 'hi' } }], {
 		getWorkflowDataProxy: () => ({ $execution: { id: '9' }, $workflow: { id: 'wf' } }),
 		getMode: () => 'trigger',
 		executeWorkflow: async (_w, items) => (sent.push(items), { data: [child] }),
+		...extra,
 	});
-	return { run: () => new Bpmn8nCallActivity().execute.call(ctx), sent };
+	ctx.helpers.httpRequestWithAuthentication = async (_c, options) => (posted.push([options.url, options.body]),
+		{ statusCode: 200, body: { message: '', event: 41 } });
+	return { run: () => new Bpmn8nCallActivity().execute.call(ctx), sent, posted };
 }
+
+test('a call activity is a step of the event log: running while the sub-process works, then complete', async () => {
+	const { run, posted } = callRun({}, [{ json: { out: 1 } }]);
+	await run();
+	assert.deepStrictEqual(posted.map(([url, body]) => [url, body.status, body.event]),
+		[['http://web:8000/api/events', 'running', undefined], ['http://web:8000/api/events', 'complete', 41]]);
+});
+
+test('a failed sub-process ends its event as an error and still fails; a node without a credential logs nothing', async () => {
+	const failing = callRun({}, [], { executeWorkflow: async () => { throw new Error('child broke'); } });
+	await assert.rejects(failing.run(), /child broke/);
+	assert.deepStrictEqual(failing.posted[1][1], { status: 'error', event: 41, message: 'child broke' });
+	const bare = callRun({}, [{ json: { out: 1 } }], { getCredentials: async () => { throw new Error('no credentials'); } });
+	assert.deepStrictEqual(await bare.run(), [[{ json: { out: 1 } }]]);
+	assert.deepStrictEqual(bare.posted, []);
+});
 
 test('a call activity without a mapping sends the items and returns the result as before', async () => {
 	const { run, sent } = callRun({}, [{ json: { out: 1 } }]);

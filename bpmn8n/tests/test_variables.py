@@ -79,4 +79,4 @@ class ProcessVariablesTest(TestCase):
     def test_error_message_is_filled_in(self):
         self.post("/api/tasks/normalize_alert/run", {"item": {"partner": "Contoso", "source": "s", "raw": "r"}})
         r = self.post("/api/events", {"status": "error", "message": "No ack from {{partner}}"})
-        self.assertEqual(r.json(), {"message": "No ack from Contoso"})
+        self.assertEqual(r.json()["message"], "No ack from Contoso")

@@ -112,6 +112,26 @@ class CasePageTest(TestCase):
         self.assertEqual(self.client.get("/workflows/wf9/cases/1/").status_code, 404)  # no such case
 
 
+class LongCaseTest(TestCase):
+    def test_a_case_inside_a_call_activity_is_running_for_as_long_as_it_has_been_going(self):
+        """A looping campaign: hours of finished steps, then a sub-process called an hour ago that has not returned."""
+        start = datetime.now(UTC) - timedelta(hours=3)
+        Case.objects.create(case_id="wf1:43", process="Campaign")
+        for i in range(305):  # more than the page lists: where the case is comes from all of them
+            Event.objects.create(case_id="wf1:43", process="Campaign", activity=f"Step {i % 5}", endpoint="t", status="complete",
+                                 started=start + timedelta(seconds=20 * i), ended=start + timedelta(seconds=20 * i + 1),
+                                 duration_ms=1000, resource="system")
+        Event.objects.create(case_id="wf1:43", process="Campaign", activity="Batch", endpoint="event", status="running",
+                             started=start + timedelta(hours=2), ended=start + timedelta(hours=2), duration_ms=0, resource="system")
+        self.client.force_login(User.objects.create_user("sam", password="pw", is_staff=True))
+        with patch(WORKFLOW, return_value=None):
+            page = self.client.get("/workflows/wf1/cases/43/")
+        self.assertEqual(page.status_code, 200, page.content[:300])
+        self.assertEqual(page.context["status"], "running")
+        self.assertGreater(page.context["duration_ms"], 2.9 * 3600 * 1000)  # up to now, not to its last step
+        self.assertContains(page, "Now at <strong>Batch</strong>", html=True)
+
+
 class StatusTest(TestCase):
     def test_a_case_status_from_its_events_and_waits(self):
         now = T0 + timedelta(hours=1)

@@ -21,6 +21,7 @@
   <div class="stack">
     <section aria-labelledby="canvas">
       <div class="section-head"><h2 id="canvas">Where the case is</h2>{% if workflow %}<span class="legend meta" aria-label="Legend"><span data-state="done">passed</span><span data-state="active">here now</span><span data-state="waiting">not reached</span></span>{% endif %}</div>
+      {% if here %}<p class="meta">Now at <strong>{{ here|join:", " }}</strong></p>{% endif %}{# legible when a long workflow's canvas is small #}
       {% if workflow %}
       <div class="canvas-well"><iframe id="preview" credentialless title="The workflow of {{ process|default:case_id }} with the steps this case passed" data-src="{{ preview_url }}/workflows/demo"></iframe></div>
       {{ workflow|json_script:"workflow" }}{{ states|json_script:"states" }}

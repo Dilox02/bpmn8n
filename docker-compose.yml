@@ -39,6 +39,7 @@ services:
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
       EMAIL_USE_TLS: ${EMAIL_USE_TLS:-1}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-bpmn8n@localhost}
+      TIME_ZONE: ${TIME_ZONE:-UTC}  # the pages' times, e.g. Europe/Rome
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -154,7 +155,7 @@ services:
       # over plain HTTP on a host other than localhost (preview.localhost behind the gateway) n8n's editor shows
       # only a warning when its cookie is Secure; the preview signs nobody in
       N8N_SECURE_COOKIE: ${N8N_PREVIEW_SECURE_COOKIE:-true}
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-theme.js?v=11  # bump v on edits
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-theme.js?v=12  # bump v on edits
     volumes:
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro

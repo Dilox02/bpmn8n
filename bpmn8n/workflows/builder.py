@@ -273,7 +273,7 @@ class Workflow:
             if isinstance(outputs, str) or not outputs or not all(isinstance(o, str) and o for o in outputs):
                 raise SpecError(f"{name}: outputs is a list of the sub-process's variables that come back")
             parameters["outputs"] = list(outputs)
-        return self.add(name, node_type("callActivity"), parameters, row, bpmn=False)
+        return self.add(name, node_type("callActivity"), parameters, row)  # its credential logs the call
 
     def signal_catch(self, name, signal, row=0, same_column=False):
         """Waits for the signal `signal`: POST /api/signals/<signal> resumes every case waiting for it (a message
