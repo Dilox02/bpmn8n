@@ -19,7 +19,7 @@
         <tbody>
         {% for p in projects %}
           <tr>
-            <td><a class="name" href="{% url 'project' p.slug %}">{{ p.name }}</a>{% if p.n8n_url %}<span class="sub"><a href="{{ p.n8n_url }}">open in n8n</a></span>{% endif %}</td>
+            <td><a class="name" href="{% url 'project' p.slug %}">{{ p.name }}</a>{% if p.n8n_id %}<span class="sub"><a class="inline-link" href="{% url 'workflow' p.n8n_id %}">its workflow</a></span>{% endif %}</td>
             <td class="line2"><span class="mono">projects/{{ p.slug }}</span></td>
             <td class="n num line2">{% if p.activity_count is None %}—{% else %}{{ p.activity_count }}{% endif %}</td>
             <td class="side"><span class="pill s-{{ p.status }}">{{ p.status }}</span></td>

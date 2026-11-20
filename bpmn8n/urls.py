@@ -35,13 +35,16 @@ urlpatterns = [
     path("landscape/", landscape.landscape, name="landscape"),
     path("variables/", operations.variables, name="variables"),
     path("status/", operations.status, name="status"),
+    path("editor/", views.n8n, name="n8n"),  # n8n's screens inside bpmn8n
     path("docs/", views.docs, name="docs"),
     path("docs/<slug:section>/", views.docs, name="docs_section"),
     # one workflow, keyed by its n8n id as n8n keys it (bpmn8n/web/workflow.py)
     path("workflows/", operations.workflows, name="workflows"),
     path("workflows/<str:workflow_id>/", workflow.overview, name="workflow"),
     path("workflows/<str:workflow_id>/cases/", workflow.cases, name="workflow_cases"),
+    path("workflows/<str:workflow_id>/editor/", workflow.editor, name="workflow_editor"),
     path("workflows/<str:workflow_id>/cases/<str:execution>/", workflow.case, name="workflow_case"),
+    path("workflows/<str:workflow_id>/cases/<str:execution>/n8n/", workflow.case_in_n8n, name="workflow_case_n8n"),
     path("workflows/<str:workflow_id>/insights/", workflow.insights, name="workflow_insights"),
     path("workflows/<str:workflow_id>/simulation/", workflow.simulation, name="workflow_simulation"),
     path("workflows/<str:workflow_id>/versions/", workflow.versions, name="workflow_versions"),

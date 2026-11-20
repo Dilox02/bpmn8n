@@ -102,7 +102,9 @@ def insights(request):
         target = float(state["target"]) * 60 if state["target"] else None
     except ValueError:
         target = None
-    base = Log.load(Scope(process or None, since=day(state["since"]), until=day(state["until"], end=True)))
+    one = getattr(request, "b8_workflow", None)  # a workflow's tab: its own cases, by id (a copy with its name is another)
+    base = Log.load(Scope(None if one else (process or None), workflow=one["ref"].id if one else None,
+                          since=day(state["since"]), until=day(state["until"], end=True)))
     log, steps = base.filter(stacks["filters"])
     context = {"processes": processes, "process": process, "state": state, "base_cases": len(base.traces),
                "chips": chips(state, "filters", stacks["filters"], steps), "names": names(base), "target": state["target"],

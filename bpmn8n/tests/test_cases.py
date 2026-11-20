@@ -78,7 +78,9 @@ class CasePageTest(TestCase):
             self.assertContains(page, text)
         self.assertContains(page, f'href="/inbox/{self.task.pk}/"')  # the task's own page
         self.assertContains(page, "&quot;ticket_id&quot;: 7")  # a step's output, as JSON
-        self.assertContains(page, 'href="http://localhost:5678/workflow/wf1/executions/42" target="_blank"')
+        self.assertContains(page, 'href="/workflows/wf1/cases/42/n8n/"')  # n8n's view of it, inside bpmn8n
+        frame = self.client.get("/workflows/wf1/cases/42/n8n/")
+        self.assertContains(frame, 'src="http://localhost:5678/workflow/wf1/executions/42?native=1"')
         self.assertNotContains(page, "by an LLM")  # without the workflow, nobody knows what an LLM wrote
 
     @override_settings(N8N_PREVIEW_URL="http://preview.test")

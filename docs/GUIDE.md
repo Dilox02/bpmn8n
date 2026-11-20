@@ -416,15 +416,23 @@ Studio writes code that the server then runs: it is for staff only and the code 
 
 Two levels, as in n8n. **The framework** spans every workflow: `/inbox/` (the home: `/` leads there), `/start/`,
 `/workload/`, `/workflows/`, `/cases/`, `/insights/`, `/simulation/`, `/studio/`, `/activities/`, `/landscape/`,
-`/variables/`, `/docs/` (one section per page). **One workflow** lives under its n8n id, as n8n keys it
-(`/workflow/<id>/executions/<n>`): `/workflows/<id>/` (overview: its figures, what waits on people, its latest cases),
-and the tabs `cases/`, `cases/<execution>/`, `insights/`, `simulation/` (when it has a model), `versions/`, `start/`
-(when it is published and takes a form). Every tab carries the same header: the workflow's mark, its name, its state in
-n8n and *Open in n8n*. The old `/cases/<workflow>:<execution>/` redirects to the new address.
+`/variables/`, `/docs/` (one section per page), `/editor/` (n8n itself). **One workflow** lives under its n8n id, as
+n8n keys it (`/workflow/<id>/executions/<n>`): `/workflows/<id>/` (overview: its figures, what waits on people, its
+latest cases), and the tabs `editor/`, `cases/`, `cases/<execution>/` (and `cases/<execution>/n8n/`), `insights/`,
+`simulation/` (when it has a model), `versions/`, `start/` (when it is published and takes a form). Every tab carries the
+same header: the workflow's mark, its name and its state in n8n. The old `/cases/<workflow>:<execution>/` redirects.
+
+**n8n's screens inside bpmn8n.** n8n's editor of a workflow is its *Editor* tab, a case's run in n8n (n8n's own
+execution screen, its debugger) is *In n8n* on the case page, and the sidebar's *n8n* opens n8n's own list of
+workflows, credentials and executions: n8n in a frame of the page (`templates/bpmn8n/n8n_frame.html`, at
+`N8N_PUBLIC_URL`; n8n's `frame-ancestors` lets bpmn8n's address frame it, docker-compose.yml), signed in with n8n's
+session (one origin behind the gateway, or the same host). Inside bpmn8n n8n keeps its own execution screen (the case
+page is bpmn8n's view of it) and shows no bpmn8n strip (the sidebar is there); its unused entries stay hidden.
 
 **One workflow at a time.** Every framework page says which workflow each row belongs to (two letters on a tint of its
 own hue: the workflows n8n has take the hues in turn, so they never share one) and offers the row of workflows that have
-something on it, with how much (`?workflow=<id>`): the inbox, the cases, the workload. Insights and Simulation start by
+something on it, with how much (`?workflow=<id>`): the inbox, the cases, the workload (one block per workflow: its
+lanes, the group of people each lane is served by, who did the work, what is overdue). Insights and Simulation start by
 choosing a workflow; logs of no workflow in n8n (imported, or of deleted workflows) and models of projects not
 imported are listed apart. Activities do the same by project.
 

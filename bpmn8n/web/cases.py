@@ -175,7 +175,7 @@ def case(request, case_id):
     states = node_states(graph, {e.activity for e in events if e.status != "running"} - open_at, open_at) if graph else {}
 
     return render(request, "bpmn8n/case.html", {
-        "case_id": case_id, "execution_id": execution_id, "status": status, "started": started, "last": last,
+        "case_id": case_id, "workflow_id": workflow_id, "execution_id": execution_id, "status": status, "started": started, "last": last,
         "duration_ms": (last - started).total_seconds() * 1000,
         "process": (record and record.process) or next((e.process for e in events if e.process), "") or
                    (workflow or {}).get("name") or next((w.process for w in waits if w.process), ""),

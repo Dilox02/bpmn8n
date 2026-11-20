@@ -208,7 +208,7 @@
     el.className = 'bpmn8n-card';
     el.style.setProperty('--tint', document.querySelector(
       `[data-test-id=canvas-node][data-node-name="${CSS.escape(node.name)}"]`)?.style.getPropertyValue('--b8-tint') || '');
-    el.innerHTML = html + (caseId ? `<a class="case" href="${esc(BPMN8N)}/cases/${caseId.split(":").map(encodeURIComponent).join(":")}/" target="_blank">Open the case</a>` : '');
+    el.innerHTML = html + (caseId ? `<a class="case" href="${esc(BPMN8N)}/workflows/${caseId.split(":").map(encodeURIComponent).join("/cases/")}/" target="_blank">Open the case</a>` : '');
     params.prepend(el);
   }
   // ponytail: polls while a panel is open (parameters change without DOM events we can rely on)

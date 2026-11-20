@@ -9,7 +9,7 @@
     <p class="sub"><span class="mono">projects/{{ project.slug }}</span>{% if project.spec %} · {{ project.spec.activities|length }} new activit{{ project.spec.activities|length|pluralize:"y,ies" }}, {{ project.spec.workflow.steps|length }} steps{% endif %}{% if project.status == "research" %} · researching the domain on the web{% elif not project.brief %} · the interview is still going{% endif %}</p>
   </div>
   <div class="actions">
-    {% if project.n8n_url %}<a class="btn" href="{{ project.n8n_url }}">Open in n8n</a>{% endif %}
+    {% if project.n8n_id %}<a class="btn" href="{% url 'workflow_editor' project.n8n_id %}">Open its workflow</a>{% endif %}
     {% if project.brief %}
     <form method="post" action="{% url 'build' project.slug %}">{% csrf_token %}
       <button class="btn primary" type="submit" {% if project.busy %}disabled{% endif %}>{% if project.building %}Building…{% elif project.status == "ready" or project.status == "failed" %}Build again{% else %}Build it{% endif %}</button>

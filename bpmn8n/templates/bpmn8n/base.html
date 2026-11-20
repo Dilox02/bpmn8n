@@ -53,7 +53,7 @@
     {% if request.b8_workflow %}{% with w=request.b8_workflow %}
     <header class="wf-head">
       <div class="wf-title"><span class="wf-name">{{ w.ref.name|process_chip }}</span>{{ w.ref.state|status_pill }}<span class="meta mono">{{ w.ref.id }}</span>
-        {% if w.n8n_url %}<a class="btn" href="{{ w.n8n_url }}" target="_blank" rel="noopener">Open in n8n<span class="sr-only"> (opens a new tab)</span></a>{% endif %}</div>
+</div>
       <nav class="tabs" aria-label="{{ w.ref.name }}">{% for t in w.tabs %}<a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}</a>{% endfor %}</nav>
     </header>{% endwith %}{% endif %}
     {% for m in messages %}<p class="notice {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}

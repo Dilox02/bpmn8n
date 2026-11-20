@@ -10,6 +10,7 @@
 <details class="start"{% if single or chosen == p.path or errors and chosen == p.path %} open{% endif %}>
   <summary>{{ p.name|process_chip }}<span class="meta">{{ p.fields|length }} field{{ p.fields|length|pluralize }}</span><span class="btn">Fill in</span></summary>
   <div class="start-body">
+  {% if p.workflow_id %}<p class="meta">Its workflow: <a class="inline-link" href="{% url 'workflow' p.workflow_id %}">{{ p.name }}</a></p>{% endif %}
   {% if answer and chosen == p.path %}
     <p class="notice success" role="status">n8n took it.{% if case_id %} <a href="{{ case_id|case_url }}">Open the case</a>{% else %} <a href="{% url 'inbox' %}">Go to the inbox</a>{% endif %}</p>
     <pre class="mono">{{ answer }}</pre>

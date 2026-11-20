@@ -1,6 +1,7 @@
 """People's pages: the inbox, one page per human task (what the link in n8n's User Task node opens),
 the activities this server runs, and the documentation."""
 import inspect
+import json
 import re
 import zlib
 from collections import Counter
@@ -11,6 +12,7 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -70,13 +72,14 @@ class Nav:
 NAV = (Nav("inbox", "Inbox", "inbox", group="Work"), Nav("start_case", "Start a case", "start", group="Work"),
        Nav("workload", "Workload", "workload", group="Work"),
        Nav("workflows", "Workflows", "workflows", group="Workflows"), Nav("cases", "Cases", "cases", staff=True, group="Workflows"),
+       Nav("n8n", "n8n", "editor", staff=True, group="Workflows"),
        Nav("insights", "Insights", "insights", group="Analyse"),
        Nav("simulation", "Simulation", "simulation", staff=True, group="Analyse"),
        Nav("studio", "Studio", "studio", staff=True, group="Build"), Nav("activities", "Activities", "activities", group="Build"),
        Nav("landscape", "Landscape", "landscape", group="Build"),
        Nav("variables", "Variables", "variables", staff=True, group="Build"))
 NAV_BOTTOM = (Nav("docs", "Docs", "docs"), Nav("api-1:openapi-view", "API", "api"),
-              Nav("N8N_PUBLIC_URL", "Editor", "editor", staff=True), Nav("admin:index", "Admin", "admin", staff=True))
+              Nav("admin:index", "Admin", "admin", staff=True))
 THEMES, THEME_COOKIE = (("system", "System"), ("light", "Light"), ("dark", "Dark")), "b8-theme"
 
 
@@ -243,11 +246,12 @@ def activities(request):
     """Every registered @task with its decorator and code, its inputs and its result, by node kind."""
     kind = request.GET.get("kind") if request.GET.get("kind") in TASK_KINDS else None
     every = sorted(TASKS.values(), key=lambda t: (TASK_KINDS.index(t.kind), t.name))
-    q, project = request.GET.get("q", "").strip().lower(), request.GET.get("project", "")
+    q, project, defines = request.GET.get("q", "").strip().lower(), request.GET.get("project", ""), project_workflows()
     matching = [t for t in every if kind in (None, t.kind) and (not q or q in f"{t.name} {t.description} {t.module}".lower())]
     counts = Counter(project_of(t) for t in matching)
     chosen, pager = paginate(request, [t for t in matching if project in ("", project_of(t))], ACTIVITIES_PAGE)
     rows = [{"name": t.name, "kind": t.kind, "label": label(t.kind), "description": t.description, "project": project_of(t),
+             "workflow": defines.get(project_of(t), (project_of(t), ""))[0], "workflow_id": defines.get(project_of(t), ("", ""))[1],
              "module": t.module.removesuffix(".tasks"), "inputs": t.inputs, "output": t.output is not None, "outputs": t.outputs,
              "source": source(t.fn)} for t in chosen]
     def with_project(name):  # this page's query, on another project's activities
@@ -259,12 +263,28 @@ def activities(request):
         return f"?{query.urlencode()}" if query else request.path
 
     projects = [{"id": "", "name": "All projects", "count": len(matching), "current": not project, "url": with_project("")},
-                *({"id": name, "name": name, "count": n, "current": name == project, "url": with_project(name)}
+                *({"id": name, "name": defines.get(name, (name, ""))[0], "count": n, "current": name == project, "url": with_project(name)}
                   for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))]
     return render(request, "bpmn8n/activities.html", {
         "tasks": rows, "pager": pager, "q": q, "workflow_choices": projects, "filter_label": "Project",
         "kind": kind, "total": len(every), "modules": {t.module for t in every},
         "kinds": [(k, label(k), sum(t.kind == k for t in every)) for k in TASK_KINDS]})
+
+
+def project_workflows():
+    """{project folder: (the name of the workflow it defines, its n8n id or "")}: projects/<slug>/workflow.json names
+    it; a project of several workflows (or none) keeps its folder's name."""
+    from ..core import directory
+    live = {name: wid for wid, (name, _) in (directory.from_n8n() or {}).items()}
+    found = {}
+    for path in (Path(settings.BASE_DIR) / "projects").glob("*/workflow.json"):
+        try:
+            name = json.loads(path.read_text()).get("name") or ""
+        except ValueError:
+            continue
+        if name:
+            found[path.parent.name] = (name, live.get(name, ""))
+    return found
 
 
 def project_of(task):
@@ -323,3 +343,12 @@ def docs(request, section=None):
         context |= {"current": sections[at], "body": mark_safe(re.sub(r'href="#([^"]+)"', link, sections[at]["html"])),  # noqa: S308
                     "previous": sections[at - 1] if at else None, "next": sections[at + 1] if at + 1 < len(sections) else None}
     return render(request, "bpmn8n/docs.html", context)
+
+
+@staff_member_required
+def n8n(request):
+    """n8n's own screens inside bpmn8n: its workflows, credentials and executions, at /editor/ (/n8n/ is the
+    one-origin gateway's address of n8n itself)."""
+    from .workflow import n8n_url
+    return render(request, "bpmn8n/n8n_frame.html", {"src": n8n_url("home/workflows"), "title": "n8n",
+                                                     "what": "n8n: its workflows, credentials and executions"})

@@ -36,9 +36,12 @@
   };
   const Strip = { HEIGHT, HIDDEN, links, workflowId, waitingUrl, badge, sameHost };
   if (typeof module === 'object' && module.exports) { module.exports = Strip; return; }  // node --test
-  if (window.top !== window) return;  // an embedded canvas has no use for it
 
   const BPMN8N = sameHost(new URL(document.currentScript?.src || location.href).searchParams.get('bpmn8n') || 'http://localhost:8000', location.href);
+  const hide = document.createElement('style');  // n8n's unused entries: hidden on its own and inside bpmn8n's pages
+  hide.textContent = `${HIDDEN.join(',\n    ')} { display: none !important; }`;
+  document.head.appendChild(hide);
+  if (window.top !== window) return;  // inside a bpmn8n page (or an embedded canvas): bpmn8n's own sidebar is there
   const style = document.createElement('style');
   style.textContent = `
     :root { --bpmn8n-strip: ${HEIGHT}px; }
@@ -53,7 +56,6 @@
     .bpmn8n-strip a:focus-visible { outline: 2px solid var(--b8-accent, currentColor); outline-offset: 1px; }
     .bpmn8n-strip .count { padding: 1px 6px; border-radius: 8px; font-size: 11px; color: var(--b8-primary-ink, #000); background: var(--b8-accent, #5fb3c8); }
     .bpmn8n-strip .count[hidden] { display: none; }
-    ${HIDDEN.join(',\n    ')} { display: none !important; }
   `;
   document.head.appendChild(style);
   if (!document.querySelector('link[data-bpmn8n-tokens]')) {  // normally bpmn.js links them first

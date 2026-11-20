@@ -1,0 +1,12 @@
+{% extends "bpmn8n/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block crumbs %}<span>{{ title }}</span>{% endblock %}
+{% block main %}
+<div class="frame-row">
+  {% if back %}<a class="inline-link" href="{{ back }}">← The case in bpmn8n</a>{% else %}<h1 class="sr-only">{{ title }}</h1>{% endif %}
+  <span class="meta">{{ what }}{% if not request.b8_workflow %}{% endif %}</span>
+  <a class="meta inline-link" href="{{ src }}" target="_blank" rel="noopener">Open in a new tab<span class="sr-only"> (n8n)</span></a>
+</div>
+{% if back %}<h1 class="sr-only">{{ title }}</h1>{% endif %}
+<iframe class="n8n-frame{% if request.b8_workflow %} in-workflow{% endif %}" src="{{ src }}" title="{{ what }}" allow="clipboard-read; clipboard-write"></iframe>
+{% endblock %}

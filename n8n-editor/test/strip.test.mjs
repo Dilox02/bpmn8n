@@ -38,4 +38,6 @@ test('n8n\'s unused entries are hidden by its own ids, and the strip waits for <
   assert.ok(Strip.HIDDEN.some(s => s.includes('main-sidebar-help')));
   const source = (await import('node:fs')).readFileSync(new URL('../strip.js', import.meta.url), 'utf8');
   assert.match(source, /if \(document\.body\) document\.body\.appendChild\(strip\);\s*else addEventListener\('DOMContentLoaded'/);
+  // inside bpmn8n (an iframe) the entries stay hidden; only the strip itself is left out
+  assert.ok(source.indexOf("hide.textContent") < source.indexOf("if (window.top !== window) return;"));
 });

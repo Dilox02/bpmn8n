@@ -23,7 +23,7 @@
   <summary>
     <span class="name">{{ t.name }}</span>
     <span class="pill">{{ t.label }}</span>
-    <span class="what"><span class="activity-project">{{ t.project|process_chip }}</span>{{ t.description|default:"No description: write one as the function's docstring." }}</span>
+    <span class="what"><span class="activity-project">{% if t.workflow_id %}<a href="{% url 'workflow' t.workflow_id %}">{{ t.workflow|process_chip }}</a>{% else %}{{ t.workflow|process_chip }}{% endif %}{% if t.workflow != t.project %}<span class="meta"> · projects/{{ t.project }}</span>{% endif %}</span>{{ t.description|default:"No description: write one as the function's docstring." }}</span>
     <span class="count num">{{ t.inputs|length }} in · {% if t.output %}{{ t.outputs|length }} out{% else %}result not declared{% endif %}</span>
   </summary>
   <div class="body">

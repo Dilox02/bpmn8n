@@ -24,7 +24,8 @@ from . import insights as insights_pages
 from . import operations, people
 from . import simulation as simulation_pages
 
-TABS = (("workflow", "Overview", False), ("workflow_cases", "Cases", True), ("workflow_insights", "Insights", False),
+TABS = (("workflow", "Overview", False), ("workflow_editor", "Editor", True), ("workflow_cases", "Cases", True),
+        ("workflow_insights", "Insights", False),
         ("workflow_simulation", "Simulation", True), ("workflow_versions", "Versions", False), ("workflow_start", "Start a case", False))
 
 
@@ -45,11 +46,12 @@ def in_workflow(current, **inject):
             starts = {p["workflow_id"] for p in people.starts().values()}
             modelled = ref.name in (names := set(simulation_sources().values())) or ref.process in names
             request.b8_workflow = {
-                "ref": ref, "n8n_url": f"{conf.settings.N8N_PUBLIC_URL.rstrip('/')}/workflow/{ref.id}" if ref.in_n8n else "",
+                "ref": ref,
                 "tabs": [{"label": label, "url": reverse(name, args=[ref.id]), "current": name == current}
                          for name, label, staff in TABS if (request.user.is_staff or not staff)
                          and (name != "workflow_start" or ref.id in starts)
-                         and (name != "workflow_simulation" or modelled)]}
+                         and (name != "workflow_simulation" or modelled)
+                         and (name != "workflow_editor" or ref.in_n8n)]}
             return view(request, ref, *args, **kwargs)
         return wrapper
     return decorate
@@ -115,3 +117,27 @@ def case_url(case_id):
     """Where a case lives: /workflows/<workflow id>/cases/<execution>/."""
     workflow_id, _, execution = str(case_id).rpartition(":")
     return reverse("workflow_case", args=[workflow_id, execution]) if workflow_id and execution else ""
+
+
+def n8n_url(path):
+    """n8n's own page at `path`, at the address people open n8n at (one origin: under the gateway's /n8n)."""
+    return f"{conf.settings.N8N_PUBLIC_URL.rstrip('/')}/{path.lstrip('/')}"
+
+
+@in_workflow("workflow_editor")
+def editor(request, ref):
+    """n8n's editor of this workflow, inside bpmn8n: the canvas, its executions and its settings, in n8n's own screens."""
+    if not ref.in_n8n:
+        raise Http404(ref.id)
+    return render(request, "bpmn8n/n8n_frame.html", {"src": n8n_url(f"workflow/{ref.id}"), "title": "Editor",
+                                                     "what": "n8n's editor of this workflow"})
+
+
+@in_workflow("workflow_cases")
+def case_in_n8n(request, ref, execution):
+    """The case as n8n ran it: n8n's own execution view (its debugger: every node's input and output), inside bpmn8n."""
+    if not request.user.is_staff:
+        raise Http404(execution)
+    return render(request, "bpmn8n/n8n_frame.html", {
+        "src": n8n_url(f"workflow/{ref.id}/executions/{execution}?native=1"), "title": f"Case #{execution} in n8n",
+        "what": "n8n's view of this execution", "back": reverse("workflow_case", args=[ref.id, execution])})

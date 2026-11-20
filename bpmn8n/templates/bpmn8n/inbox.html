@@ -29,7 +29,7 @@
       <tr>
         <td><a class="name" href="{% url 'task' task.pk %}">{{ task.title }}</a><span class="sub">{% if task.kind == "manualTask" %}Manual task{% else %}User task{% endif %} · {{ task.activity }}</span></td>
         <td class="line2"><span class="urgency">{% include "bpmn8n/urgency.html" %}</span></td>
-        <td class="line2">{{ task.process|process_chip }}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
+        <td class="line2">{% if task.case_id %}<a href="{{ task.case_id|workflow_url }}">{{ task.process|process_chip }}</a>{% else %}{{ task.process|process_chip }}{% endif %}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
         <td class="line2">{{ task.lane|default:"any lane" }}</td>
         <td class="side"><span class="pill s-{{ task.status }}">{% if task.status == "claimed" %}{{ task.assignee }}{% else %}{{ task.status }}{% endif %}</span></td>
         <td class="n num">{{ task.created|waited }}</td>
@@ -52,7 +52,7 @@
       {% for task in done %}
         <tr>
           <td><a class="name" href="{% url 'task' task.pk %}">{{ task.title }}</a><span class="sub">{{ task.activity }}</span></td>
-          <td class="line2">{{ task.process|process_chip }}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
+          <td class="line2">{% if task.case_id %}<a href="{{ task.case_id|workflow_url }}">{{ task.process|process_chip }}</a>{% else %}{{ task.process|process_chip }}{% endif %}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
           <td class="side">{{ task.assignee|default:"a system" }}</td>
           <td class="n num">{{ task.completed|waited }} ago</td>
         </tr>

@@ -461,3 +461,17 @@ td .proc + .sub, td .proc ~ .sub { margin-top: 4px; }
 .others > summary h2::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; background: var(--b8-muted);
   -webkit-mask: var(--chevron) center / 12px no-repeat; mask: var(--chevron) center / 12px no-repeat; transition: transform var(--b8-t-ui) var(--b8-ease-out); }
 .others[open] > summary h2::before { transform: rotate(90deg); }
+
+/* ---------- n8n's own screens inside bpmn8n (n8n_frame.html): the frame fills the sheet ---------- */
+.frame-row { display: flex; align-items: baseline; gap: 16px; margin-bottom: 8px; }
+.frame-row .meta:last-child { margin-left: auto; }
+.n8n-frame { display: block; width: 100%; height: calc(100svh - var(--b8-topbar) - var(--b8-sheet-inset) - 2 * var(--b8-pad) - 32px);
+  min-height: 520px; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); background: var(--b8-canvas); }
+.n8n-frame.in-workflow { height: calc(100svh - var(--b8-topbar) - var(--b8-sheet-inset) - 2 * var(--b8-pad) - 132px); }
+@media (max-width: 860px) { .n8n-frame, .n8n-frame.in-workflow { height: 70svh; min-height: 420px; } }
+
+/* ---------- the workload, one workflow per block (workload.html) ---------- */
+.workflow-block + .workflow-block { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--b8-border); }
+.workflow-block h2 a:hover .proc-name { text-decoration: underline; text-decoration-color: var(--b8-accent); text-underline-offset: 3px; }
+h3.minor { margin-bottom: 4px; font-size: var(--b8-fs-small); font-weight: 500; color: var(--b8-muted); }
+.warn-text { color: var(--b8-warning); }

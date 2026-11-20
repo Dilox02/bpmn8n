@@ -2,14 +2,18 @@
 import json
 from collections import Counter, defaultdict
 from datetime import timedelta
+from functools import reduce
+from operator import or_
 from statistics import mean
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import Group
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -18,7 +22,7 @@ from ..conf import settings
 from ..core import directory
 from ..models import Preference, UserTask
 from ..models.safety import AuditEntry
-from . import charts, scope
+from . import scope
 from .landscape import known_workflows
 
 WINDOWS = {7: "7 days", 30: "30 days", 90: "90 days"}  # the window of the means and of the completions
@@ -59,33 +63,49 @@ def lane_stats(tasks, since, now):
 
 @login_required
 def workload(request):
-    """The lanes' workload: staff see every lane, others the lanes they are in (and tasks of no lane)."""
+    """The work waiting on people, one workflow at a time: for each workflow n8n has, its lanes (the roles its User
+    and Manual tasks wait on, each served by the Django group of its name), what waits there and how fast it is taken
+    and done over the window, who did it, and what is overdue. Staff see every lane, others the lanes they are in."""
     now = timezone.now()
     days = int(request.GET["days"]) if request.GET.get("days", "").isdigit() and int(request.GET["days"]) in WINDOWS else 30
     since = now - timedelta(days=days)
     visible = UserTask.objects.all() if UserTask.manages(request.user) or request.user.is_superuser \
         else UserTask.objects.for_user(request.user)
-    in_window = visible.filter(Q(status__in=UserTask.WAITING) | Q(status=UserTask.COMPLETED, completed__gte=since))
-    workflow_choices = scope.choices(request, Counter(scope.workflow_of(c) for c in in_window.values_list("case_id", flat=True)))
-    if workflow := request.GET.get("workflow"):  # one workflow's share of the lanes
-        visible = visible.filter(case_id__startswith=f"{workflow}:")
-    tasks = list(visible.waiting().values("lane", "status", "due", "created", "claimed", "completed")) + list(
-        visible.filter(status=UserTask.COMPLETED, completed__gte=since).values("lane", "status", "due", "created", "claimed", "completed"))
-    lanes = lane_stats(tasks, since, now)
-    people = defaultdict(lambda: {"claimed": 0, "completed": 0})
-    for who in visible.filter(status=UserTask.CLAIMED, assignee__isnull=False).values_list("assignee__username", flat=True):
-        people[who]["claimed"] += 1
-    for who in visible.filter(status=UserTask.COMPLETED, completed__gte=since, assignee__isnull=False).values_list(
-            "assignee__username", flat=True):
-        people[who]["completed"] += 1
-    late = visible.waiting().filter(due__lt=now).select_related("assignee").order_by("due")[:10]
+    tasks = visible.filter(Q(status__in=UserTask.WAITING) | Q(status=UserTask.COMPLETED, completed__gte=since))
+    live = directory.from_n8n()
+    if live is not None:  # as everywhere: n8n's workflows (a deleted one's tasks can never be resumed)
+        tasks = tasks.filter(reduce(or_, (Q(case_id__startswith=f"{w}:") for w in live), Q(pk__in=[])))
+    workflow_choices = scope.choices(request, Counter(scope.workflow_of(c) for c in tasks.values_list("case_id", flat=True)))
+    if workflow := request.GET.get("workflow"):
+        tasks = tasks.filter(case_id__startswith=f"{workflow}:")
+    rows = list(tasks.values("pk", "case_id", "title", "lane", "status", "due", "created", "claimed", "completed",
+                             "assignee__username"))
+    refs, groups = {r.id: r for r in directory.workflows()}, dict(
+        Group.objects.annotate(n=Count("user")).values_list("name", "n"))
+    by_workflow = defaultdict(list)
+    for row in rows:
+        by_workflow[scope.workflow_of(row["case_id"])].append(row)
+    sections = []
+    for wid, mine in by_workflow.items():
+        lanes = lane_stats(mine, since, now)
+        for lane in lanes:
+            lane["members"] = groups.get(lane["lane"])  # None: no group of that name, only staff see its tasks
+        people = defaultdict(lambda: {"claimed": 0, "completed": 0})
+        for r in mine:
+            if who := r["assignee__username"]:
+                if r["status"] == UserTask.CLAIMED:
+                    people[who]["claimed"] += 1
+                elif r["status"] == UserTask.COMPLETED:
+                    people[who]["completed"] += 1
+        late = sorted((r for r in mine if r["status"] in UserTask.WAITING and r["due"] and r["due"] < now), key=lambda r: r["due"])
+        sections.append({"ref": refs.get(wid) or directory.WorkflowRef(wid, wid, "unknown"), "lanes": lanes,
+                         "people": sorted(people.items()), "late": late[:10],
+                         "waiting": sum(lane["waiting"] for lane in lanes),
+                         "done": sum(r["status"] == UserTask.COMPLETED for r in mine)})
+    sections.sort(key=lambda s: (-s["waiting"], s["ref"].name.lower()))
     return render(request, "bpmn8n/workload.html", {
-        "lanes": lanes, "people": sorted(people.items()), "late": late, "days": days, "windows": WINDOWS.items(),
-        "workflow_choices": workflow_choices,
-        "open_chart": charts.bars(lanes, label="Waiting tasks by lane", value=lambda r: r["waiting"],
-                                  name=lambda r: r["lane"], edges=[r["lane"] for r in lanes]),
-        "late_chart": charts.bars(lanes, label="Overdue tasks by lane", value=lambda r: r["overdue"],
-                                  name=lambda r: r["lane"], edges=[r["lane"] for r in lanes])})
+        "sections": sections, "days": days, "windows": WINDOWS.items(), "workflow_choices": workflow_choices,
+        "groups_url": reverse("admin:auth_group_changelist") if request.user.is_staff else ""})
 
 
 @login_required

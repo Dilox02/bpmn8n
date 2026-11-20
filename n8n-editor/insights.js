@@ -255,7 +255,9 @@
     drawReplay();
     const flow = document.querySelector('.vue-flow');
     const id = workflowId(location.pathname);
-    const ours = flow && id && flow.querySelector('[data-test-id=canvas-node][data-node-type^="CUSTOM.bpmn8n"]');
+    // on the editor's canvas only: an execution's canvas already shows how its nodes ran, and the switch hid its header
+    const ours = flow && id && !/\/executions(\/|$)/.test(location.pathname)
+      && flow.querySelector('[data-test-id=canvas-node][data-node-type^="CUSTOM.bpmn8n"]');
     if (!ours) { if (panel) panel.hidden = true; mode !== 'off' && clear(); return; }
     ensurePanel().hidden = false;
     const box = flow.getBoundingClientRect();

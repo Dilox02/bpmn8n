@@ -1,5 +1,8 @@
 // Live BPMN execution preview, with one token per invocation/input item and join queue.
+// Not inside bpmn8n: there the case page is this view, and n8n's own execution screen (its debugger) is what a
+// person opens n8n for, so n8n inside a bpmn8n page keeps it.
 (async () => {
+  if (window.top !== window) return;
   const source = new URL(document.currentScript.src);
   const { esc, date, text, html, keyed, localURL, previewURL, editorBase, ApiClient, LiveUpdates, viewComponent, installRoute, decodeExecution, executionState, trace } =
     await import(new URL('bpmn8n-live.mjs?v=7', source));

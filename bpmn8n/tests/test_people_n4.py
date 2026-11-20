@@ -48,21 +48,32 @@ class WorkloadTest(Base):
             UserTask.objects.filter(status="completed").update(created=NOW - timedelta(hours=4))
             self.client.force_login(self.boss)
             page = self.client.get("/workload/")
-        lane = page.context["lanes"][0]
+        section = page.context["sections"][0]  # one block per workflow
+        lane = section["lanes"][0]
         self.assertEqual((lane["lane"], lane["open"], lane["claimed"], lane["suspended"], lane["overdue"], lane["soon"]),
                          ("managers", 1, 1, 1, 1, 1))
         self.assertEqual((lane["wait"], lane["work"]), ("30 min", "2.0 h"))  # waits of 1 h and 0 (claimed on creation); one work of 2 h
-        self.assertEqual(dict(page.context["people"]), {"anna": {"claimed": 1, "completed": 0}, "carl": {"claimed": 0, "completed": 1}})
-        self.assertEqual([t.title for t in page.context["late"]], ["Approve"])
-        self.assertContains(page, "<svg")
+        self.assertEqual(dict(section["people"]), {"anna": {"claimed": 1, "completed": 0}, "carl": {"claimed": 0, "completed": 1}})
+        self.assertEqual([t["title"] for t in section["late"]], ["Approve"])
+        from django.contrib.auth.models import Group
+        self.assertEqual(lane["members"], Group.objects.get(name="managers").user_set.count())  # where its people come from
 
     def test_a_person_sees_only_their_lanes_and_staff_all(self):
         self.task(lane="managers")
         self.task(lane="others")
         self.client.force_login(self.anna)
-        self.assertEqual([r["lane"] for r in self.client.get("/workload/").context["lanes"]], ["managers"])
+        lanes = lambda: [r["lane"] for s in self.client.get("/workload/").context["sections"] for r in s["lanes"]]
+        self.assertEqual(lanes(), ["managers"])
         self.client.force_login(self.boss)
-        self.assertEqual([r["lane"] for r in self.client.get("/workload/").context["lanes"]], ["managers", "others"])
+        self.assertEqual(lanes(), ["managers", "others"])
+
+    def test_each_workflow_has_its_own_block(self):
+        self.task(case_id="wfA:1", lane="managers")
+        self.task(case_id="wfB:1", lane="managers")
+        self.client.force_login(self.boss)
+        sections = self.client.get("/workload/").context["sections"]
+        self.assertEqual(sorted(s["ref"].id for s in sections), ["wfA", "wfB"])
+        self.assertEqual([s["lanes"][0]["open"] for s in sections], [1, 1])
 
     def test_it_is_in_the_sidebar_and_needs_a_login(self):
         self.client.force_login(self.anna)

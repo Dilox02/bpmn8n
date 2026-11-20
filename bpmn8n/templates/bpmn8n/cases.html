@@ -48,7 +48,7 @@
     {% for row in rows %}{% with c=row.case %}
       <tr>
         <td><a class="name num" href="{{ c.case_id|case_url }}" title="{{ c.case_id }}">#{{ row.execution }}</a></td>
-        {% if not workflow %}<td class="line2">{{ c.process|process_chip }}{% if row.deleted %}<span class="sub">deleted in n8n</span>{% endif %}</td>{% endif %}
+        {% if not workflow %}<td class="line2"><a href="{{ c.case_id|workflow_url }}">{{ c.process|process_chip }}</a>{% if row.deleted %}<span class="sub">deleted in n8n</span>{% endif %}</td>{% endif %}
         <td class="side">{{ c.status|status_pill }}</td>
         <td class="line2">{% include "bpmn8n/steps.html" with steps=row.steps %}</td>
         {% if paths %}<td class="line2">{% for k, v in row.matched.items %}<span class="mono">{{ k }}</span> = <code>{{ v|truncatechars:60 }}</code>{% if not forloop.last %} · {% endif %}{% endfor %}</td>{% endif %}

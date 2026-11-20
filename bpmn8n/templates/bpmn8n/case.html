@@ -6,9 +6,9 @@
 <div class="title-row">
   <div>
     <div class="title-line"><h1>Case #{{ execution_id|default:case_id }}</h1>{{ status|status_pill }}</div>
-    <p class="sub">{% if not request.b8_workflow %}Of {{ process|process_chip }} · {% endif %}execution <span class="num">#{{ execution_id }}</span> in n8n{% if n8n_url %} · <a class="inline-link" href="{{ n8n_url }}" target="_blank" rel="noopener">open it in n8n</a>{% endif %}</p>
+    <p class="sub">{% if not request.b8_workflow %}Of {{ process|process_chip }} · {% endif %}execution <span class="num">#{{ execution_id }}</span> in n8n{% if n8n_url and user.is_staff %} · <a class="inline-link" href="{% url 'workflow_case_n8n' workflow_id execution_id %}">see it in n8n</a>{% endif %}</p>
   </div>
-  {% if n8n_url %}<div class="actions"><a class="btn" href="{{ n8n_url }}" target="_blank" rel="noopener">Open in n8n<span class="sr-only"> (opens a new tab)</span></a></div>{% endif %}
+  {% if n8n_url and user.is_staff %}<div class="actions"><a class="btn" href="{% url 'workflow_case_n8n' workflow_id execution_id %}">In n8n</a></div>{% endif %}
 </div>
 <dl class="facts">
   <div><dt>Started</dt><dd><time datetime="{{ started|date:'c' }}">{{ started|date:"j M Y, H:i" }}</time></dd></div>
