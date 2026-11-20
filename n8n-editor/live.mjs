@@ -187,3 +187,18 @@ export function executionState(execution, activity = { active: [], recent: [] })
   }
   return { states, tokens, active: terminal ? [] : activity.active, recent: activity.recent || [], terminal };
 }
+
+/** How the execution went, for the strip under its title: every step that ran, in the order it started, ok / error /
+ *  waiting, and the verdict (ok, failed, running). Only the flow's nodes: an agent's chat model or tool runs off it. */
+export function trace(execution) {
+  const runData = execution.data?.resultData?.runData || {}, flow = new Set();
+  for (const [source, outputs] of Object.entries(execution.workflowData?.connections || {})) {
+    for (const targets of outputs?.main || []) for (const t of targets || []) { flow.add(source); flow.add(t.node); }
+  }
+  const steps = Object.entries(runData).filter(([node]) => !flow.size || flow.has(node))
+    .flatMap(([node, runs]) => runs.map(run => ({ node, start: run.startTime ?? 0, ms: run.executionTime ?? 0,
+      status: run.error || run.executionStatus === 'error' ? 'error' : run.executionStatus === 'waiting' ? 'waiting' : 'ok' })))
+    .sort((a, b) => a.start - b.start);
+  const verdict = { success: 'ok', error: 'failed', crashed: 'failed', canceled: 'failed' }[execution.status] ?? 'running';
+  return { verdict, steps, failedAt: steps.find(s => s.status === 'error')?.node ?? null };
+}

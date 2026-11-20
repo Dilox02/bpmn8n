@@ -8,7 +8,17 @@
 // strip cover the editor's own top 24 px. The pure functions are tested with `node --test n8n-editor/test/strip.test.mjs`.
 (() => {
   const HEIGHT = 24;  // px
-  const LINKS = [['Inbox', 'inbox/'], ['Cases', 'cases/'], ['Insights', 'insights/'], ['Simulation', 'simulation/'], ['Docs', 'docs/']];
+  const LINKS = [['Inbox', 'inbox/'], ['Cases', 'cases/'], ['Insights', 'insights/'], ['Simulation', 'simulation/'],
+    ['Variables', 'variables/'], ['Docs', 'docs/']];  // Variables: bpmn8n's, on Redis (n8n's are licensed: hidden below)
+  // n8n's entries this stack does not use. Most of their modules are off (N8N_DISABLED_MODULES in docker-compose.yml);
+  // these stay because they follow the licence, not a module: help, n8n's AI assistant, its licensed variables,
+  // the settings that only show an upgrade page on the community edition (and the v2 migration report), and the
+  // 'production checklist' popover. ponytail: n8n's own ids; an upgrade that renames one only shows it again.
+  const HIDDEN = ['[data-test-id="main-sidebar-help"]', '[data-test-id^="ask-assistant"]',
+    '[data-test-id^="tab-"][data-test-id$="Variables"]',
+    ...['roles', 'external-secrets', 'source-control', 'sso', 'security', 'ldap', 'workersview', 'log-streaming',
+      'migration-report'].map(s => `#settings-${s}`),
+    '[id^="reka-popover-content"]:has([data-test-id="suggested-action-item"])'];
 
   /** The strip's links under bpmn8n's public URL (any path prefix kept). */
   const links = base => LINKS.map(([label, path]) => ({ label, href: `${String(base).replace(/\/+$/, '')}/${path}` }));
@@ -24,7 +34,7 @@
     if (loopback.includes(url.hostname) && loopback.includes(page.hostname)) url.hostname = page.hostname;
     return url.href.replace(/\/$/, '');
   };
-  const Strip = { HEIGHT, links, workflowId, waitingUrl, badge, sameHost };
+  const Strip = { HEIGHT, HIDDEN, links, workflowId, waitingUrl, badge, sameHost };
   if (typeof module === 'object' && module.exports) { module.exports = Strip; return; }  // node --test
   if (window.top !== window) return;  // an embedded canvas has no use for it
 
@@ -42,6 +52,8 @@
     .bpmn8n-strip a:hover { color: var(--b8-text, #fff); background: var(--b8-active, #262626); }
     .bpmn8n-strip a:focus-visible { outline: 2px solid var(--b8-accent, currentColor); outline-offset: 1px; }
     .bpmn8n-strip .count { padding: 1px 6px; border-radius: 8px; font-size: 11px; color: var(--b8-primary-ink, #000); background: var(--b8-accent, #5fb3c8); }
+    .bpmn8n-strip .count[hidden] { display: none; }
+    ${HIDDEN.join(',\n    ')} { display: none !important; }
   `;
   document.head.appendChild(style);
   if (!document.querySelector('link[data-bpmn8n-tokens]')) {  // normally bpmn.js links them first
@@ -53,7 +65,9 @@
   strip.className = 'bpmn8n-strip';
   strip.setAttribute('aria-label', 'bpmn8n');
   strip.innerHTML = `<b>bpmn8n</b>${links(BPMN8N).map(l => `<a href="${l.href}" target="_blank" rel="noopener">${l.label}${l.label === 'Inbox' ? '<span class="count" hidden></span>' : ''}</a>`).join('')}`;
-  document.body.appendChild(strip);
+  // the hooks run in <head>, before <body> exists: appending at once threw, and left the space with no strip
+  if (document.body) document.body.appendChild(strip);
+  else addEventListener('DOMContentLoaded', () => document.body.appendChild(strip));
 
   let last = null;
   async function refresh() {

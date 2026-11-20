@@ -13,6 +13,16 @@
 .execution-error:empty { display: none; }
 .execution-canvas { display: block; width: 100%; height: clamp(340px, 47vh, 560px); border: 1px solid var(--b8-border, var(--color--foreground, #555)); margin: 12px 0 20px; border-radius: 4px; }
 .execution-legend { justify-content: flex-start; gap: 16px; }
+.execution-trace { margin: 4px 0 14px; }
+.execution-trace-bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; background: var(--b8-border, #444); }
+.execution-trace-bar span { flex: 1 1 0; min-width: 3px; background: var(--b8-positive, #3fb950); }
+.execution-trace-bar [data-status=error] { background: var(--b8-negative, #f85149); }
+.execution-trace-bar [data-status=waiting] { background: var(--b8-warning, #d29922); }
+[data-verdict=failed] .execution-trace-bar { box-shadow: 0 0 0 2px var(--b8-negative, #f85149); }  /* failed with no failed step: crashed, cancelled */
+.execution-trace-text { margin: 6px 0 0; font-weight: 600; }
+[data-verdict=ok] .execution-trace-text { color: var(--b8-positive, #3fb950); }
+[data-verdict=failed] .execution-trace-text { color: var(--b8-negative, #f85149); }
+[data-verdict=running] .execution-trace-text { color: var(--b8-warning, #d29922); }
 .execution-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 7px; background: var(--token-color); border-radius: 50%; }
 [data-state=active] { --token-color: var(--b8-token-active, #f5bd69); }
 [data-state=ready] { --token-color: var(--b8-token-ready, #87bafa); }

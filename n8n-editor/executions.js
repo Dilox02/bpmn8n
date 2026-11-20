@@ -1,11 +1,11 @@
 // Live BPMN execution preview, with one token per invocation/input item and join queue.
 (async () => {
   const source = new URL(document.currentScript.src);
-  const { esc, date, text, html, keyed, localURL, previewURL, editorBase, ApiClient, LiveUpdates, viewComponent, installRoute, decodeExecution, executionState } =
-    await import(new URL('bpmn8n-live.mjs?v=6', source));
+  const { esc, date, text, html, keyed, localURL, previewURL, editorBase, ApiClient, LiveUpdates, viewComponent, installRoute, decodeExecution, executionState, trace } =
+    await import(new URL('bpmn8n-live.mjs?v=7', source));
   const backend = localURL(source.searchParams.get('bpmn8n') || 'http://localhost:8000');
   const preview = previewURL(source.searchParams.get('preview') || 'http://localhost:5679');
-  const stylesheet = document.createElement('link'); stylesheet.rel = 'stylesheet'; stylesheet.href = new URL('bpmn8n-executions.css?v=4', source); document.head.append(stylesheet);
+  const stylesheet = document.createElement('link'); stylesheet.rel = 'stylesheet'; stylesheet.href = new URL('bpmn8n-executions.css?v=5', source); document.head.append(stylesheet);
   const labels = { active: 'Running', ready: 'In the engine (not confirmed)', waiting: 'Waiting at the join', buffered: 'Processed · waiting for the other items', complete: 'Done', error: 'Failed' };
   function json(value) {
     const seen = new WeakSet();
@@ -22,6 +22,7 @@
       this.root = document.createElement('section'); this.root.className = 'bpmn8n-execution'; this.root.dataset.testId = 'live-execution'; this.root.lang = 'en'; this.root.translate = false;
       this.root.innerHTML = `<header class="execution-live-header"><div><h2>Execution #${esc(executionId)}</h2><p class="execution-status" role="status">Loading the state…</p></div>
         <div class="execution-live-actions"><button data-action="refresh">Refresh</button><button data-action="stop">Stop</button><a data-action="native" href="?native=1">n8n view / debug</a></div></header>
+        <div class="execution-trace"><div class="execution-trace-bar" role="img"></div><p class="execution-trace-text"></p></div>
         <p class="execution-connection" role="status">Connecting…</p><p class="execution-error" role="alert"></p>
         <div class="execution-legend"><span data-state="active">Running</span><span data-state="ready">In the engine (not confirmed)</span><span data-state="waiting">Waiting at the join</span><span data-state="complete">Done</span></div>
         <p class="execution-canvas-state" role="status">Loading the workflow…</p><iframe credentialless class="execution-canvas" title="The BPMN workflow and the execution's tokens"></iframe>
@@ -76,7 +77,7 @@
         text(this.root.querySelector('.execution-status'), `${execution.status} · started ${date(execution.startedAt || execution.createdAt)} · ${this.state.tokens.length} open tokens`);
         text(this.root.querySelector('.execution-error'), '');
         this.root.querySelector('[data-action=stop]').hidden = this.state.terminal;
-        this.renderTokens(); this.renderCalls(); this.sendStates();
+        this.renderTrace(); this.renderTokens(); this.renderCalls(); this.sendStates();
         if (this.state.terminal) { this.live.destroy(); text(this.root.querySelector('.execution-connection'), 'Execution ended · final state'); }
       } catch (error) { if (error.name !== 'AbortError') text(this.root.querySelector('.execution-error'), error.message); }
       finally { this.loading = false; if (this.pending) { this.pending = false; this.refresh(); } }
@@ -86,6 +87,16 @@
     }
     sendStates() {
       if (this.frameReady && this.state) this.frame.contentWindow.postMessage({ command: 'bpmn8nTokens', states: this.state.states }, new URL(preview).origin);
+    }
+    renderTrace() {
+      // green or red at a glance: one segment per step in the order it ran, coloured by how it ended
+      const { verdict, steps, failedAt } = trace(this.execution);
+      this.root.dataset.verdict = verdict;
+      const bar = this.root.querySelector('.execution-trace-bar');
+      html(bar, steps.map(s => `<span data-status="${s.status}" title="${esc(s.node)} · ${s.ms} ms · ${s.status}"></span>`).join(''));
+      const ms = steps.reduce((sum, s) => sum + s.ms, 0), said = { ok: 'Went through', failed: failedAt ? `Failed at ${failedAt}` : 'Failed', running: 'Still running or waiting' }[verdict];
+      const summary = `${said} · ${steps.length} step${steps.length === 1 ? '' : 's'} · ${ms < 1000 ? `${ms} ms` : ms < 60e3 ? `${(ms / 1000).toFixed(1)} s` : ms < 3600e3 ? `${Math.round(ms / 60e3)} min` : `${(ms / 3600e3).toFixed(1)} h`} of work`;
+      text(this.root.querySelector('.execution-trace-text'), summary); bar.setAttribute('aria-label', summary);
     }
     renderTokens() {
       if (!this.state) return;

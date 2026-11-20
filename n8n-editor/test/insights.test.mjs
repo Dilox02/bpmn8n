@@ -128,5 +128,5 @@ test('replay reads the replay endpoint of the workflow', () => {
 
 test('the switch and its replay controls really hide (their display: flex would beat the hidden attribute)', async () => {
   const source = (await import('node:fs')).readFileSync(new URL('../insights.js', import.meta.url), 'utf8');
-  assert.match(source, /\.bpmn8n-heat\[hidden\], \.bpmn8n-heat \[hidden\] \{ display: none; \}/);
+  assert.match(source, /\.bpmn8n-heat\[hidden\], \.bpmn8n-heat \[hidden\] \{ display: none !important; \}/);  // .replay's own display comes later
 });

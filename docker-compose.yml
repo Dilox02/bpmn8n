@@ -105,8 +105,16 @@ services:
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
       # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
       # ?bpmn8n=); under N8N_PATH; n8n caches /static for a day: bump v on edits
-      EXTERNAL_FRONTEND_HOOKS_URLS: ${N8N_PATH:-/}static/bpmn8n-bpmn.js?v=7;${N8N_PATH:-/}static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-evaluations.js?v=10&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-executions.js?v=7&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};${N8N_PATH:-/}static/bpmn8n-insights.js?v=3&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-strip.js?v=1&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
+      EXTERNAL_FRONTEND_HOOKS_URLS: ${N8N_PATH:-/}static/bpmn8n-bpmn.js?v=7;${N8N_PATH:-/}static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-evaluations.js?v=11&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-executions.js?v=9&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};${N8N_PATH:-/}static/bpmn8n-insights.js?v=4&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-strip.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
       N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
+      # n8n's extras this stack does not use: its agents and AI builder, its Insights (bpmn8n has /insights/), its
+      # instance MCP, chat and promotions, the migration report, and the licensed modules that only show an
+      # upgrade page on the community edition (bpmn8n replaces log streaming and source control); the editor
+      # hook strip.js hides the menu entries no switch removes (docs/GUIDE.md, "One look on both servers")
+      N8N_DISABLED_MODULES: agents,agent-evals,workflow-builder,instance-ai,quick-connect,insights,mcp,mcp-registry,chat-hub,promotions,breaking-changes,external-secrets,source-control,sso-oidc,sso-saml,ldap,log-streaming,otel
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_HIDE_USAGE_PAGE: "true"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"  # n8n is pinned above: its update notices only distract
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
@@ -140,6 +148,8 @@ services:
       N8N_CUSTOM_EXTENSIONS: /bpmn8n-nodes
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       N8N_CONTENT_SECURITY_POLICY: '{"frame-ancestors": ["''self''", "http://localhost:5678", "http://127.0.0.1:5678", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8080", "http://127.0.0.1:8080"]}'
       # over plain HTTP on a host other than localhost (preview.localhost behind the gateway) n8n's editor shows
       # only a warning when its cookie is Secure; the preview signs nobody in

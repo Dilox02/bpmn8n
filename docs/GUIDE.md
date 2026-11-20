@@ -423,9 +423,18 @@ Django (`:8000`) and n8n (`:5678`, its preview on `:5679`) are one product with 
   `/api/health`, read on the server and cached for 15 seconds, so no script runs in the page. For staff the dots link to
   `/status/`: every check with its latency and error, and the hints of `doctor`.
 - **The strip in n8n**: `n8n-editor/strip.js`, a hook like the others (`bpmn8n-strip.js`, loaded with `?bpmn8n=<public URL>`),
-  puts a slim bar on top of the editor with Inbox, Cases, Insights, Simulation and Docs (they open in a new tab), in the same tokens.
+  puts a slim bar on top of the editor with Inbox, Cases, Insights, Simulation, Variables and Docs (they open in a new tab), in the same tokens.
   On a workflow's page Inbox carries how many tasks wait (`GET /api/executions/<workflow>/waiting`, read with the n8n
   session like the evaluations; refreshed every 30 s). The bar sits above `#app`; an n8n upgrade that renames it lets the bar cover n8n's top 24 px.
+- **n8n without what this stack does not use**: `N8N_DISABLED_MODULES` (docker-compose.yml) turns off n8n's agents and
+  AI builder, its own Insights, its instance MCP server, chat, promotions, the v2 migration report, and the licensed
+  modules that only show an upgrade page on the community edition (external secrets, environments, SSO, LDAP, log
+  streaming; bpmn8n replaces log streaming, source control, variables and insights); `N8N_TEMPLATES_ENABLED=false`,
+  `N8N_HIDE_USAGE_PAGE=true` and `N8N_VERSION_NOTIFICATIONS_ENABLED=false` drop templates, the plan page and update
+  notices. What follows the licence instead of a module, the strip hides by n8n's own ids (`HIDDEN` in strip.js):
+  Help, n8n's AI assistant, its licensed Variables tab, the upgrade-only settings (roles, security, workers...) and
+  the "production checklist" popover. Left in Settings: Personal, Users, n8n API, Community nodes. A hidden page still
+  opens by its URL; an n8n upgrade that renames an id only shows the entry again.
 - **Navigation**: the sidebar is the `NAV` list in `bpmn8n/web/views.py` (URL name, label, icon, staff only). An entry shows once its URL name resolves, so a new page appears by adding its route; *Editor* (staff) opens n8n.
 - **Vocabulary**: `bpmn8n/web/vocab.py` names every status once, with its colour family; templates write `{{ status|status_pill }}`. Everything is in English.
 - **Shared components**: `bpmn8n/static/bpmn8n/components.js`, three vanilla custom elements with their own styles (only `--b8-*` tokens): `<b8-pill tone="positive|negative|warning|accent|neutral">` (what `status_pill` writes), `<b8-timeline>` (around an `<ol>` of `<li data-status>`, as the case page's steps, or from an `items` JSON attribute) and `<b8-process-map>` (the landscape). A classic script, loaded in the head of every page; an n8n hook on another origin loads it with a `<script src>` (the evaluations view does, for its run statuses: without it the words stay, uncoloured). `n8n-editor/test/components.test.mjs` tests its logic.
@@ -1201,6 +1210,12 @@ return 304 for unchanged blocks. SSE reconnects with `Last-Event-ID`, sends hear
 closes while the page is hidden and is disposed on navigation. Streams rotate after 55 seconds;
 the server checks small indexed revision queries once per second. No browser polling timer or
 refresh checkbox is used by this view. n8n's incumbent execution sidebar retains its own controls.
+
+Under an execution's title a **strip** says at a glance how it went: one segment per step in the order it ran
+(green done, red failed, amber waiting; the agents' models and tools, off the flow, are left out), the verdict in
+words (*Went through*, *Failed at <step>*, *Still running or waiting*), the number of steps and their working time; a
+failed execution with no failed step (crashed, cancelled) is ringed in red. It is read from n8n's own run data
+(`trace()` in `n8n-editor/live.mjs`).
 
 `EvaluationStore` maintains `projects/.evaluations.sqlite3` in WAL mode. Existing JSON samples are
 imported once; normal reads use the index. Run lists contain at most 50 summaries. Sample pages are

@@ -2,7 +2,7 @@
 (async () => {
   const source = new URL(document.currentScript.src);
   const { esc, number, measurement, date, metricKey, runKey, text, html, keyed, localURL, sessionURL, editorBase, ApiClient, LiveUpdates, viewComponent, installRoute } =
-    await import(new URL('bpmn8n-live.mjs?v=6', source));
+    await import(new URL('bpmn8n-live.mjs?v=7', source));
   const backend = localURL(source.searchParams.get('bpmn8n') || 'http://localhost:8000');
   const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('bpmn8n-evaluations.css?v=4', source); document.head.append(css);
   const statuses = { passed: 'Thresholds met', failed: 'Thresholds not met', unscored: 'Measurements only' };
