@@ -129,6 +129,7 @@
     .bpmn8n-heat .ramp { display: inline-block; width: 72px; height: 8px; border-radius: 4px; vertical-align: middle; margin: 0 6px; }
     .bpmn8n-heat .legend, .bpmn8n-heat .state { flex-basis: 100%; opacity: .8; }
     .bpmn8n-heat .legend:empty, .bpmn8n-heat .state:empty { display: none; }
+    .bpmn8n-heat[hidden], .bpmn8n-heat [hidden] { display: none; }  /* the hidden attribute loses to display: flex otherwise: the switch stayed on every page */
     .bpmn8n-replay { position: fixed; inset: 0; z-index: 19; pointer-events: none; }
     .bpmn8n-replay .dot { position: absolute; left: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; background: hsl(212 90% 62%);
       box-shadow: 0 0 0 2px rgba(22, 22, 28, .8); pointer-events: auto; }

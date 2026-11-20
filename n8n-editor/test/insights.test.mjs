@@ -125,3 +125,8 @@ test('replay reads the replay endpoint of the workflow', () => {
   assert.equal(Heat.replayURL('http://b/', 'wf 1', { since: '2026-01-01', limit: 20 }),
     'http://b/api/analytics/replay?workflow_id=wf%201&limit=20&since=2026-01-01');
 });
+
+test('the switch and its replay controls really hide (their display: flex would beat the hidden attribute)', async () => {
+  const source = (await import('node:fs')).readFileSync(new URL('../insights.js', import.meta.url), 'utf8');
+  assert.match(source, /\.bpmn8n-heat\[hidden\], \.bpmn8n-heat \[hidden\] \{ display: none; \}/);
+});
