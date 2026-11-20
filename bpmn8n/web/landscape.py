@@ -12,11 +12,13 @@ from django.conf import settings as django_settings
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Max, Q
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils.html import format_html, format_html_join
 from django.utils.text import slugify
 
 from ..clients import n8n
 from ..clients.http import ServiceUnavailable
+from ..core import directory
 from ..models import Event, MessageSubscription
 from ..workflows.contract import Contract, local_workflows
 
@@ -297,9 +299,18 @@ def subscriptions():
 
 @login_required
 def landscape(request):
-    view = Landscape(known_workflows(), subscriptions())
+    """The workflows n8n has and how they meet; on its own tab, everything bpmn8n knows (projects never imported,
+    processes of the event log)."""
+    every, live = known_workflows(), directory.from_n8n()
+    everything = live is None or bool(request.GET.get("all"))
+    shown = every if everything else [n for n in every if n.workflow_id in live]
+    view = Landscape(shown, subscriptions())
     edges = view.edges  # adds the outside and the unknown sub-processes before the page counts the workflows
     return render(request, "bpmn8n/landscape.html", {
         "map": view.svg(), "rows": view.rows(), "findings": view.findings, "outside": OUTSIDE,
         "workflows": sum(n.name != OUTSIDE for n in view.nodes), "calls": sum(e.kind == "call" for e in edges),
-        "message_links": sum(e.kind == "message" for e in edges)})  # not "messages": the base template shows those
+        "message_links": sum(e.kind == "message" for e in edges),  # not "messages": the base template shows those
+        "tabs": [] if live is None else [
+            {"label": "In n8n", "url": reverse("landscape"), "current": not everything,
+             "count": sum(n.workflow_id in live for n in every)},
+            {"label": "Everything bpmn8n knows", "url": f"{reverse('landscape')}?all=1", "current": everything, "count": len(every)}]})

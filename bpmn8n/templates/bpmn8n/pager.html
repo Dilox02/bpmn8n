@@ -1,0 +1,8 @@
+{% if pager.total %}<nav class="pager" aria-label="Pages">
+  <span class="meta num">{{ pager.range }}{% if noun %} {{ noun }}{% endif %}</span>
+  {% if pager.pages > 1 %}<span class="pages">
+    {% if pager.previous %}<a class="btn" href="{{ pager.previous }}" rel="prev">Previous</a>{% else %}<span class="btn" aria-disabled="true">Previous</span>{% endif %}
+    {% for link in pager.links %}{% if link.url %}<a class="page num" href="{{ link.url }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.number }}</a>{% else %}<span class="gap" aria-hidden="true">…</span>{% endif %}{% endfor %}
+    {% if pager.next %}<a class="btn" href="{{ pager.next }}" rel="next">Next</a>{% else %}<span class="btn" aria-disabled="true">Next</span>{% endif %}
+  </span>{% endif %}
+</nav>{% endif %}

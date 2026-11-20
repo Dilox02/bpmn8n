@@ -1,11 +1,10 @@
-{% load static %}<!doctype html>
+{% load static bpmn8n %}<!doctype html>
 <html lang="en"{% if theme == "light" or theme == "dark" %} data-theme="{{ theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{% endblock %} · bpmn8n</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><!-- taste-skill-ignore: Plex Mono for IDs, keys and code -->
+<link rel="preload" href="{% static 'bpmn8n/fonts/InterVariable.woff2' %}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{% static 'bpmn8n/tokens.css' %}">
 <link rel="stylesheet" href="{% static 'bpmn8n/app.css' %}">
 <script src="{% static 'bpmn8n/components.js' %}"></script><!-- b8-pill, b8-timeline, b8-process-map: defined before the body, so they never flash unstyled -->
@@ -19,12 +18,12 @@
 <div class="app">
   <nav class="sidebar" id="sidebar" aria-label="bpmn8n">
     <a class="brand" href="{% url 'inbox' %}">{% include "bpmn8n/mark.svg" %}bpmn8n</a>
-    {% for item in nav %}
+    {% for item in nav %}{% ifchanged item.group %}{% if item.group %}<p class="nav-group">{{ item.group }}</p>{% endif %}{% endifchanged %}
     <a class="nav-item" href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{% include item.icon %}{{ item.label }}{% if item.count %}<span class="count num" aria-label="{{ item.count }} waiting">{{ item.count }}</span>{% endif %}</a>
     {% endfor %}
     <div class="bottom">
       {% for item in nav_bottom %}
-      <a class="nav-item" href="{{ item.href }}"{% if item.external %} target="_blank" rel="noopener"{% endif %}>{% include item.icon %}{{ item.label }}{% if item.external %}<span class="sr-only"> (opens a new tab)</span>{% endif %}</a>
+      <a class="nav-item" href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}{% if item.external %} target="_blank" rel="noopener"{% endif %}>{% include item.icon %}{{ item.label }}{% if item.external %}<span class="sr-only"> (opens a new tab)</span>{% endif %}</a>
       {% endfor %}
       <form class="theme-switch" method="post" action="{% url 'theme' %}" role="group" aria-label="Theme">{% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -43,13 +42,20 @@
     <button class="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Menu">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
     </button>
-    <div class="crumbs">{% block crumbs %}{% endblock %}</div>
+    <div class="crumbs">{% if request.b8_workflow %}{% with w=request.b8_workflow %}<a href="{% url 'workflows' %}">Workflows</a><span aria-hidden="true">/</span><a href="{% url 'workflow' w.ref.id %}">{{ w.ref.name }}</a>{% for t in w.tabs %}{% if t.current and not forloop.first %}<span aria-hidden="true">/</span><span>{{ t.label }}</span>{% endif %}{% endfor %}{% endwith %}{% else %}{% block crumbs %}{% endblock %}{% endif %}</div>
     {% if status_dots %}<span class="spacer"></span>
     {% if user.is_staff %}<a class="status-dots" href="{% url 'status' %}" aria-label="Service status">{% else %}<span class="status-dots" role="group" aria-label="Service status">{% endif %}
+      <span class="status-text" data-state="{{ status_summary.state }}" aria-hidden="true">{{ status_summary.text }}</span>
       {% for dot in status_dots %}<span class="status-dot" data-state="{{ dot.state }}" title="{{ dot.name }}: {{ dot.state }}"><i aria-hidden="true"></i><span class="sr-only">{{ dot.name }}: {% if dot.state == "off" %}not configured{% else %}{{ dot.state }}{% endif %}</span></span>{% endfor %}
     {% if user.is_staff %}</a>{% else %}</span>{% endif %}{% endif %}
   </header>
   <main class="sheet">
+    {% if request.b8_workflow %}{% with w=request.b8_workflow %}
+    <header class="wf-head">
+      <div class="wf-title"><span class="wf-name">{{ w.ref.name|process_chip }}</span>{{ w.ref.state|status_pill }}<span class="meta mono">{{ w.ref.id }}</span>
+        {% if w.n8n_url %}<a class="btn" href="{{ w.n8n_url }}" target="_blank" rel="noopener">Open in n8n<span class="sr-only"> (opens a new tab)</span></a>{% endif %}</div>
+      <nav class="tabs" aria-label="{{ w.ref.name }}">{% for t in w.tabs %}<a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}</a>{% endfor %}</nav>
+    </header>{% endwith %}{% endif %}
     {% for m in messages %}<p class="notice {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}
     {% block main %}{% endblock %}
   </main>

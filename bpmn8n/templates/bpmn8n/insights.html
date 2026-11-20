@@ -14,9 +14,11 @@
 
 {% if processes %}
 <form class="scope" method="get" aria-label="Process and window">
+  {% if request.b8_workflow %}<input type="hidden" name="process" value="{{ process }}">{% else %}
   <label class="field"><span>Process</span>
     <select class="input" name="process">{% for p in processes %}<option value="{{ p.process }}" {% if p.process == process %}selected{% endif %}>{{ p.process }} · {{ p.cases }} case{{ p.cases|pluralize }}</option>{% endfor %}</select>
   </label>
+  {% endif %}
   <label class="field"><span>Started from</span><input class="input" type="date" name="since" value="{{ state.since }}"></label>
   <label class="field"><span>to</span><input class="input" type="date" name="until" value="{{ state.until }}"></label>
   {% for key, value in state.items %}{% if value and key != "process" and key != "since" and key != "until" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}

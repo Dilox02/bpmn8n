@@ -1,13 +1,16 @@
 """Pages for operating processes with what n8n sells by subscription: global variables (staff), the search
 over cases (staff: it shows process data), the workflows bpmn8n has seen and their history."""
 import json
+from collections import Counter
 from datetime import date, datetime, time
+from functools import reduce
+from operator import or_
 from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Max
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -15,11 +18,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from ..clients.n8n import N8nError
-from ..core import history, shared
+from ..core import directory, history, shared
 from ..core.cases import OPERATORS, STATUSES, CaseSearch, SearchError
-from ..models import AuditEntry, Case, WorkflowVersion
+from ..models import AuditEntry, Case, UserTask, WorkflowVersion
 from ..ops import health
 from ..workflows.changes import changes
+from . import scope
+from .cases import steps_of as case_steps
+from .paging import paginate
 
 PAGE = 50  # cases per page
 VERSIONS = 50  # versions shown on a workflow's page
@@ -74,45 +80,61 @@ def day(text, end=False):
 
 
 @staff_member_required
-def cases(request):
-    """The cases, newest first, filtered like GET /api/cases: process, version, start day, status, variables."""
+def cases(request, workflow=None):
+    """The cases, newest first, filtered like GET /api/cases: process, version, start day, status, variables. Every
+    workflow's (/cases/) or one workflow's (its Cases tab). Cases of workflows deleted in n8n are left out unless
+    asked for (?deleted=1): n8n no longer has them, so a list that agrees with n8n does not either."""
     q = request.GET
+    live = directory.from_n8n()
     try:
         criteria = CaseSearch.criteria(q) + [CaseSearch.criterion(p.strip(), o, v) for p, o, v in
                                              zip(q.getlist("path"), q.getlist("op"), q.getlist("value")) if p.strip()]
-        search = CaseSearch(q.get("process", ""), q.get("version", ""), day(q.get("since")), day(q.get("until"), end=True),
-                            q.get("status", ""), criteria)
+        search = CaseSearch("" if workflow else q.get("process", ""), q.get("version", ""), day(q.get("since")),
+                            day(q.get("until"), end=True), q.get("status", ""), criteria)
         found = search.cases()
-        page = max(int(q.get("page", 1)) if q.get("page", "").isdigit() else 1, 1)
-        rows = [{"case": c, "matched": search.matched(c)} for c in found[(page - 1) * PAGE:page * PAGE]]
-        count = found.count()
+        choices = []
+        if workflow:
+            found = found.filter(case_id__startswith=f"{workflow.id}:")
+        else:
+            if live is not None and not q.get("deleted"):
+                found = found.filter(reduce(or_, (Q(case_id__startswith=f"{w}:") for w in live), Q(pk__in=[])))
+            # ponytail: counted in Python over the ids; a GROUP BY on the id's prefix once cases reach the 100,000s
+            choices = scope.choices(request, Counter(scope.workflow_of(c) for c in found.values_list("case_id", flat=True)))
+            if chosen := q.get("workflow"):
+                found = found.filter(case_id__startswith=f"{chosen}:")
+        page, pager = paginate(request, found, PAGE)
+        steps = case_steps([c.case_id for c in page])
+        states = {r.id: r.state for r in directory.workflows()} if not workflow else {}
+        rows = [{"case": c, "execution": c.case_id.rpartition(":")[2], "matched": search.matched(c), "steps": steps.get(c.case_id, []),
+                 "deleted": states.get(c.case_id.rpartition(":")[0]) == "deleted"} for c in page]
     except SearchError as e:
         messages.error(request, str(e))
-        criteria, rows, count, page = [], [], 0, 1
-
-    def link(to):
-        return "?" + urlencode([*((k, v) for k, v in q.items(multi=True) if k != "page"), ("page", to)]) if q else f"?page={to}"
-
+        criteria, rows, pager, choices = [], [], {}, []
+    advanced = any(q.get(k) for k in ("version", "since", "until")) or any(p for p in q.getlist("path"))
     return render(request, "bpmn8n/cases.html", {
-        "rows": rows, "count": count, "q": q, "statuses": STATUSES, "operators": OPERATORS,
+        "rows": rows, "pager": pager, "q": q, "statuses": STATUSES, "operators": OPERATORS, "workflow": workflow,
+        "workflow_choices": choices,
+        "advanced": advanced, "show_deleted": bool(q.get("deleted")), "knows_n8n": live is not None,
         "processes": Case.objects.exclude(process="").values_list("process", flat=True).distinct().order_by("process"),
-        "criteria": [*criteria, ("", "", "")][:CaseSearch.MAX_CRITERIA], "paths": [p for p, _, _ in criteria],
-        "newer": link(page - 1) if page > 1 else "", "older": link(page + 1) if page * PAGE < count else ""})
+        "criteria": [*criteria, ("", "", "")][:CaseSearch.MAX_CRITERIA], "paths": [p for p, _, _ in criteria]})
 
 
 @login_required
 def workflows(request):
-    """The workflows bpmn8n has seen, through their cases or snapshots of their versions."""
-    seen = history.workflow_cases()
-    kept = {r["workflow_id"]: r for r in WorkflowVersion.objects.values("workflow_id").annotate(
-        versions=Count("id"), saved=Max("created"))}
-    names = dict(WorkflowVersion.objects.order_by("created", "id").values_list("workflow_id", "name"))  # the newest wins
-    rows = [{"id": i, "name": names.get(i) or seen.get(i, {}).get("process") or i,
-             "cases": seen.get(i, {}).get("cases", 0), "last_case": seen.get(i, {}).get("last"),
-             "versions": kept.get(i, {}).get("versions", 0), "saved": kept.get(i, {}).get("saved")}
-            for i in {*seen, *kept}]
-    rows.sort(key=lambda r: max(filter(None, (r["last_case"], r["saved"]))), reverse=True)
-    return render(request, "bpmn8n/workflows.html", {"workflows": rows})
+    """Every workflow: the ones n8n has now, with their state there (published, draft, archived), and on their own
+    tab the ones n8n no longer has, whose cases and versions bpmn8n kept."""
+    every = directory.workflows()
+    deleted = [r for r in every if r.state == "deleted"]
+    show = "deleted" if request.GET.get("show") == "deleted" else ""
+    shown = deleted if show else [r for r in every if r.state != "deleted"]
+    waiting = Counter(case_id.rpartition(":")[0] for case_id in UserTask.objects.waiting().values_list("case_id", flat=True))
+    page, pager = paginate(request, shown, PAGE)
+    return render(request, "bpmn8n/workflows.html", {
+        "rows": [{"ref": r, "waiting": waiting.get(r.id, 0)} for r in page], "pager": pager, "show": show,
+        "tabs": [{"label": "In n8n", "url": reverse("workflows"), "current": not show, "count": len(every) - len(deleted)},
+                 {"label": "Deleted in n8n", "url": f"{reverse('workflows')}?show=deleted", "current": bool(show),
+                  "count": len(deleted)}],
+        "knows_n8n": any(r.state != "unknown" for r in every) or not every})
 
 
 @login_required
@@ -145,4 +167,4 @@ def restore_version(request, workflow_id, version_id):
                                   "It is not published: publish it in n8n's editor when it should run.")
     except N8nError as e:
         messages.error(request, f"n8n did not take it: {e}")
-    return redirect("workflow_history", workflow_id)
+    return redirect("workflow_versions", workflow_id)

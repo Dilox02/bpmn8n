@@ -1,4 +1,5 @@
 {% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
 {% block title %}Activities{% endblock %}
 {% block crumbs %}<span>Activities</span>{% endblock %}
 {% block main %}
@@ -12,12 +13,17 @@
   <a href="{% url 'activities' %}" {% if not kind %}aria-current="page"{% endif %}>All<span class="num muted">{{ total }}</span></a>
   {% for value, label, count in kinds %}<a href="?kind={{ value }}" {% if kind == value %}aria-current="page"{% endif %}>{{ label }}<span class="num muted">{{ count }}</span></a>{% endfor %}
 </nav>
+{% include "bpmn8n/workflow_filter.html" %}
+<form class="filter-bar" method="get" role="search" aria-label="Find an activity">{% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+  <label class="field inline"><span>Name, description or project</span><input class="input" type="search" name="q" value="{{ q }}" placeholder="a name or a word"></label>
+  <button class="btn" type="submit">Find</button>{% if q %}<a class="inline-link" href="?{% if kind %}kind={{ kind }}{% endif %}">Clear</a>{% endif %}
+</form>
 {% for t in tasks %}
 <details class="activity" id="{{ t.name }}">
   <summary>
     <span class="name">{{ t.name }}</span>
     <span class="pill">{{ t.label }}</span>
-    <span class="what">{{ t.description|default:"No description: write one as the function's docstring." }} <span class="meta">· {{ t.module }}</span></span>
+    <span class="what"><span class="activity-project">{{ t.project|process_chip }}</span>{{ t.description|default:"No description: write one as the function's docstring." }}</span>
     <span class="count num">{{ t.inputs|length }} in · {% if t.output %}{{ t.outputs|length }} out{% else %}result not declared{% endif %}</span>
   </summary>
   <div class="body">
@@ -50,4 +56,5 @@
 {% empty %}
 <p class="empty">No activity of this kind yet: write one in a project's tasks.py, or build a process in Studio.</p>
 {% endfor %}
+{% include "bpmn8n/pager.html" with noun="activities" %}
 {% endblock %}

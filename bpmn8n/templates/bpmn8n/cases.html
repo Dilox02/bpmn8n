@@ -6,55 +6,61 @@
 <div class="title-row">
   <div>
     <h1>Cases</h1>
-    <p class="sub">Every process instance, newest first, found by its process, version, start day, status or the values of its variables. The same search is <code>GET /api/cases</code>.</p>
+    <p class="sub">{% if pager.total %}{{ pager.total }} case{{ pager.total|pluralize }}{% else %}No case{% endif %}{% if workflow %} of this workflow{% elif show_deleted %}, workflows deleted in n8n included{% elif knows_n8n %} of the workflows in n8n{% endif %}, newest first.</p>
   </div>
+  {% if not workflow and knows_n8n %}<div class="actions"><a class="btn" href="?{% if not show_deleted %}deleted=1{% endif %}">{% if show_deleted %}Hide deleted workflows{% else %}Include deleted workflows{% endif %}</a></div>{% endif %}
 </div>
-<form class="panel lead" method="get" aria-label="Filters">
-  <div class="fields" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px">
-    <label class="field"><span>Process</span>
-      <select class="input" name="process"><option value="">Any</option>{% for p in processes %}<option {% if q.process == p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
-    <label class="field"><span>Status</span>
-      <select class="input" name="status"><option value="">Any</option>{% for s in statuses %}<option {% if q.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
-    <label class="field"><span>Started from</span><input class="input" type="date" name="since" value="{{ q.since }}"></label>
-    <label class="field"><span>Started until</span><input class="input" type="date" name="until" value="{{ q.until }}"></label>
-    <label class="field"><span>Version</span><input class="input mono" name="version" value="{{ q.version }}" placeholder="n8n versionId"></label>
-  </div>
-  <fieldset class="fields below" style="border: 0; padding: 0; margin: 16px 0 0">
-    <legend class="meta">Variables: a path in dots (customer.email), how to compare, a value (JSON when it parses, else text)</legend>
-    {% for path, op, value in criteria %}
-    <div class="form-actions">
-      <input class="input mono" name="path" value="{{ path }}" placeholder="amount" aria-label="Variable path" style="max-width: 240px">
-      <select class="input" name="op" aria-label="Comparison" style="max-width: 140px">
-        <option value="" {% if not op %}selected{% endif %}>equals</option>
-        {% for o in operators %}<option value="{{ o }}" {% if op == o %}selected{% endif %}>{% if o == "gt" %}&gt;{% elif o == "gte" %}≥{% elif o == "lt" %}&lt;{% elif o == "lte" %}≤{% else %}contains{% endif %}</option>{% endfor %}
-      </select>
-      <input class="input" name="value" value="{{ value }}" placeholder="1000" aria-label="Value" style="max-width: 240px">
+{% include "bpmn8n/workflow_filter.html" %}
+<form class="filter-bar" method="get" aria-label="Filters">
+  {% if show_deleted %}<input type="hidden" name="deleted" value="1">{% endif %}
+  {% if q.workflow and not workflow %}<input type="hidden" name="workflow" value="{{ q.workflow }}">{% endif %}
+  <label class="field inline"><span>Status</span>
+    <select class="input" name="status"><option value="">Any status</option>{% for s in statuses %}<option value="{{ s }}" {% if q.status == s %}selected{% endif %}>{{ s|status_label }}</option>{% endfor %}</select></label>
+  <button class="btn primary" type="submit">Search</button>
+  {% if q %}<a class="inline-link" href="{{ request.path }}">Clear</a>{% endif %}
+  <details class="more"{% if advanced %} open{% endif %}>
+    <summary>More filters</summary>
+    <div class="more-body">
+      <label class="field"><span>Started from</span><input class="input" type="date" name="since" value="{{ q.since }}"></label>
+      <label class="field"><span>Started until</span><input class="input" type="date" name="until" value="{{ q.until }}"></label>
+      <label class="field"><span>Version</span><input class="input mono" name="version" value="{{ q.version }}" placeholder="n8n versionId"></label>
+      <fieldset class="field variables">
+        <legend>A variable <span class="meta">a path in dots (customer.email), how to compare, a value</span></legend>
+        {% for path, op, value in criteria %}
+        <div class="form-actions">
+          <input class="input mono" name="path" value="{{ path }}" placeholder="amount" aria-label="Variable path">
+          <select class="input" name="op" aria-label="Comparison">
+            <option value="" {% if not op %}selected{% endif %}>equals</option>
+            {% for o in operators %}<option value="{{ o }}" {% if op == o %}selected{% endif %}>{% if o == "gt" %}&gt;{% elif o == "gte" %}≥{% elif o == "lt" %}&lt;{% elif o == "lte" %}≤{% else %}contains{% endif %}</option>{% endfor %}
+          </select>
+          <input class="input" name="value" value="{{ value }}" placeholder="1000" aria-label="Value">
+        </div>
+        {% endfor %}
+      </fieldset>
     </div>
-    {% endfor %}
-  </fieldset>
-  <div class="form-actions below"><button class="btn primary" type="submit">Search</button><a class="inline-link" href="{% url 'cases' %}">Clear</a>
-    <span class="meta">{{ count }} case{{ count|pluralize }}</span></div>
+  </details>
 </form>
 {% if rows %}
 <div class="table-wrap">
   <table class="as-rows">
-    <thead><tr><th scope="col">Case</th><th scope="col">Process</th><th scope="col">Status</th>{% if paths %}<th scope="col">Matched</th>{% endif %}<th scope="col">Started</th><th scope="col" class="n">Last step</th></tr></thead>
+    <thead><tr><th scope="col">Case</th>{% if not workflow %}<th scope="col">Process</th>{% endif %}<th scope="col">Status</th><th scope="col">Steps</th>{% if paths %}<th scope="col">Matched</th>{% endif %}<th scope="col" class="n">Started</th><th scope="col" class="n">Last step</th></tr></thead>
     <tbody>
     {% for row in rows %}{% with c=row.case %}
       <tr>
-        <td><a class="name mono" href="/cases/{{ c.case_id|urlencode }}/">{{ c.case_id }}</a>{% if c.process_version %}<span class="sub mono">version {{ c.process_version|truncatechars:9 }}</span>{% endif %}</td>
-        <td class="line2">{{ c.process|default:"—" }}</td>
-        <td class="side"><span class="pill s-{% if c.status == 'waiting' %}open{% elif c.status == 'error' %}failed{% elif c.status == 'active' %}doing{% else %}done{% endif %}">{{ c.status }}</span></td>
+        <td><a class="name num" href="{{ c.case_id|case_url }}" title="{{ c.case_id }}">#{{ row.execution }}</a></td>
+        {% if not workflow %}<td class="line2">{{ c.process|process_chip }}{% if row.deleted %}<span class="sub">deleted in n8n</span>{% endif %}</td>{% endif %}
+        <td class="side">{{ c.status|status_pill }}</td>
+        <td class="line2">{% include "bpmn8n/steps.html" with steps=row.steps %}</td>
         {% if paths %}<td class="line2">{% for k, v in row.matched.items %}<span class="mono">{{ k }}</span> = <code>{{ v|truncatechars:60 }}</code>{% if not forloop.last %} · {% endif %}{% endfor %}</td>{% endif %}
-        <td class="line2 num"><time datetime="{{ c.created|date:'c' }}">{{ c.created|date:"Y-m-d H:i" }}</time></td>
+        <td class="line2 n num"><time datetime="{{ c.created|date:'c' }}">{{ c.created|date:"Y-m-d H:i" }}</time></td>
         <td class="n num">{% if c.last_event %}{{ c.last_event|waited }} ago{% else %}—{% endif %}</td>
       </tr>
     {% endwith %}{% endfor %}
     </tbody>
   </table>
 </div>
-{% if newer or older %}<div class="form-actions below">{% if newer %}<a class="btn" href="{{ newer }}">Newer</a>{% endif %}{% if older %}<a class="btn" href="{{ older }}">Older</a>{% endif %}</div>{% endif %}
+{% include "bpmn8n/pager.html" with noun="cases" %}
 {% else %}
-<p class="empty">No case matches. Cases appear when a workflow's bpmn8n step runs.</p>
+<p class="empty">No case matches{% if q %}: clear the filters{% endif %}. A case appears when a workflow reaches its first bpmn8n step.</p>
 {% endif %}
 {% endblock %}

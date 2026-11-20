@@ -1,20 +1,27 @@
 {% extends "bpmn8n/base.html" %}
-{% block title %}Docs{% endblock %}
-{% block crumbs %}<span>Docs</span>{% endblock %}
+{% block title %}{% if current %}{{ current.title }} · {% endif %}Docs{% endblock %}
+{% block crumbs %}{% if current %}<a href="{% url 'docs' %}">Docs</a><span aria-hidden="true">/</span><span>{{ current.title }}</span>{% else %}<span>Docs</span>{% endif %}{% endblock %}
 {% block main %}
-<div class="title-row">
-  <div>
-    <h1>Docs</h1>
-    <p class="sub">How bpmn8n works and how to build with it. The activities this server runs, with their decorators, are in <a href="{% url 'activities' %}" class="inline-link">Activities</a>.</p>
-  </div>
-</div>
 <div class="docs">
+  <div class="docs-main">
+    {% if current %}
+    <article class="prose">{{ body }}</article>
+    <nav class="docs-pager" aria-label="Sections">
+      {% if previous %}<a class="btn" href="{% url 'docs_section' previous.slug %}" rel="prev">← {{ previous.title }}</a>{% else %}<span></span>{% endif %}
+      {% if next %}<a class="btn" href="{% url 'docs_section' next.slug %}" rel="next">{{ next.title }} →</a>{% endif %}
+    </nav>
+    {% else %}
+    <div class="title-row"><div><h1>Docs</h1>
+      <p class="sub">How bpmn8n works and how to build with it, in {{ sections|length }} sections. The activities this server runs are in <a href="{% url 'activities' %}" class="inline-link">Activities</a>.</p></div></div>
+    <article class="prose">{{ intro }}</article>
+    <ol class="section-list">{% for s in sections %}<li><a href="{% url 'docs_section' s.slug %}">{{ s.title }}</a>{% if s.children %}<span class="meta">{{ s.children|length }} topic{{ s.children|length|pluralize }}</span>{% endif %}</li>{% endfor %}</ol>
+    {% endif %}
+  </div>
   <nav class="toc" aria-labelledby="toc">
-    <h2 id="toc">On this page</h2>
-    <ul class="toc-list">
-      {% for h in toc %}<li><a href="#{{ h.id }}">{{ h.name }}</a>{% if h.children %}<ul class="toc-list">{% for c in h.children %}<li><a href="#{{ c.id }}">{{ c.name }}</a></li>{% endfor %}</ul>{% endif %}</li>{% endfor %}
-    </ul>
+    {% if current and current.children %}<h2 id="toc">On this page</h2>
+    <ul class="toc-list">{% for c in current.children %}<li><a href="#{{ c.id }}">{{ c.name }}</a></li>{% endfor %}</ul>{% endif %}
+    <h2{% if not current or not current.children %} id="toc"{% endif %}>Sections</h2>
+    <ul class="toc-list">{% for s in sections %}<li><a href="{% url 'docs_section' s.slug %}"{% if current.slug == s.slug %} aria-current="page"{% endif %}>{{ s.title }}</a></li>{% endfor %}</ul>
   </nav>
-  <article class="prose">{{ guide }}</article>
 </div>
 {% endblock %}

@@ -1,0 +1,40 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}{{ ref.name }}{% endblock %}
+{% block crumbs %}<a href="{% url 'workflows' %}">Workflows</a><span aria-hidden="true">/</span><span>{{ ref.name }}</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Overview</h1>
+    <p class="sub">{% if task_count %}{{ task_count }} task{{ task_count|pluralize }} wait{{ task_count|pluralize:"s," }} on people in {{ waiting_cases }} case{{ waiting_cases|pluralize }}{% if error_cases %}; {{ error_cases }} case{{ error_cases|pluralize }} had a failed step{% endif %}.{% elif case_count %}Nothing waits on people.{% if error_cases %} {{ error_cases }} case{{ error_cases|pluralize }} had a failed step.{% endif %}{% else %}No case has reached a bpmn8n step yet.{% endif %}</p>
+  </div>
+</div>
+
+<dl class="figures" aria-label="This workflow in figures">
+  <div><dt>Cases</dt><dd class="num">{{ case_count }}</dd></div>
+  <div><dt>Waiting on people</dt><dd class="num">{{ task_count }}</dd></div>
+  <div><dt>With a failed step</dt><dd class="num">{{ error_cases }}</dd></div>
+  <div><dt>Versions kept</dt><dd class="num">{{ versions }}</dd></div>
+</dl>
+
+<div class="{% if tasks %}split{% else %}stack{% endif %}">
+  {% if tasks %}<section class="block" aria-labelledby="waiting">
+    <div class="section-head"><h2 id="waiting">Waiting on people</h2>{% if task_count %}<a class="meta inline-link" href="{% url 'inbox' %}?workflow={{ ref.id|urlencode }}">All {{ task_count }} in the inbox</a>{% endif %}</div>
+    {% if tasks %}<ul class="rows">
+      {% for t in tasks %}<li class="row"><span class="grow"><a class="name" href="{% url 'task' t.pk %}">{{ t.title }}</a><span class="sub">{{ t.lane|default:"any lane" }} · waiting {{ t.created|waited }}</span></span>{{ t.status|status_pill }}</li>{% endfor %}
+    </ul>{% endif %}
+  </section>{% endif %}
+  <section class="block" aria-labelledby="recent">
+    <div class="section-head"><h2 id="recent">Latest cases</h2>{% if case_count %}<a class="meta inline-link" href="{% url 'workflow_cases' ref.id %}">All {{ case_count }} cases</a>{% endif %}</div>
+    {% if recent %}<div class="table-wrap"><table class="as-rows">
+      <thead><tr><th scope="col">Case</th><th scope="col">Status</th><th scope="col">Steps</th><th scope="col" class="n">Started</th><th scope="col" class="n">Last step</th></tr></thead>
+      <tbody>{% for r in recent %}<tr>
+        <td><a class="name num" href="{{ r.case.case_id|case_url }}">#{{ r.execution }}</a></td>
+        <td class="side">{{ r.case.status|status_pill }}</td>
+        <td class="line2">{% include "bpmn8n/steps.html" with steps=r.steps %}</td>
+        <td class="line2 n num">{{ r.case.created|date:"Y-m-d H:i" }}</td>
+        <td class="n num">{% if r.case.last_event %}{{ r.case.last_event|waited }} ago{% else %}—{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No case yet.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

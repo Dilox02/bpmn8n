@@ -156,12 +156,15 @@ class PagesTest(TestCase):
 
     def test_the_guide_with_its_index(self):
         page = self.client.get("/docs/")
-        self.assertContains(page, '<a href="#getting-started">Getting started</a>', html=True)  # the index of README.md's sections
+        self.assertContains(page, '<a href="/docs/getting-started/">Getting started</a>', html=True)  # the index of its sections
+        page = self.client.get("/docs/getting-started/")  # one section per page
         self.assertContains(page, '<h2 id="getting-started">Getting started</h2>', html=True)
+        self.assertContains(page, 'rel="next"')
+        self.assertEqual(self.client.get("/docs/no-such-section/").status_code, 404)
         self.assertNotContains(page, "register_ticket</strong>")  # the activities have their own page
 
     def test_the_activities_with_their_decorators(self):
-        page = self.client.get("/activities/")
+        page = self.client.get("/activities/", {"q": "register_ticket"})
         self.assertContains(page, '@task(&quot;serviceTask&quot;)\ndef register_ticket(request, data: Ticket) -&gt; TicketRecord:')
         self.assertContains(page, "<td>ticket_id</td>", html=True)  # its declared result
         sends = self.client.get("/activities/", {"kind": "sendTask"})

@@ -1,0 +1,1 @@
+{% if steps %}<span class="steps" role="img" aria-label="{{ steps|length }} step{{ steps|length|pluralize }}{% if 'error' in steps %}, one or more failed{% else %}, none failed{% endif %}">{% for s in steps %}<i data-status="{{ s }}"></i>{% endfor %}</span>{% else %}<span class="meta">no step yet</span>{% endif %}

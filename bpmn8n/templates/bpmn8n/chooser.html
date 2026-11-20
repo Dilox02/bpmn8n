@@ -1,0 +1,19 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}{{ title }}{% endblock %}
+{% block crumbs %}<span>{{ title }}</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div><h1>{{ title }}</h1><p class="sub">{{ sub }}</p></div>
+  {% if action %}<div class="actions"><a class="btn" href="{{ action.url }}">{{ action.label }}</a></div>{% endif %}
+</div>
+{% if workflows %}
+<ul class="rows chooser">{% for w in workflows %}<li class="row"><a class="grow name" href="{{ w.url }}">{{ w.name|process_chip }}</a><span class="meta">{{ w.meta }}</span><a class="btn" href="{{ w.url }}">Open</a></li>{% endfor %}</ul>
+{% else %}<p class="empty">{{ empty }}</p>{% endif %}
+{% if others %}
+<details class="done others"{% if not workflows %} open{% endif %}>
+  <summary class="section-head"><h2>{{ others_title }} <span class="num muted">{{ others|length }}</span></h2><span class="meta">{{ others_note }}</span></summary>
+  <ul class="rows chooser">{% for o in others %}<li class="row"><a class="grow name" href="{{ o.url }}">{{ o.name|process_chip }}</a><span class="meta">{{ o.meta }}</span><a class="btn" href="{{ o.url }}">Open</a></li>{% endfor %}</ul>
+</details>
+{% endif %}
+{% endblock %}

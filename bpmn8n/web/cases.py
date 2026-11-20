@@ -1,4 +1,4 @@
-"""One case's page, /cases/<workflow id>:<execution id>/: where it is and how long it has taken, every step
+"""One case's page, /workflows/<workflow id>/cases/<execution id>/: where it is and how long it has taken, every step
 with what it read and produced, what was decided and on what, who and what it waits for, its variables, and
 its workflow drawn by the n8n preview with the steps passed, the ones it is at and the ones not reached."""
 import json
@@ -23,6 +23,19 @@ SETTLE = timedelta(minutes=1)
 AUDIT = 50  # the newest audit entries the page shows (GET /api/audit?case_id= has them all)
 STEPS = 300  # ponytail: a case's first 300 steps; a longer one says how many more (upgrade: page the timeline)
 JSON_CHARS = 6000  # what a step's input or output shows, at most
+
+
+STRIP = 24  # the steps a list row draws; a longer case shows its last ones
+
+
+def steps_of(case_ids):
+    """{case id: the outcome of each of its steps in order, ok / error, the last STRIP}: the strip of a list row, read
+    in one query for a page of cases."""
+    found = {}
+    for case_id, status in (Event.objects.filter(case_id__in=case_ids).order_by("started", "pk")
+                            .values_list("case_id", "status")):
+        found.setdefault(case_id, []).append("error" if status == "error" else "ok")
+    return {k: v[-STRIP:] for k, v in found.items()}
 
 
 def case_status(events, tasks, messages, last, now=None):

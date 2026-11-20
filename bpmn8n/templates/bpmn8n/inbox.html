@@ -6,12 +6,13 @@
 <div class="title-row">
   <div>
     <h1>Inbox</h1>
-    <p class="sub">{% if oldest %}{{ tasks|length }} task{{ tasks|length|pluralize }} {% if narrowed %}here{% else %}wait{{ tasks|length|pluralize:"s," }} for your lanes{% endif %}{% if overdue %} · {{ overdue }} overdue{% endif %} · the oldest for {{ oldest.created|waited }}{% elif filtered %}Nothing waits for a person in this case: the task may be done already.{% elif narrowed %}No task matches these filters.{% else %}Nothing waits for you. New tasks for your lanes appear here.{% endif %}</p>
+    <p class="sub">{% if oldest %}{{ count }} task{{ count|pluralize }} {% if narrowed or filtered %}here{% else %}wait{{ count|pluralize:"s," }} for your lanes{% endif %}{% if overdue %} · {{ overdue }} overdue{% endif %} · the oldest for {{ oldest.created|waited }}{% elif filtered %}Nothing waits for a person in this case: the task may be done already.{% elif narrowed %}No task matches these filters.{% else %}Nothing waits for you. New tasks for your lanes appear here.{% endif %}</p>
   </div>
   {% if first %}<div class="actions"><a class="btn primary" href="{% url 'task' first.pk %}">Open the most urgent</a></div>{% endif %}
 </div>
-{% if filtered %}<p class="notice">Tasks of one execution, from the link in n8n. <a href="{% url 'inbox' %}">All my tasks</a></p>
+{% if filtered %}<p class="notice">The tasks of one execution, from the link in n8n. <a href="{% url 'inbox' %}">All my tasks</a></p>
 {% else %}
+{% include "bpmn8n/workflow_filter.html" %}
 <nav class="tabs" aria-label="Show">
   {% for tab in tabs %}<a href="{{ tab.url }}"{% if tab.current %} aria-current="page"{% endif %}>{{ tab.label }}<span class="num muted">{{ tab.count }}</span></a>{% endfor %}
 </nav>
@@ -28,7 +29,7 @@
       <tr>
         <td><a class="name" href="{% url 'task' task.pk %}">{{ task.title }}</a><span class="sub">{% if task.kind == "manualTask" %}Manual task{% else %}User task{% endif %} · {{ task.activity }}</span></td>
         <td class="line2"><span class="urgency">{% include "bpmn8n/urgency.html" %}</span></td>
-        <td class="line2">{{ task.process|default:"—" }}{% if task.case_id %} <span class="mono muted">#{{ task.execution }}</span>{% endif %}</td>
+        <td class="line2">{{ task.process|process_chip }}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
         <td class="line2">{{ task.lane|default:"any lane" }}</td>
         <td class="side"><span class="pill s-{{ task.status }}">{% if task.status == "claimed" %}{{ task.assignee }}{% else %}{{ task.status }}{% endif %}</span></td>
         <td class="n num">{{ task.created|waited }}</td>
@@ -37,6 +38,7 @@
     </tbody>
   </table>
 </div>
+{% include "bpmn8n/pager.html" with noun="tasks" %}
 {% else %}
 <p class="empty">{% if filtered %}This execution waits for nobody now.{% elif narrowed %}Nothing here: <a class="inline-link" href="{% url 'inbox' %}">all my tasks</a>.{% else %}When a process reaches a User or Manual Task of your lanes, it waits here until someone completes it.{% endif %}</p>
 {% endif %}
@@ -50,7 +52,7 @@
       {% for task in done %}
         <tr>
           <td><a class="name" href="{% url 'task' task.pk %}">{{ task.title }}</a><span class="sub">{{ task.activity }}</span></td>
-          <td class="line2">{{ task.process|default:"—" }}{% if task.case_id %} <span class="mono muted">#{{ task.execution }}</span>{% endif %}</td>
+          <td class="line2">{{ task.process|process_chip }}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
           <td class="side">{{ task.assignee|default:"a system" }}</td>
           <td class="n num">{{ task.completed|waited }} ago</td>
         </tr>

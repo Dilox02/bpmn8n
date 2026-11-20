@@ -3,7 +3,9 @@ the activities this server runs, and the documentation."""
 import inspect
 import re
 import zlib
+from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -24,6 +26,8 @@ from ..api.tasks import TASK_KINDS, TASKS
 from ..clients.http import ServiceUnavailable
 from ..models import Event, TransitionError, UserTask
 from ..ops import health
+from . import scope
+from .paging import paginate
 from .similar import similar_cases
 from .text import to_html
 
@@ -46,6 +50,8 @@ FILTERS = {  # the inbox's tabs (?show=): which waiting tasks it lists
     "suspended": ("Suspended", lambda tasks, user: tasks.filter(status=UserTask.SUSPENDED)),
 }
 INPUTS = {"number": "number", "date": "date", "email": "email"}  # form field type -> <input type>
+TASKS_PAGE = 50  # the inbox's rows per page
+ACTIVITIES_PAGE = 25  # activities per page: each opens on its code
 
 
 @dataclass(frozen=True)
@@ -55,18 +61,22 @@ class Nav:
     label: str
     icon: str  # templates/bpmn8n/icons/<icon>.svg
     staff: bool = False
+    group: str = ""  # the sidebar's heading above it
 
 
-# the sidebar; an entry shows once its URL name resolves, so a page added later appears without editing base.html
-NAV = (Nav("inbox", "Inbox", "inbox"), Nav("start_case", "Start a case", "start"), Nav("workload", "Workload", "workload"),
-       Nav("cases", "Cases", "cases"), Nav("insights", "Insights", "insights"),
-       Nav("simulation", "Simulation", "simulation", staff=True), Nav("studio", "Studio", "studio", staff=True),
-       Nav("activities", "Activities", "activities"),
-       Nav("workflows", "Workflows", "workflows"), Nav("landscape", "Landscape", "landscape"),
-       Nav("variables", "Variables", "variables", staff=True),
-       Nav("docs", "Docs", "docs"))
-NAV_BOTTOM = (Nav("api-1:openapi-view", "API", "api"), Nav("N8N_PUBLIC_URL", "Editor", "editor", staff=True),
-              Nav("admin:index", "Admin", "admin", staff=True))
+# the sidebar, in groups: the work people do, the workflows and their cases (each workflow's own pages are tabs under
+# /workflows/<id>/), what the log says across workflows, and what builds them. An entry shows once its URL name
+# resolves, so a page added later appears without editing base.html
+NAV = (Nav("inbox", "Inbox", "inbox", group="Work"), Nav("start_case", "Start a case", "start", group="Work"),
+       Nav("workload", "Workload", "workload", group="Work"),
+       Nav("workflows", "Workflows", "workflows", group="Workflows"), Nav("cases", "Cases", "cases", staff=True, group="Workflows"),
+       Nav("insights", "Insights", "insights", group="Analyse"),
+       Nav("simulation", "Simulation", "simulation", staff=True, group="Analyse"),
+       Nav("studio", "Studio", "studio", staff=True, group="Build"), Nav("activities", "Activities", "activities", group="Build"),
+       Nav("landscape", "Landscape", "landscape", group="Build"),
+       Nav("variables", "Variables", "variables", staff=True, group="Build"))
+NAV_BOTTOM = (Nav("docs", "Docs", "docs"), Nav("api-1:openapi-view", "API", "api"),
+              Nav("N8N_PUBLIC_URL", "Editor", "editor", staff=True), Nav("admin:index", "Admin", "admin", staff=True))
 THEMES, THEME_COOKIE = (("system", "System"), ("light", "Light"), ("dark", "Dark")), "b8-theme"
 
 
@@ -84,7 +94,7 @@ def nav_entries(items, request, counts=None):
             except NoReverseMatch:  # a page this server does not have (yet)
                 continue
         if href:
-            shown.append({"href": href, "label": item.label, "icon": f"bpmn8n/icons/{item.icon}.svg",
+            shown.append({"href": href, "label": item.label, "icon": f"bpmn8n/icons/{item.icon}.svg", "group": item.group,
                           "external": external, "count": (counts or {}).get(item.target),
                           "current": not external and request.path.startswith(href)})
     return shown
@@ -103,7 +113,11 @@ def navigation(request):
     if not request.user.is_authenticated:
         return context
     waiting = UserTask.objects.workable().for_user(request.user).count()
-    return {**context, "status_dots": health.dots(), "waiting_count": waiting, "user_hue": zlib.crc32(request.user.username.encode()) % 360,
+    dots = health.dots()
+    down = [d["name"] for d in dots if d["state"] == "down"]
+    summary = {"text": f"{', '.join(down).capitalize()} down" if down else "All services up", "state": "down" if down else "up"}
+    return {**context, "status_dots": dots, "status_summary": summary, "waiting_count": waiting,
+            "user_hue": zlib.crc32(request.user.username.encode()) % 360,
             "nav": nav_entries(NAV, request, {"inbox": waiting}), "nav_bottom": nav_entries(NAV_BOTTOM, request)}
 
 
@@ -141,14 +155,18 @@ def inbox(request):
     visible = UserTask.objects.waiting().for_user(request.user).select_related("assignee")
     show = request.GET.get("show", "") if request.GET.get("show", "") in FILTERS else ""
     priority = request.GET.get("priority", "") if request.GET.get("priority") in UserTask.PRIORITIES else ""
-    if workflow := request.GET.get("workflow"):
-        execution = request.GET.get("execution", "")
+    workflow, execution, workflow_choices = request.GET.get("workflow", ""), request.GET.get("execution", ""), []
+    if workflow and "execution" in request.GET:  # the link in n8n's node: that execution's tasks (with no execution known,
+        # the workflow's), the task itself when it is one
         tasks = visible.filter(case_id=f"{workflow}:{execution}") if execution.isdigit() else \
             visible.filter(case_id__startswith=f"{workflow}:")
         if len(found := list(tasks[:2])) == 1:
             return redirect("task", found[0].pk)
-    else:
+    else:  # one workflow at a time, or all of them: counted in the tab and priority chosen
         visible = visible.filter(priority=priority) if priority else visible
+        workflow_choices = scope.choices(request, Counter(
+            scope.workflow_of(c) for c in FILTERS[show][1](visible, request.user).values_list("case_id", flat=True)))
+        visible = visible.filter(case_id__startswith=f"{workflow}:") if workflow else visible
         tasks = FILTERS[show][1](visible, request.user)
     tasks = list(tasks.by_urgency())
     tabs = [{"label": label, "url": inbox_url(show=key, priority=priority), "current": key == show,
@@ -156,10 +174,15 @@ def inbox(request):
     priorities = [{"label": label, "url": inbox_url(show=show, priority=p), "current": p == priority}
                   for p, label in (("", "Any priority"), *((p, p.capitalize()) for p in reversed(UserTask.PRIORITIES)))]
     done = UserTask.objects.filter(status=UserTask.COMPLETED).for_user(request.user).select_related("assignee")
+    page, pager = paginate(request, tasks, TASKS_PAGE)
+    filtered = "execution" if workflow and "execution" in request.GET else ""
     return render(request, "bpmn8n/inbox.html", {
-        "tasks": tasks, "first": tasks[0] if tasks else None, "oldest": min(tasks, key=lambda t: t.created, default=None),
+        "tasks": page, "pager": pager, "count": len(tasks), "first": tasks[0] if tasks else None,
+        "workflow_choices": workflow_choices,
+        "oldest": min(tasks, key=lambda t: t.created, default=None),
         "overdue": sum(t.overdue for t in tasks), "tabs": tabs, "priorities": priorities, "show": FILTERS[show][0],
-        "narrowed": bool(show or priority), "filtered": bool(workflow), "done": done.order_by("-completed")[:5]})
+        "narrowed": bool(show or priority or workflow), "filtered": filtered,
+        "done": done.order_by("-completed")[:5]})
 
 
 def form_fields(task, values=None, errors=None):
@@ -220,12 +243,34 @@ def activities(request):
     """Every registered @task with its decorator and code, its inputs and its result, by node kind."""
     kind = request.GET.get("kind") if request.GET.get("kind") in TASK_KINDS else None
     every = sorted(TASKS.values(), key=lambda t: (TASK_KINDS.index(t.kind), t.name))
-    rows = [{"name": t.name, "kind": t.kind, "label": label(t.kind), "description": t.description,
+    q, project = request.GET.get("q", "").strip().lower(), request.GET.get("project", "")
+    matching = [t for t in every if kind in (None, t.kind) and (not q or q in f"{t.name} {t.description} {t.module}".lower())]
+    counts = Counter(project_of(t) for t in matching)
+    chosen, pager = paginate(request, [t for t in matching if project in ("", project_of(t))], ACTIVITIES_PAGE)
+    rows = [{"name": t.name, "kind": t.kind, "label": label(t.kind), "description": t.description, "project": project_of(t),
              "module": t.module.removesuffix(".tasks"), "inputs": t.inputs, "output": t.output is not None, "outputs": t.outputs,
-             "source": source(t.fn)} for t in every if kind in (None, t.kind)]
+             "source": source(t.fn)} for t in chosen]
+    def with_project(name):  # this page's query, on another project's activities
+        query = request.GET.copy()
+        query.pop("page", None)
+        query.pop("project", None)
+        if name:
+            query["project"] = name
+        return f"?{query.urlencode()}" if query else request.path
+
+    projects = [{"id": "", "name": "All projects", "count": len(matching), "current": not project, "url": with_project("")},
+                *({"id": name, "name": name, "count": n, "current": name == project, "url": with_project(name)}
+                  for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))]
     return render(request, "bpmn8n/activities.html", {
-        "tasks": rows, "kind": kind, "total": len(every), "modules": {t.module for t in every},
+        "tasks": rows, "pager": pager, "q": q, "workflow_choices": projects, "filter_label": "Project",
+        "kind": kind, "total": len(every), "modules": {t.module for t in every},
         "kinds": [(k, label(k), sum(t.kind == k for t in every)) for k in TASK_KINDS]})
+
+
+def project_of(task):
+    """The project an activity's code lives in: "acme" for projects.acme, "framework" for bpmn8n's own."""
+    parts = task.module.split(".")
+    return parts[1] if parts[0] == "projects" and len(parts) > 1 else "framework"
 
 
 def label(kind):
@@ -240,14 +285,41 @@ def source(fn):
         return f"@task\ndef {fn.__name__}(request, data): ..."
 
 
-@login_required
-def docs(request):
-    """The guide: docs/GUIDE.md, the one source of the documentation, with an index of its sections."""
-    readme = Path(settings.BASE_DIR) / "docs" / "GUIDE.md"
-    if not readme.exists():
-        return render(request, "bpmn8n/docs.html", {"guide": mark_safe("<p>docs/GUIDE.md is not deployed here.</p>"), "toc": []})
-    text = readme.read_text()
+GUIDE = Path(settings.BASE_DIR) / "docs" / "GUIDE.md"
+
+
+@lru_cache(maxsize=2)
+def guide_sections(mtime):
+    """docs/GUIDE.md as (its introduction, [{slug, title, html, children}], {anchor: section}), one section per "## "
+    heading; cached until the file changes (`mtime`)."""
+    text = GUIDE.read_text()
     if text.startswith("# "):  # the page has its own title
         text = text.split("\n", 1)[1]
-    guide, toc = to_html(text, trusted=True, toc=True)  # our own guide
-    return render(request, "bpmn8n/docs.html", {"guide": mark_safe(guide), "toc": toc})  # noqa: S308
+    html, toc = to_html(text, trusted=True, toc=True)  # our own guide
+    intro, *chunks = re.split(r'(?=<h2 id=")', html)
+    sections = [{"slug": h["id"], "title": h["name"], "html": chunk, "children": h["children"]} for h, chunk in zip(toc, chunks)]
+    anchors = {anchor: s["slug"] for s in sections for anchor in re.findall(r'id="([^"]+)"', s["html"])}
+    return intro, sections, anchors
+
+
+@login_required
+def docs(request, section=None):
+    """The guide, docs/GUIDE.md (the one source of the documentation): an index of its sections at /docs/, one section
+    per page at /docs/<section>/, with the next and the previous one."""
+    if not GUIDE.exists():
+        return render(request, "bpmn8n/docs.html", {"intro": mark_safe("<p>docs/GUIDE.md is not deployed here.</p>"), "sections": []})
+    intro, sections, anchors = guide_sections(GUIDE.stat().st_mtime)
+    context = {"sections": sections, "intro": mark_safe(intro)}  # noqa: S308 (our own guide)
+    if section is not None:
+        at = next((i for i, s in enumerate(sections) if s["slug"] == section), None)
+        if at is None:
+            raise Http404(section)
+
+        def link(match):  # an anchor of another section: that section's page
+            anchor = match.group(1)
+            return f'href="{reverse("docs_section", args=[anchors[anchor]])}#{anchor}"' \
+                if anchors.get(anchor, section) != section else match.group(0)
+
+        context |= {"current": sections[at], "body": mark_safe(re.sub(r'href="#([^"]+)"', link, sections[at]["html"])),  # noqa: S308
+                    "previous": sections[at - 1] if at else None, "next": sections[at + 1] if at + 1 < len(sections) else None}
+    return render(request, "bpmn8n/docs.html", context)

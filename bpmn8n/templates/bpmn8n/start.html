@@ -1,15 +1,17 @@
-{% extends "bpmn8n/base.html" %}
+{% extends "bpmn8n/base.html" %}{% load bpmn8n %}
 {% block title %}Start a case{% endblock %}
 {% block crumbs %}<span>Start a case</span>{% endblock %}
 {% block main %}
 <div class="title-row"><div><h1>Start a case</h1>
-  <p class="sub">The processes a webhook starts. Each form is generated from the process contract: its start data, typed, required as declared.</p></div></div>
+  <p class="sub">{% if single %}The form this workflow's webhook takes, from its process contract.{% else %}{{ processes|length }} process{{ processes|length|pluralize:"es" }} start{{ processes|length|pluralize:"s," }} from a form: choose one.{% endif %}</p></div></div>
 {% if failure %}<p class="notice error" role="alert">{{ failure }}</p>{% endif %}
+<div class="start-list">
 {% for p in processes %}
-<section class="panel" aria-labelledby="p-{{ forloop.counter }}">
-  <header><h2 id="p-{{ forloop.counter }}">{{ p.name }}</h2><span class="meta mono">POST /webhook/{{ p.path }}</span></header>
+<details class="start"{% if single or chosen == p.path or errors and chosen == p.path %} open{% endif %}>
+  <summary>{{ p.name|process_chip }}<span class="meta">{{ p.fields|length }} field{{ p.fields|length|pluralize }}</span><span class="btn">Fill in</span></summary>
+  <div class="start-body">
   {% if answer and chosen == p.path %}
-    <p class="notice success" role="status">n8n took it.{% if case_id %} <a href="/cases/{{ case_id|urlencode:'' }}/">Open the case</a>{% else %} <a href="{% url 'inbox' %}">Go to the inbox</a>{% endif %}</p>
+    <p class="notice success" role="status">n8n took it.{% if case_id %} <a href="{{ case_id|case_url }}">Open the case</a>{% else %} <a href="{% url 'inbox' %}">Go to the inbox</a>{% endif %}</p>
     <pre class="mono">{{ answer }}</pre>
   {% endif %}
   <form class="fields" method="post" action="{% url 'start_run' p.path %}">
@@ -32,10 +34,12 @@
         {% if f.error %}<p class="error">{{ f.error }}</p>{% endif %}
       </div>
     {% empty %}<p class="muted">This process takes no start data.</p>{% endfor %}
-    <div class="form-actions"><button class="btn primary" type="submit">Start</button></div>
+    <div class="form-actions"><button class="btn primary" type="submit">Start the case</button><span class="meta mono">POST /webhook/{{ p.path }}</span></div>
   </form>
-</section>
+  </div>
+</details>
 {% empty %}
 <p class="empty">No process starts by a webhook here yet. Build one in Studio, or publish it in n8n.</p>
 {% endfor %}
+</div>
 {% endblock %}

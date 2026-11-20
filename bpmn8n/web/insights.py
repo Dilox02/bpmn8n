@@ -4,7 +4,7 @@ the comparison cohort, the target wait), so a view is a link to share; adding or
 plain GET form and a redirect, with no script."""
 from datetime import datetime, time, timedelta
 from datetime import timezone as tz
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 
 from ..analytics import FilterError, FilterStack, Log, Scope, queues, stats
 from ..analytics.log import duration_text
+from ..core import directory
 from ..models import Snapshot
 from . import charts, processmap
 
@@ -83,9 +84,11 @@ def insights(request):
             state[target] = stack.query()
         except FilterError as e:
             messages.error(request, f"The filter was not added: {e}")
-        return redirect(reverse("insights") + link(state))
+        return redirect(request.path + link(state))  # this page: /insights/, or a workflow's Insights tab
 
     processes = stats.processes()
+    if not state["process"] and not getattr(request, "b8_workflow", None):
+        return choose(request, processes)
     process = state["process"] or (processes[0]["process"] if processes else "")
     state["process"] = process
     stacks = {}
@@ -175,3 +178,23 @@ def page(log, target):
                                        name=lambda b: f"{duration_text(b['from'])} – {duration_text(b['to'])}",
                                        fmt=lambda v: f"{v:g}", edges=edges),
     }
+
+
+def choose(request, processes):
+    """/insights/ with no process: the workflows n8n has whose cases are in the event log, each opening its Insights
+    tab; then the logs of no workflow in n8n now (imported ones, deleted workflows), by their process name."""
+    cases = {p["process"]: p["cases"] for p in processes}
+    rows, named = [], set()
+    for ref in (r for r in directory.workflows() if r.in_n8n and r.cases):
+        named.add(process := ref.process)
+        rows.append({"name": ref.name, "url": reverse("workflow_insights", args=[ref.id]),
+                     "meta": f"{cases.get(process, ref.cases):,} case{'s' if cases.get(process, ref.cases) != 1 else ''}"})
+    others = [{"name": p["process"], "url": f"?process={quote(p['process'])}", "meta": f"{p['cases']:,} cases"}
+              for p in processes if p["process"] not in named]
+    return render(request, "bpmn8n/chooser.html", {
+        "title": "Insights", "sub": "What the event log says about a workflow: choose one.", "workflows": rows,
+        "empty": "No case in the event log yet. Run a process in n8n (every bpmn8n step is logged), import a log, or see "
+                 "a demo with manage.py seed_events." if not processes else "No workflow in n8n has a case in the event log yet.",
+        "others": others,
+        "others_title": "Other event logs", "others_note": "imported, or of workflows n8n no longer has",
+        "action": {"url": reverse("insights_import"), "label": "Import a log"} if request.user.is_staff else None})

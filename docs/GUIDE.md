@@ -412,6 +412,33 @@ An `llm_agent` becomes five nodes: `<name>: prompt` (the prompt filled in with t
 
 Studio writes code that the server then runs: it is for staff only and the code must be reviewed before production. *Build again* rewrites the project's activities (it does not reuse them) and replaces the folder only if the new version passes. gunicorn's reload waits for the LLM calls in progress (`--graceful-timeout 360`).
 
+### Pages and addresses
+
+Two levels, as in n8n. **The framework** spans every workflow: `/inbox/` (the home: `/` leads there), `/start/`,
+`/workload/`, `/workflows/`, `/cases/`, `/insights/`, `/simulation/`, `/studio/`, `/activities/`, `/landscape/`,
+`/variables/`, `/docs/` (one section per page). **One workflow** lives under its n8n id, as n8n keys it
+(`/workflow/<id>/executions/<n>`): `/workflows/<id>/` (overview: its figures, what waits on people, its latest cases),
+and the tabs `cases/`, `cases/<execution>/`, `insights/`, `simulation/` (when it has a model), `versions/`, `start/`
+(when it is published and takes a form). Every tab carries the same header: the workflow's mark, its name, its state in
+n8n and *Open in n8n*. The old `/cases/<workflow>:<execution>/` redirects to the new address.
+
+**One workflow at a time.** Every framework page says which workflow each row belongs to (two letters on a tint of its
+own hue: the workflows n8n has take the hues in turn, so they never share one) and offers the row of workflows that have
+something on it, with how much (`?workflow=<id>`): the inbox, the cases, the workload. Insights and Simulation start by
+choosing a workflow; logs of no workflow in n8n (imported, or of deleted workflows) and models of projects not
+imported are listed apart. Activities do the same by project.
+
+**n8n is the truth about workflows** (`bpmn8n/core/directory.py`, cached 30 s): their names and states (published, draft,
+archived) are n8n's; a workflow bpmn8n saw and n8n no longer has is *deleted in n8n*, on its own tab of Workflows, its
+cases hidden from `/cases/` unless asked (`?deleted=1`). *Start a case* offers only published workflows (a production
+webhook answers for nothing else). `manage.py reconcile` (hourly in the scheduler; `--dry-run` says what it would do)
+cancels the tasks and message waits of deleted workflows, which nothing could resume, with that reason in the audit log.
+With n8n's API unreadable nothing is called deleted or cancelled.
+
+**The look is n8n's** (`static/bpmn8n/tokens.css`): its InterVariable face (served by bpmn8n), its neutral greys and its
+orange for the one primary action and the selected tab; secondary text and the primary button's label are one step
+darker than n8n's for 4.5:1 contrast. Long lists page with the range shown ("1–50 of 1,432") and the page numbers.
+
 ### One look on both servers
 
 Django (`:8000`) and n8n (`:5678`, its preview on `:5679`) are one product with one definition of each visual concept:

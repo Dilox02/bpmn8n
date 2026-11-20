@@ -16,10 +16,12 @@ class Job:
 
 
 def jobs(root, prune_days=""):
-    """What runs, from the commands this checkout has: the deadlines every minute; the daily digest when the
-    people area ships one; a daily prune when PRUNE_DAYS is set."""
+    """What runs, from the commands this checkout has: the deadlines every minute; the reconciliation with n8n every
+    hour; the daily digest when the people area ships one; a daily prune when PRUNE_DAYS is set."""
     commands = {p.stem for p in (Path(root) / "bpmn8n" / "management" / "commands").glob("*.py")}
     found = [Job("run_deadlines", 60)]
+    if "reconcile" in commands:  # waits of workflows deleted in n8n: nothing will ever resume them
+        found.append(Job("reconcile", 3600))
     if "send_digests" in commands:
         found.append(Job("send_digests", DAY))
     if str(prune_days).isdigit() and int(prune_days) > 0:

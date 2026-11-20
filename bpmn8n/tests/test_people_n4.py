@@ -163,7 +163,7 @@ class StartCaseTest(Base):
         self.assertEqual(post.call_args.args[:2], ("http://n8n:5678/webhook/acme-ticket",
                                                      {"customer": "ACME", "message": "Broken", "amount": 12.5,
                                                       "channel": "chat", "duplicate_charge": False}))
-        self.assertContains(page, "/cases/42%3A77/")
+        self.assertContains(page, "/workflows/42/cases/77/")
         entry = AuditEntry.objects.get(action="case.start")
         self.assertEqual((entry.actor, entry.case_id), ("anna", "42:77"))
         self.assertEqual(entry.details["fields"], ["amount", "channel", "customer", "duplicate_charge", "message"])

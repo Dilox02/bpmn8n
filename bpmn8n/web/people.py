@@ -1,11 +1,13 @@
 """N4 people's pages: the workload of the lanes (H7), what a person is told (H8), starting a case (H9)."""
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import timedelta
 from statistics import mean
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -13,9 +15,10 @@ from django.views.decorators.http import require_POST
 
 from ..clients.http import ServiceUnavailable, post_json
 from ..conf import settings
+from ..core import directory
 from ..models import Preference, UserTask
 from ..models.safety import AuditEntry
-from . import charts
+from . import charts, scope
 from .landscape import known_workflows
 
 WINDOWS = {7: "7 days", 30: "30 days", 90: "90 days"}  # the window of the means and of the completions
@@ -62,6 +65,10 @@ def workload(request):
     since = now - timedelta(days=days)
     visible = UserTask.objects.all() if UserTask.manages(request.user) or request.user.is_superuser \
         else UserTask.objects.for_user(request.user)
+    in_window = visible.filter(Q(status__in=UserTask.WAITING) | Q(status=UserTask.COMPLETED, completed__gte=since))
+    workflow_choices = scope.choices(request, Counter(scope.workflow_of(c) for c in in_window.values_list("case_id", flat=True)))
+    if workflow := request.GET.get("workflow"):  # one workflow's share of the lanes
+        visible = visible.filter(case_id__startswith=f"{workflow}:")
     tasks = list(visible.waiting().values("lane", "status", "due", "created", "claimed", "completed")) + list(
         visible.filter(status=UserTask.COMPLETED, completed__gte=since).values("lane", "status", "due", "created", "claimed", "completed"))
     lanes = lane_stats(tasks, since, now)
@@ -74,6 +81,7 @@ def workload(request):
     late = visible.waiting().filter(due__lt=now).select_related("assignee").order_by("due")[:10]
     return render(request, "bpmn8n/workload.html", {
         "lanes": lanes, "people": sorted(people.items()), "late": late, "days": days, "windows": WINDOWS.items(),
+        "workflow_choices": workflow_choices,
         "open_chart": charts.bars(lanes, label="Waiting tasks by lane", value=lambda r: r["waiting"],
                                   name=lambda r: r["lane"], edges=[r["lane"] for r in lanes]),
         "late_chart": charts.bars(lanes, label="Overdue tasks by lane", value=lambda r: r["overdue"],
@@ -114,13 +122,25 @@ def start_fields(contract):
 
 def starts():
     """{webhook path: process} of every process a webhook starts (a POST one: the form sends JSON), from the projects
-    and from n8n's workflows when its API answers."""
-    found = {}
+    and from n8n's workflows when its API answers; cached as long as the directory of workflows (every tab of a
+    workflow asks whether it has a Start tab)."""
+    key = f"{directory.cache_key()}:starts"
+    if (found := cache.get(key)) is None:
+        cache.set(key, found := read_starts(), directory.TTL)
+    return found
+
+
+def read_starts():
+    """Only what n8n would start: a production webhook answers for a published workflow, not for a draft or a
+    project that was never imported (with n8n unreadable, every one: nothing says otherwise)."""
+    live, found = directory.from_n8n(), {}
     for node in known_workflows():
         for start in node.contract.starts if node.contract else ():
             if start["kind"] == "webhook" and start["path"] and start["method"] == "POST":
                 found[start["path"]] = {"path": start["path"], "name": node.name, "workflow_id": node.workflow_id,
                                         "fields": start_fields(node.contract)}
+    if live is not None:
+        found = {path: p for path, p in found.items() if live.get(p["workflow_id"], ("", ""))[1] == "published"}
     return found
 
 
@@ -170,9 +190,11 @@ def forms(processes, chosen="", values=None, errors=None):
 
 
 @login_required
-def start_case(request):
-    """The processes a webhook starts, each with a form generated from its contract's start data."""
-    return render(request, "bpmn8n/start.html", {"processes": forms(starts())})
+def start_case(request, workflow_id=None):
+    """The processes a webhook starts, one form open at a time, generated from the contract's start data; one
+    workflow's only on its Start tab."""
+    processes = {k: p for k, p in starts().items() if workflow_id in (None, p["workflow_id"])}
+    return render(request, "bpmn8n/start.html", {"processes": forms(processes), "single": workflow_id is not None})
 
 
 @login_required

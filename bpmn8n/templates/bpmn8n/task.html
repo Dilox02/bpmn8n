@@ -6,9 +6,9 @@
 <div class="title-row">
   <div>
     <div class="title-line"><h1>{{ task.title }}</h1><span class="pill s-{{ task.status }}">{{ task.status }}</span>{% include "bpmn8n/urgency.html" %}</div>
-    <p class="sub">{% if task.kind == "manualTask" %}Manual task{% else %}User task{% endif %} “{{ task.activity }}”{% if task.process %} of {{ task.process }}{% endif %}{% if task.case_id %}, execution <span class="mono">#{{ task.execution }}</span>{% endif %} · {% if task.lane %}lane {{ task.lane }}{% else %}any lane{% endif %} · waiting for {{ task.created|waited }}</p>
+    <p class="sub">{% if task.kind == "manualTask" %}Manual task{% else %}User task{% endif %} “{{ task.activity }}”{% if task.process %} of {% if task.case_id %}<a href="{{ task.case_id|workflow_url }}">{{ task.process|process_chip }}</a>{% else %}{{ task.process|process_chip }}{% endif %}{% endif %}{% if task.case_id %}, <a class="inline-link" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %} · {% if task.lane %}lane {{ task.lane }}{% else %}any lane{% endif %} · waiting for {{ task.created|waited }}</p>
   </div>
-  {% if task.case_id %}<div class="actions"><a class="btn" href="/cases/{{ task.case_id|urlencode:'' }}/">Case</a></div>{% endif %}
+  {% if task.case_id %}<div class="actions"><a class="btn" href="{{ task.case_id|case_url }}">Case</a></div>{% endif %}
 </div>
 <div class="with-rail">
   <div class="stack">
@@ -91,7 +91,7 @@
       <ol class="trail">
         {% for c in similar %}
         <li>
-          <span>{% if c.link %}<a class="inline-link" href="/cases/{{ c.case_id|urlencode:'' }}/">case #{{ c.execution }}</a>{% else %}case #{{ c.execution }}{% endif %}{% if c.end %} · ended at {{ c.end }}{% endif %}{% if c.decision %} · {% for k, v in c.decision.items %}{{ k }}: {{ v|default_if_none:"—" }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}</span>
+          <span>{% if c.link %}<a class="inline-link" href="{{ c.case_id|case_url }}">case #{{ c.execution }}</a>{% else %}case #{{ c.execution }}{% endif %}{% if c.end %} · ended at {{ c.end }}{% endif %}{% if c.decision %} · {% for k, v in c.decision.items %}{{ k }}: {{ v|default_if_none:"—" }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}</span>
           <span class="who-when num">{{ c.score }}</span>
         </li>
         {% endfor %}
@@ -101,7 +101,7 @@
   </div>
   <div class="stack">
     <section class="panel" aria-labelledby="about">
-      <header><h2 id="about">Task</h2>{% if task.case_id %}<a class="meta inline-link" href="/cases/{{ task.case_id|urlencode:'' }}/">case #{{ task.execution }}</a>{% endif %}</header>
+      <header><h2 id="about">Task</h2>{% if task.case_id %}<a class="meta inline-link" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</header>
       <dl class="facts">
         <dt>Priority</dt><dd>{{ task.priority|capfirst }}</dd>
         <dt>Due</dt><dd>{% if task.due %}<time datetime="{{ task.due|date:'c' }}">{{ task.due|date:"j M Y, H:i" }}</time>{% if task.deadline %} · deadline: then the process goes on without it{% endif %}{% else %}no due date{% endif %}</dd>

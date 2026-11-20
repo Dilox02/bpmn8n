@@ -14,9 +14,19 @@ STATUSES = {  # status: (label, tone)
     "waiting_person": ("waiting for a person", "accent"),
     "waiting_message": ("waiting for a message", "accent"),
     "failed": ("failed", "negative"),
+    # a case in the search (core/cases.py): the same facts, in its words
+    "waiting": ("waiting", "accent"),
+    "active": ("running", "warning"),
+    "closed": ("closed", "positive"),
     # a step of the event log (Event.status; "running" above while it runs)
     "complete": ("done", "positive"),
     "error": ("failed", "negative"),
+    # a workflow, as n8n has it (core/directory.py): published runs on its triggers, a draft does not
+    "published": ("published", "positive"),
+    "draft": ("draft", "neutral"),
+    "archived": ("archived", "neutral"),
+    "deleted": ("deleted in n8n", "negative"),
+    "unknown": ("n8n unreadable", "neutral"),
 }
 
 # a node on the canvas, as a page posts it to the n8n preview (n8n-editor/preview.js, command bpmn8nStates):

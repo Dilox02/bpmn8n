@@ -46,7 +46,7 @@ class PageTest(TestCase):
 
     def test_empty_state_lists_the_projects_and_the_acme_examples(self):
         r = self.get()
-        self.assertContains(r, "Choose a workflow to read its capacity")
+        self.assertContains(r, "choose a workflow")
         self.assertContains(r, "?project=acme")
         self.assertContains(r, "?project=example%3Alibrary-lending")
         self.assertNotContains(r, "Capacity now")

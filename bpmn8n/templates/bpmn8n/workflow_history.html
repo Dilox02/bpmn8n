@@ -5,8 +5,8 @@
 {% block main %}
 <div class="title-row">
   <div>
-    <h1>{{ name }}</h1>
-    <p class="sub"><span class="mono">{{ workflow_id }}</span> · {{ versions|length }} version{{ versions|length|pluralize }} kept · {{ cases }} case{{ cases|pluralize }}{% if unversioned > 0 %} ({{ unversioned }} with no known version){% endif %}</p>
+    <h1>Versions</h1>
+    <p class="sub">{{ versions|length }} version{{ versions|length|pluralize }} kept · {{ cases }} case{{ cases|pluralize }}{% if unversioned > 0 %} ({{ unversioned }} with no known version){% endif %}</p>
   </div>
 </div>
 {% for row in versions %}{% with v=row.v %}

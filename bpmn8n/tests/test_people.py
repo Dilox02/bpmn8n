@@ -324,7 +324,7 @@ class InboxTest(People):
         self.client.force_login(self.anna)
         page = self.client.get(f"/inbox/{task.pk}/")
         self.assertEqual(page.context["allowed"], ["claim", "complete", "suspend"])
-        self.assertContains(page, 'href="/cases/wf%3A99/"')
+        self.assertContains(page, 'href="/workflows/wf/cases/99/"')
         self.assertNotContains(page, "Reassign to")
         self.client.force_login(self.boss)
         page = self.client.get(f"/inbox/{task.pk}/")

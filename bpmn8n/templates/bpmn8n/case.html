@@ -5,8 +5,8 @@
 {% block main %}
 <div class="title-row">
   <div>
-    <div class="title-line"><h1>{{ process|default:"Case" }}</h1>{{ status|status_pill }}</div>
-    <p class="sub">Case <span class="mono">{{ case_id }}</span>{% if execution_id %}, n8n execution <span class="mono">#{{ execution_id }}</span>{% endif %}</p>
+    <div class="title-line"><h1>Case #{{ execution_id|default:case_id }}</h1>{{ status|status_pill }}</div>
+    <p class="sub">{% if not request.b8_workflow %}Of {{ process|process_chip }} · {% endif %}execution <span class="num">#{{ execution_id }}</span> in n8n{% if n8n_url %} · <a class="inline-link" href="{{ n8n_url }}" target="_blank" rel="noopener">open it in n8n</a>{% endif %}</p>
   </div>
   {% if n8n_url %}<div class="actions"><a class="btn" href="{{ n8n_url }}" target="_blank" rel="noopener">Open in n8n<span class="sr-only"> (opens a new tab)</span></a></div>{% endif %}
 </div>

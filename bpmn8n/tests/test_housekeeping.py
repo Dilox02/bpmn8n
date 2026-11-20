@@ -121,7 +121,7 @@ class SchedulerCommandTest(TestCase):
         with mock.patch.object(run_scheduler, "call_command") as call:
             call_command("run_scheduler", ticks=1, stdout=StringIO())
         # the first tick runs every job that is due: the deadlines, and the daily digest (people's notifications)
-        self.assertEqual([c.args[0] for c in call.call_args_list], ["run_deadlines", "send_digests"])
+        self.assertEqual([c.args[0] for c in call.call_args_list], ["run_deadlines", "reconcile", "send_digests"])
 
     def test_a_second_scheduler_waits_on_the_lock(self):
         cursor = mock.MagicMock()

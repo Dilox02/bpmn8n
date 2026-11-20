@@ -1,4 +1,7 @@
 """Template filters of bpmn8n's pages."""
+import re
+import zlib
+
 from django import template
 from django.utils import timezone
 from django.utils.html import format_html
@@ -63,3 +66,44 @@ def span(moment):
         return "a moment"
     return timesince(moment, now, depth=1) if moment < now else timeuntil(moment, now, depth=1)
 
+
+
+PROCESS_HUES = (20, 55, 95, 135, 170, 330)  # a process's tint: 35° or more apart, none a pale blue or a violet
+
+
+def process_hue(name):
+    """The workflows n8n has take the hues in turn (sorted by name), so the ones a person sees together never share one;
+    any other name (a deleted workflow, an imported log, a project) takes one from its name."""
+    from ..core import directory
+    live = sorted({n for n, _ in (directory.from_n8n() or {}).values()}, key=str.lower)
+    index = live.index(name) if name in live else zlib.crc32(name.encode())
+    return PROCESS_HUES[index % len(PROCESS_HUES)]
+
+
+@register.filter
+def process_chip(name):
+    """A process (workflow) by name, with its own mark: two letters on a pale tint of a hue fixed by the name, so
+    "ACME · Expense approval" and "ACME · Incident response" read apart at a glance in every list."""
+    name = str(name or "").strip()
+    if not name:
+        return mark_safe('<span class="muted">—</span>')
+    words = [w for w in re.split(r"[\s_\-:]+", name.split("·")[-1]) if w and w[0].isalnum()] or [name]
+    mark = (words[0][0] + (words[1][0] if len(words) > 1 else words[0][1:2])).upper()
+    hue = process_hue(name)
+    return format_html('<span class="proc" style="--h: {}"><span class="proc-mark" aria-hidden="true">{}</span>'
+                       '<span class="proc-name">{}</span></span>', hue, mark, name)
+
+
+@register.filter
+def case_url(case_id):
+    """Where a case lives: /workflows/<workflow id>/cases/<execution>/ (bpmn8n/web/workflow.py)."""
+    from ..web.workflow import case_url as url
+    return url(case_id)
+
+
+@register.filter
+def workflow_url(case_id):
+    """The overview of a case's workflow: /workflows/<workflow id>/."""
+    from django.urls import reverse
+    workflow_id = str(case_id).rpartition(":")[0]
+    return reverse("workflow", args=[workflow_id]) if workflow_id else ""

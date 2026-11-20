@@ -342,7 +342,8 @@ class InsightsPageTest(TestCase):
 
     def test_renders_every_section_on_a_seeded_log(self):
         generate("Claim Handling", 80, seed=2)
-        r = self.client.get("/insights/")
+        self.assertContains(self.client.get("/insights/"), "?process=Claim%20Handling")  # chosen first (no workflow in n8n here)
+        r = self.client.get("/insights/", {"process": "Claim Handling"})
         self.assertEqual(r.status_code, 200)
         for text in ("Claim Handling", "Cases in progress", "Closed cases by duration", "Bottlenecks", "assessors",
                      "Where the cycle time goes", "Variants", "Handoffs", "Route Claim", "Compare two groups"):

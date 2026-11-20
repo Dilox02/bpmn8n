@@ -65,8 +65,8 @@ class CasePageTest(TestCase):
 
     @patch(WORKFLOW, return_value=None)
     def test_without_n8n_the_page_says_so_and_shows_the_log(self, _):
-        page = self.client.get("/cases/wf1:42/")
-        self.assertContains(page, "<h1>Support</h1>", html=True)
+        page = self.client.get("/workflows/wf1/cases/42/")
+        self.assertContains(page, "<h1>Case #42</h1>", html=True)
         self.assertNotContains(page, 'class="notice')  # the subscriptions are not Django's messages
         self.assertContains(page, '<b8-pill tone="accent">waiting for a person</b8-pill>', html=True)
         self.assertContains(page, '<li data-status="error">')  # <b8-timeline> colours the failed step's dot
@@ -84,7 +84,7 @@ class CasePageTest(TestCase):
     @override_settings(N8N_PREVIEW_URL="http://preview.test")
     @patch(WORKFLOW, return_value=FLOW)
     def test_with_the_workflow_the_canvas_gets_the_node_states(self, _):
-        page = self.client.get("/cases/wf1:42/")
+        page = self.client.get("/workflows/wf1/cases/42/")
         self.assertContains(page, 'data-src="http://preview.test/workflows/demo"')
         self.assertNotIn("credentials", page.context["workflow"]["nodes"][0])  # never sent to the browser
         self.assertNotContains(page, "secret-credential")
@@ -98,14 +98,16 @@ class CasePageTest(TestCase):
     @patch(WORKFLOW, return_value=None)
     def test_who_may_see_a_case(self, _):
         self.client.logout()
-        self.assertEqual(self.client.get("/cases/wf1:42/").status_code, 302)  # sign in first
+        self.assertRedirects(self.client.get("/cases/wf1:42/"), "/workflows/wf1/cases/42/", status_code=301,
+                             fetch_redirect_response=False)  # the address before cases lived under their workflow
+        self.assertEqual(self.client.get("/workflows/wf1/cases/42/").status_code, 302)  # sign in first
         person = User.objects.create_user("ann", password="pw")
         self.client.force_login(person)
-        self.assertEqual(self.client.get("/cases/wf1:42/").status_code, 404)  # not in the support lane
+        self.assertEqual(self.client.get("/workflows/wf1/cases/42/").status_code, 404)  # not in the support lane
         person.groups.add(Group.objects.create(name="support"))
-        self.assertEqual(self.client.get("/cases/wf1:42/").status_code, 200)
+        self.assertEqual(self.client.get("/workflows/wf1/cases/42/").status_code, 200)
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get("/cases/wf9:1/").status_code, 404)  # no such case
+        self.assertEqual(self.client.get("/workflows/wf9/cases/1/").status_code, 404)  # no such case
 
 
 class StatusTest(TestCase):

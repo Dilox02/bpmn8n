@@ -563,7 +563,7 @@ class PagesTest(TestCase):
     def test_cases_page(self):
         self.client.force_login(self.staff)
         page = self.client.get("/cases/", {"path": "amount", "op": "gt", "value": "1000"})
-        self.assertContains(page, 'href="/cases/wf1%3A1/"')  # E1's case page, by path
+        self.assertContains(page, 'href="/workflows/wf1/cases/1/"')  # E1's case page, under its workflow
         self.assertNotContains(page, "wf1:2</a>")
         self.assertContains(self.client.get("/cases/", {"version": "v1"}), "1 case")
         self.assertContains(self.client.get("/cases/", {"status": "lost"}, follow=True), "status: one of")
@@ -571,21 +571,22 @@ class PagesTest(TestCase):
     def test_workflows_and_history(self):
         self.client.force_login(self.person)
         self.assertContains(self.client.get("/workflows/"), 'href="/workflows/wf1/"')
-        page = self.client.get("/workflows/wf1/")
+        page = self.client.get("/workflows/wf1/versions/")
         self.assertContains(page, "Renamed “Pay” to “Pay refund”")
         self.assertContains(page, "{{amount}} &gt; 500")
         self.assertNotContains(page, "Restore this version")  # staff only
-        self.assertEqual(self.client.get("/workflows/nope/").status_code, 404)
+        self.assertEqual(self.client.get("/workflows/nope/versions/").status_code, 404)
         self.client.force_login(self.staff)
-        self.assertContains(self.client.get("/workflows/wf1/"), "Restore this version", count=1)  # not the newest
+        self.assertContains(self.client.get("/workflows/wf1/versions/"), "Restore this version", count=1)  # not the newest
 
     @override_settings(N8N_API_KEY="key")
     def test_restore(self):
         self.client.force_login(self.person)
-        self.assertEqual(self.client.post("/workflows/wf1/v1/restore/").status_code, 302)  # to the login
+        self.assertEqual(self.client.post("/workflows/wf1/versions/v1/restore/").status_code, 302)  # to the login
         self.client.force_login(self.staff)
-        with patch(N8N, side_effect=[{}, {**V1, "versionId": "v3"}]):
-            page = self.client.post("/workflows/wf1/v1/restore/", follow=True)
+        # the restore (a read, a save), then the versions page it leads to, which lists n8n's workflows
+        with patch(N8N, side_effect=[{}, {**V1, "versionId": "v3"}, *[{"data": []}] * 4]):
+            page = self.client.post("/workflows/wf1/versions/v1/restore/", follow=True)
         self.assertContains(page, "It is not published")
         self.assertTrue(WorkflowVersion.objects.filter(version_id="v3").exists())
 

@@ -233,7 +233,7 @@ class AuditTest(People):
         WorkflowVersion.objects.create(workflow_id="wf1", version_id="v1", workflow={"nodes": []}, content_hash="x")
         self.client.force_login(self.boss)
         with patch("bpmn8n.core.history.restore", return_value=SimpleNamespace(version_id="v2")):
-            self.client.post("/workflows/wf1/v1/restore/")
+            self.client.post("/workflows/wf1/versions/v1/restore/")
         entry = self.entry("workflow.restore")
         self.assertEqual((entry.actor, entry.object_id, entry.details), ("boss", "wf1", {"version": "v1", "saved_as": "v2"}))
 
@@ -277,7 +277,7 @@ class AuditTest(People):
         self.assertEqual(len(self.client.get("/api/audit", {"actor": "anna"}).json()), 1)
         self.assertEqual(self.client.get("/api/audit", {"since": "2999-01-01T00:00:00Z"}).json(), [])
         self.client.force_login(self.boss)
-        self.assertContains(self.client.get("/cases/wf:99/"), "usertask.claim")
+        self.assertContains(self.client.get("/workflows/wf/cases/99/"), "usertask.claim")
 
 
 class SpecSaveAuditTest(TestCase):

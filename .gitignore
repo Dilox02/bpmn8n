@@ -72,3 +72,4 @@ playwright-report/
 # Operations output: backups (python -m bpmn8n backup) and pruned events (manage.py prune)
 /backups/
 /archive/
+/.taste-skill/

@@ -1,65 +1,81 @@
 /* bpmn8n's design tokens: the one definition of every colour, type size, spacing and radius, for Django's
    pages (app.css) and the n8n editor hooks (n8n-editor/*: mounted into n8n as /static/bpmn8n-tokens.css).
+   They are n8n 2.42's own (its InterVariable face, its neutral greys, its orange #ff6900), measured from the
+   running editor, so both servers look like one product. Two departures, for legibility: secondary text is
+   #636363, not n8n's #999 (2.9:1 on white), a primary button's label is near-black on the orange (white is 2.9:1),
+   and status text is a darker step of n8n's status hues.
    Light by default; dark on [data-theme=dark] (Django sets it on <html> from the b8-theme cookie, n8n on
    <body> from its own theme) and, with no explicit theme, when the system prefers dark.
    The hooks write var(--b8-…, <fallback>), so a missing file only brings back their own colours. */
 
+@font-face {  /* n8n's own face; its own name here, so inside n8n a missing file falls back to n8n's copy */
+  font-family: "b8-Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("fonts/InterVariable.woff2") format("woff2");
+}
+
 :root, [data-theme=light] {
   color-scheme: light;
-  /* surfaces, ink and lines: the chrome is grey, colour goes on data and status */
-  --b8-ground: #f9fbfc;  --b8-surface: #ffffff;  --b8-raised: #f4f6f8;  --b8-active: #ebedee;
-  --b8-border: #e8eaec;  --b8-rule: #f0f1f2;     --b8-control: #cdced1;
-  --b8-text: #131416;    --b8-muted: #5d5f60;    --b8-faint: #6b6b6b;
-  --b8-accent: #1b6c80;  --b8-primary: #1d1f20;  --b8-primary-ink: #ffffff;
+  /* surfaces, ink and lines: the frame is n8n's grey, the work on white, colour on data, status and the action */
+  --b8-ground: #f5f5f5;  --b8-surface: #ffffff;  --b8-raised: #fafafa;  --b8-active: #e8e8e8;
+  --b8-border: #e5e5e5;  --b8-rule: #f0f0f0;     --b8-control: #d1d1d1;
+  --b8-text: #262626;    --b8-muted: #636363;    --b8-faint: #696969;
+  --b8-accent: #ff6900;  --b8-data: #d74d00;     /* n8n's orange; its darker step where it marks data or text */
+  --b8-primary: #ff6900; --b8-primary-hover: #e85f00; --b8-primary-ink: #1a1a1a;
   /* status: ink on the sheet, and a pale tint with dark ink of the same hue for pills */
-  --b8-positive: #1e7b4f; --b8-negative: #c4242a; --b8-warning: #92400e;
-  --b8-pill-positive-bg: #dcfae5; --b8-pill-positive-ink: #04250e;
-  --b8-pill-negative-bg: #ffedea; --b8-pill-negative-ink: #831c1e;
-  --b8-pill-warning-bg: #fffbeb;  --b8-pill-warning-ink: #92400e;
-  --b8-pill-neutral-bg: #ebedee;  --b8-pill-neutral-ink: #353736;
-  --b8-pill-accent-bg: #e3f0f3;   --b8-pill-accent-ink: #0f4552;
+  --b8-positive: #14772e; --b8-negative: #d0021b; --b8-warning: #81520a;
+  --b8-pill-positive-bg: #dcfce7; --b8-pill-positive-ink: #0b4a1f;
+  --b8-pill-negative-bg: #ffe2e2; --b8-pill-negative-ink: #8a0d12;
+  --b8-pill-warning-bg: #fdf0d5;  --b8-pill-warning-ink: #6b4407;
+  --b8-pill-neutral-bg: #f0f0f0;  --b8-pill-neutral-ink: #444444;
+  --b8-pill-accent-bg: #ffedd4;   --b8-pill-accent-ink: #8a3a00;
   --b8-avatar: 45% 90%;  --b8-avatar-ink: 45% 22%;  /* saturation, lightness of a person's hue */
+  /* a process's identity: a pale tint and a dark ink of its own hue (--b8-id-hue, set per process) */
+  --b8-id-bg-l: 0.95;  --b8-id-bg-c: 0.04;  --b8-id-ink-l: 0.42;  --b8-id-ink-c: 0.10;
 
   /* the canvas: n8n's own look in light, BPMN marks on it */
-  --b8-canvas: #f4f6f8;  --b8-shape-stroke: #22242a;  --b8-shape-fill: #ffffff;
+  --b8-canvas: #f5f5f5;  --b8-shape-stroke: #262626;  --b8-shape-fill: #ffffff;
   /* a case's tokens on the canvas (n8n-preview, executions view): text-safe on a light sheet */
   --b8-token-active: #8a5300;  --b8-token-ready: #1f5fb0;  --b8-token-waiting: #6b3fb0;
   --b8-token-done: #1a6b44;    --b8-token-error: #b42318;
 }
 
-/* dark: one true-neutral ground, elevation by lightness; the canvas is flat and every node a tint */
+/* dark: n8n's dark greys, elevation by lightness; the canvas is flat and every node a tint */
 [data-theme=dark] {
   color-scheme: dark;
-  --b8-ground: #000000; --b8-surface: #111111; --b8-raised: #1c1c1c; --b8-active: #262626;
-  --b8-border: #2e2e2e; --b8-rule: #1f1f1f; --b8-control: #474747;
-  --b8-text: #ffffff; --b8-muted: #b4b4b4; --b8-faint: #949494;
-  --b8-accent: #5fb3c8; --b8-primary: #ffffff; --b8-primary-ink: #000000;
-  --b8-positive: #3fc07a; --b8-negative: #e5566f; --b8-warning: #e5a93b;
-  --b8-pill-positive-bg: #172a1d; --b8-pill-positive-ink: #3fc07a;
-  --b8-pill-negative-bg: #2c1a20; --b8-pill-negative-ink: #e5566f;
-  --b8-pill-warning-bg: #2b2414;  --b8-pill-warning-ink: #e5a93b;
-  --b8-pill-neutral-bg: #262626;  --b8-pill-neutral-ink: #ffffff;
-  --b8-pill-accent-bg: #12303a;   --b8-pill-accent-ink: #9fd6e4;
+  --b8-ground: #171717; --b8-surface: #212121; --b8-raised: #262626; --b8-active: #333333;
+  --b8-border: #333333; --b8-rule: #2a2a2a; --b8-control: #4a4a4a;
+  --b8-text: #f2f2f2; --b8-muted: #bbbbbb; --b8-faint: #a3a3a3;
+  --b8-accent: #ff6900; --b8-data: #ff8a3d;
+  --b8-primary: #ff6900; --b8-primary-hover: #ff7d24; --b8-primary-ink: #1a1a1a;
+  --b8-positive: #3fc07a; --b8-negative: #ff6467; --b8-warning: #e5a93b;
+  --b8-pill-positive-bg: #17301f; --b8-pill-positive-ink: #6fd69a;
+  --b8-pill-negative-bg: #3a1c1d; --b8-pill-negative-ink: #ff9c9d;
+  --b8-pill-warning-bg: #33280f;  --b8-pill-warning-ink: #f0c060;
+  --b8-pill-neutral-bg: #333333;  --b8-pill-neutral-ink: #f2f2f2;
+  --b8-pill-accent-bg: #3a2210;   --b8-pill-accent-ink: #ffb27a;
   --b8-avatar: 30% 22%;  --b8-avatar-ink: 50% 85%;
-  --b8-canvas: #0d0d12;  --b8-shape-stroke: #e4e4ea;  --b8-shape-fill: #2b2b2b;
+  --b8-id-bg-l: 0.32;  --b8-id-bg-c: 0.05;  --b8-id-ink-l: 0.88;  --b8-id-ink-c: 0.08;
+  --b8-canvas: #171717;  --b8-shape-stroke: #e5e5e5;  --b8-shape-fill: #2b2b2b;
   --b8-token-active: #f5bd69;  --b8-token-ready: #87bafa;  --b8-token-waiting: #d2b2fa;
   --b8-token-done: #85d8b0;    --b8-token-error: #ff9c91;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme=light]) {  /* the same as [data-theme=dark]: no explicit theme, the system's */
     color-scheme: dark;
-    --b8-ground: #000000; --b8-surface: #111111; --b8-raised: #1c1c1c; --b8-active: #262626;
-    --b8-border: #2e2e2e; --b8-rule: #1f1f1f; --b8-control: #474747;
-    --b8-text: #ffffff; --b8-muted: #b4b4b4; --b8-faint: #949494;
-    --b8-accent: #5fb3c8; --b8-primary: #ffffff; --b8-primary-ink: #000000;
-    --b8-positive: #3fc07a; --b8-negative: #e5566f; --b8-warning: #e5a93b;
-    --b8-pill-positive-bg: #172a1d; --b8-pill-positive-ink: #3fc07a;
-    --b8-pill-negative-bg: #2c1a20; --b8-pill-negative-ink: #e5566f;
-    --b8-pill-warning-bg: #2b2414;  --b8-pill-warning-ink: #e5a93b;
-    --b8-pill-neutral-bg: #262626;  --b8-pill-neutral-ink: #ffffff;
-    --b8-pill-accent-bg: #12303a;   --b8-pill-accent-ink: #9fd6e4;
+    --b8-ground: #171717; --b8-surface: #212121; --b8-raised: #262626; --b8-active: #333333;
+    --b8-border: #333333; --b8-rule: #2a2a2a; --b8-control: #4a4a4a;
+    --b8-text: #f2f2f2; --b8-muted: #bbbbbb; --b8-faint: #a3a3a3;
+    --b8-accent: #ff6900; --b8-data: #ff8a3d;
+    --b8-primary: #ff6900; --b8-primary-hover: #ff7d24; --b8-primary-ink: #1a1a1a;
+    --b8-positive: #3fc07a; --b8-negative: #ff6467; --b8-warning: #e5a93b;
+    --b8-pill-positive-bg: #17301f; --b8-pill-positive-ink: #6fd69a;
+    --b8-pill-negative-bg: #3a1c1d; --b8-pill-negative-ink: #ff9c9d;
+    --b8-pill-warning-bg: #33280f;  --b8-pill-warning-ink: #f0c060;
+    --b8-pill-neutral-bg: #333333;  --b8-pill-neutral-ink: #f2f2f2;
+    --b8-pill-accent-bg: #3a2210;   --b8-pill-accent-ink: #ffb27a;
     --b8-avatar: 30% 22%;  --b8-avatar-ink: 50% 85%;
-    --b8-canvas: #0d0d12;  --b8-shape-stroke: #e4e4ea;  --b8-shape-fill: #2b2b2b;
+    --b8-id-bg-l: 0.32;  --b8-id-bg-c: 0.05;  --b8-id-ink-l: 0.88;  --b8-id-ink-c: 0.08;
+    --b8-canvas: #171717;  --b8-shape-stroke: #e5e5e5;  --b8-shape-fill: #2b2b2b;
     --b8-token-active: #f5bd69;  --b8-token-ready: #87bafa;  --b8-token-waiting: #d2b2fa;
     --b8-token-done: #85d8b0;    --b8-token-error: #ff9c91;
   }
@@ -67,18 +83,18 @@
 
 /* the same in both themes */
 :root {
-  /* type: IBM Plex Sans; Plex Mono has one job, IDs, keys and code */
-  --b8-font: "IBM Plex Sans", Inter, system-ui, sans-serif;
-  --b8-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --b8-fs-title: 22px; --b8-fs-section: 16px; --b8-fs-body: 14px; --b8-fs-code: 13px; --b8-fs-small: 12px;
+  /* type: n8n's InterVariable at n8n's sizes (13 / 14 / 16 / 20); a monospace only for IDs, keys and code */
+  --b8-font: "b8-Inter", InterVariable, system-ui, sans-serif;
+  --b8-mono: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;  /* taste-skill-ignore: IDs, keys and code only */
+  --b8-fs-title: 20px; --b8-fs-section: 16px; --b8-fs-body: 14px; --b8-fs-code: 13px; --b8-fs-small: 12px;
 
   /* spacing and layout */
   --b8-sidebar-width: 228px; --b8-topbar: 48px; --b8-sheet-inset: 8px;
   --b8-pad: 24px; --b8-gap: 24px; --b8-card-pad: 20px; --b8-rail: 384px;
   --b8-control-height: 32px; --b8-row-height: 48px; --b8-nav-row: 32px;
 
-  /* radius */
-  --b8-radius-sheet: 16px; --b8-radius-card: 8px; --b8-radius-control: 6px; --b8-radius-pill: 999px;
+  /* radius: n8n's (4 on controls, 8 on cards); the sheet is the style's 16 */
+  --b8-radius-sheet: 16px; --b8-radius-card: 8px; --b8-radius-control: 4px; --b8-radius-pill: 999px;
 
   /* motion */
   --b8-ease-out: cubic-bezier(0.22, 1, 0.36, 1); --b8-t-press: 120ms; --b8-t-hover: 150ms; --b8-t-ui: 200ms;
