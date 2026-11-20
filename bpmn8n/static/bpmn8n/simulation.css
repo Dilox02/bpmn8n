@@ -58,5 +58,4 @@ tfoot th { text-align: left; }
 }
 @media (max-width: 860px) {
   .headline { font-size: var(--b8-fs-body); line-height: 22px; }
-  .block td.n, .block th.n { white-space: nowrap; }  /* a number on one line; the table scrolls in its frame */
 }

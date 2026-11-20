@@ -33,6 +33,16 @@ n8n runs workflows well, but it does not speak the language of business processe
 | 🆓 **Open edition** | What n8n sells by subscription, built in: variables shared by every workflow (on Redis), workflow history with diff and restore, log streaming, case search, git-based source control. |
 | 🔐 **Production** | A Docker image, secure settings, health checks, Prometheus metrics, encrypted LLM keys, an audit log and erasure by case. |
 
+## Screenshots
+
+[![Insights on a log of 400 claims: cases, durations and arrivals, the process map with its detail sliders, events and cases in progress over time](docs/screenshots/insights.png)](docs/screenshots/insights.png)
+
+*Insights: what the event log says about a process. Volumes, durations and arrivals, the process map with sliders for its level of detail, the load over time; further down, bottlenecks, variants, people, handoffs and decisions. Here on a synthetic log of 400 claims (`manage.py seed_events`).*
+
+[![Simulation of the motor insurance claim: the bottleneck in one sentence, arrivals, cycle time and cases in the system, each lane's utilisation, wait and response](docs/screenshots/simulation.png)](docs/screenshots/simulation.png)
+
+*Simulation: queueing theory in closed form, at once. The bottleneck, each lane's utilisation, wait and response, Little's law; further down, what-if, the scenario table, the event simulation with confidence intervals and the model calibrated from the log.*
+
 ## How it fits together
 
 ```

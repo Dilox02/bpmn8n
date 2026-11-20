@@ -68,10 +68,6 @@
     <datalist id="activities">{% for n in names.activity %}<option value="{{ n }}">{% endfor %}</datalist>
     <datalist id="values">{% for key, values in names.items %}{% for n in values %}<option value="{{ n }}" label="{{ key }}">{% endfor %}{% endfor %}</datalist>
   </details>
-</section>
-{% endif %}
-
-{% if processes %}
 <details class="export">
   <summary class="btn">Snapshots{% if snapshots %} · {{ snapshots|length }}{% endif %}</summary>
   <p class="meta">Save this analysis (process, window, filters, cohort, level of detail) under a name and reopen it by its link.</p>
@@ -84,6 +80,7 @@
   <p class="meta">The filtered log as CSV or XES, with the API token; <code>anonymise=1</code> replaces case ids, resources and text values with stable pseudonyms.</p>
   <pre><code>curl -H "Authorization: Bearer $API_TOKEN" -o log.csv "{{ request.scheme }}://{{ request.get_host }}/api/analytics/export?format=csv&amp;anonymise=1&amp;process={{ process|urlencode }}{% if state.since %}&amp;since={{ state.since|urlencode }}{% endif %}{% if state.filters %}&amp;filters={{ state.filters|urlencode }}{% endif %}"</code></pre>
 </details>
+</section>
 {% endif %}
 
 {% if not processes %}

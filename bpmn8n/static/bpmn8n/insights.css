@@ -16,7 +16,7 @@
 .chip a:hover { background: var(--b8-surface); }
 .chip.vs { background: var(--b8-pill-neutral-bg); color: var(--b8-pill-neutral-ink); }
 .compare .chips, #compare ~ .chips { margin-bottom: 16px; }
-.add-filter { width: 100%; }
+.filters > .chips, .filters > details[open] { flex-basis: 100%; }  /* filters, snapshots, export: one row of buttons */
 .add-filter > summary { list-style: none; width: max-content; }
 .add-filter > summary::-webkit-details-marker { display: none; }
 .add-filter[open] > summary { margin-bottom: 12px; }
@@ -107,6 +107,7 @@
 /* process map: server-drawn SVG (web/processmap.py); --heat tints, --w sizes a line */
 .pmap-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
 .pmap-form label { display: inline-flex; align-items: center; gap: 6px; color: var(--b8-muted); }
+.pmap-form select.input { width: auto; }
 .pmap-wrap { overflow-x: auto; border: 1px solid var(--b8-border); border-radius: var(--b8-radius-card); background: var(--b8-surface); padding: 8px; }
 .pmap { --heat: 100%; --w: 1px; display: block; min-width: 640px; width: 100%; height: auto; font-size: 12px; fill: var(--b8-text); }
 .pmap .edge path { fill: none; stroke: color-mix(in srgb, var(--b8-accent) var(--heat), var(--b8-rule)); stroke-width: var(--w); }

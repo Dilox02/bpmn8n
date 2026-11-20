@@ -85,7 +85,7 @@ td { padding: 14px 12px; border-bottom: 1px solid var(--b8-rule); vertical-align
 th:first-child, td:first-child { padding-left: 0; }
 th:last-child, td:last-child { padding-right: 0; }
 tbody tr:last-child td { border-bottom: 0; }
-th.n, td.n { text-align: right; }
+th.n, td.n { text-align: right; white-space: nowrap; }  /* a number on one line */
 td .sub { display: block; margin-top: 2px; font-size: var(--b8-fs-small); color: var(--b8-muted); }
 td a.name { font-weight: 500; }
 td a.name:hover { text-decoration: underline; text-underline-offset: 3px; }
