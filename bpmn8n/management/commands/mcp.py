@@ -67,12 +67,19 @@ class WriteArguments(ProjectArguments):
 
 
 TOOLS = {
-    "api": ("Calls bpmn8n's REST API (the routes of /api/openapi.json) and returns its JSON. Useful routes: "
-            "GET /api/usertasks?status=open, POST /api/usertasks/{id}/complete {result}, GET /api/cases/{case_id}, "
-            "GET /api/eventlog.csv?since=..., GET /api/metrics, GET /api/processmining?process=..., "
-            "GET /api/messages/subscriptions, POST /api/messages/{name} {...}, "
-            "GET /api/evaluations/{workflow_id}/runs, GET /api/evaluations/{workflow_id}/runs/{project}/{execution_id}, "
-            "POST /api/workflows/check {n8n workflow json}, POST /api/tasks/{name} {input}, GET /api/openapi.json.",
+    "api": ("Calls bpmn8n's REST API and returns {status, body}. GET /api/openapi.json returns here a compact list of "
+            "every route with its query and body fields (the full document is hundreds of kilobytes). Common routes: "
+            "people: GET /api/usertasks?status=open&lane=..., POST /api/usertasks/{id}/complete {the form's fields}, "
+            "POST /api/usertasks/{id}/reassign|delegate|suspend|resume; "
+            "cases: GET /api/cases?process=&status=, GET /api/cases/{case_id}, POST /api/cases/{case_id}/terminate|"
+            "compensate|erase; messages and signals: POST /api/messages/{name} {correlation_key, payload}, "
+            "POST /api/signals/{name} {payload}; processes: GET /api/contracts/{workflow_id} (its start data, what it "
+            "waits for and sends, its lanes), GET /api/workflows/{workflow_id}.bpmn, POST /api/workflows/check "
+            "{n8n workflow json}, GET /api/history/{workflow_id}; what happened: GET /api/analytics/overview|variants|"
+            "activities|resources|decisions|queues?process=..., GET /api/processmining?process=..., GET /api/goals?"
+            "process=...; capacity: POST /api/simulation/analytic|run|staffing {project or workflow or spec}, GET "
+            "/api/simulation/calibrate?process=...; an activity: POST /api/tasks/{name} with its input fields at the "
+            "top level of the body (not wrapped); shared variables: GET|PUT /api/variables/{key}.",
             ApiArguments),
     "studio_projects": ("Studio's projects: slug, name, status (interview, research, building, ready, failed).",
                         Arguments),
@@ -93,8 +100,11 @@ TOOLS = {
     "studio_write": ("Writes one activity's module (the whole Python file) into the project's draft.",
                      WriteArguments),
     "studio_check": ("Imports the draft's modules, runs each activity's examples, plays its scenarios "
-                     "(scenarios.json) and checks the workflow: {imports, examples, scenarios, problems}; a failing "
-                     "scenario is also a problem. Fix with studio_write / studio_save until it is clean.",
+                     "(scenarios.json) and checks the workflow: {ok, imports, examples, examples_run, scenarios, "
+                     "problems}. imports and examples list only failures (examples_run counts what ran); problems "
+                     "of level error or rule human (a final decision left to a machine), and failing scenarios, "
+                     "block publishing; warnings and infos do not. Fix with "
+                     "studio_write / studio_save until ok is true.",
                      ProjectArguments),
     "studio_publish": ("Once studio_check is clean: publishes projects/<slug>, imports the workflow into n8n and "
                        "reloads the server's tasks. The project becomes ready.", ProjectArguments),
@@ -125,14 +135,38 @@ def idle(slug):
 
 
 def api(method, path, body=None):
+    if method == "GET" and path.split("?")[0] == "/api/openapi.json":
+        return {"status": 200, "body": routes()}
     headers = {"HTTP_AUTHORIZATION": f"Bearer {settings.API_TOKEN}"} if settings.API_TOKEN else {}
     r = Client().generic(method, path, json.dumps(body) if body is not None else "",
                          content_type="application/json", **headers)
+    if "html" in r.get("Content-Type", ""):  # Django's error page (a debug page with DEBUG=1): no use to a model
+        return {"status": r.status_code, "body": f"{r.reason_phrase}" + (": no such API route, see GET /api/openapi.json"
+                                                                          if r.status_code == 404 else "")}
     try:
         data = r.json()
     except ValueError:
         data = r.content.decode(errors="replace")[:5000]
     return {"status": r.status_code, "body": data}
+
+
+def routes():
+    """Every route as "METHOD path: summary", with its query fields and its body's fields: what a model needs to
+    call it, in a few kilobytes instead of the whole OpenAPI document (every task's schemas and examples)."""
+    from bpmn8n.api import api as ninja
+    schema = ninja.get_openapi_schema()
+    components = schema.get("components", {}).get("schemas", {})
+    out = []
+    for path, operations in sorted(schema["paths"].items()):
+        for method, op in operations.items():
+            body = op.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+            body = components.get(body["$ref"].rsplit("/", 1)[-1], {}) if "$ref" in body else body
+            query = [p["name"] for p in op.get("parameters", []) if p.get("in") == "query"]
+            line = f"{method.upper()} {path}: {op.get('summary', '')}"
+            line += f" ?{'&'.join(query)}" if query else ""
+            line += f" {{{', '.join(body.get('properties', {}))}}}" if body.get("properties") else ""
+            out.append(line)
+    return out
 
 
 def studio_projects():
@@ -199,9 +233,9 @@ def studio_check(slug):
 def studio_publish(slug):
     b = ProjectBuilder(p := idle(slug))
     report = studio_check(slug)
-    if errors := [x for x in report["problems"] if x["level"] == "error" or x["rule"] == "human"] + \
-            [*report["imports"], *report["examples"]]:
-        raise ToolError(f"the check is not clean: {errors}")
+    if not report["ok"]:
+        errors = [x for x in report["problems"] if x["level"] == "error" or x["rule"] == "human"]
+        raise ToolError(f"the check is not clean: {errors + [*report['imports'], *report['examples']]}")
     done = {}
     for step in (b.publish, b.import_workflow, b.reload):
         try:

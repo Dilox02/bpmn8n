@@ -253,6 +253,7 @@ class ProjectCheck:
         package = f"{self.folder.parent.name}.{self.folder.name}."
         # module -> the end of its traceback, for the project's modules that fail
         self.imports = {module: error for module, error in discover().items() if module.startswith(package)}
+        self.ran = {}  # task -> how many examples ran (failing or not): an empty `examples` then says they passed
         self.examples = {} if self.imports else self._run_examples()
         self.scenarios = [] if self.imports else run_scenarios(self.folder)
         self.problems = [] if self.imports else self._check_workflow(fetch)
@@ -263,15 +264,15 @@ class ProjectCheck:
                     or any(not s["passed"] for s in self.scenarios))
 
     def as_dict(self):
-        return {"imports": self.imports, "examples": self.examples, "scenarios": self.scenarios,
-                "problems": [p.as_dict() for p in self.problems]}
+        return {"ok": self.ok, "imports": self.imports, "examples": self.examples, "examples_run": self.ran,
+                "scenarios": self.scenarios, "problems": [p.as_dict() for p in self.problems]}
 
     def _run_examples(self):
         """task -> what its failing examples got wrong."""
         path = self.folder / "examples.json"
         failed = {}
         for name, examples in (json.loads(path.read_text()) if path.exists() else {}).items():
-            task = TASKS.get(name)
+            task, self.ran[name] = TASKS.get(name), len(examples)
             if problems := [f"no @task {name!r}"] if task is None else [p for e in examples if (p := task.check(e))]:
                 failed[name] = problems
         return failed

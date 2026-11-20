@@ -113,7 +113,11 @@ class ProjectBuilder:
 
     def design_problems(self, spec):
         if not isinstance(spec.get("workflow"), dict) or not isinstance(spec.setdefault("activities", []), list):
-            return [f"it has no workflow: {json.dumps(spec)[:300]}"]
+            return ['it needs "workflow": {"start_data": [...], "steps": [a "start" step first, ...], "flows": [...]} '
+                    'and "activities": [...] (a list, maybe empty), in the shape of the design prompt\'s example']
+        if not spec["workflow"].get("steps"):
+            return ['its workflow has no "steps": a "start" step (the webhook) first, then the tasks, gateways and '
+                    'people, joined by "flows"']
         taken = {t.name for t in self.prompts.tasks}
         problems, seen = [], set()
         for a in spec["activities"]:
@@ -216,6 +220,9 @@ class ProjectBuilder:
         report["problems"] += spec_problems + [  # a scenario the process fails is the workflow's error
             {"node": "", "rule": "scenario", "level": "error", "message": f"scenario {s['name']!r}: {s['failure']}"}
             for s in report.get("scenarios", []) if not s["passed"]]
+        # what publishing asks: no import error, no failing example, no error and no decision left to a machine
+        report["ok"] = not (report["imports"] or report["examples"] or
+                            any(p["level"] == "error" or p["rule"] == "human" for p in report["problems"]))
         return report
 
     def publish(self):

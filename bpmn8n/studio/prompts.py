@@ -121,9 +121,18 @@ class Prompts:
 
     @cached_property
     def catalog(self):
-        return "\n".join(f"- {t.name} ({t.kind}): {t.description.splitlines()[0] if t.description else ''} "
-                         f"Inputs: {fields(t.inputs)}. Outputs: {fields(t.outputs) if t.output else 'not declared'}."
-                         for t in sorted(self.tasks, key=lambda t: t.name)) or "- none yet"
+        """Every task. The framework's own, made to be reused, in full: inputs and outputs with their descriptions.
+        Other projects' in one line with the names of their outputs (the variables they give the steps after
+        them; inputs bind by name and the check names a missing one): their fields in full made the design
+        prompt tens of kilobytes on a server with a few big projects, more than an MCP client shows."""
+        def line(t):
+            summary = (t.description.splitlines()[0] if t.description else "")[:160]
+            if t.module.startswith("bpmn8n."):
+                outputs = fields(t.outputs) if t.output else "not declared"
+                return f"- {t.name} ({t.kind}): {summary} Inputs: {fields(t.inputs)}. Outputs: {outputs}."
+            outputs = ", ".join(f.name for f in t.outputs) if t.output else "not declared"
+            return f"- {t.name} ({t.kind}): {summary} Outputs: {outputs}."
+        return "\n".join(line(t) for t in sorted(self.tasks, key=lambda t: t.name)) or "- none yet"
 
     @cached_property
     def existing_code(self):

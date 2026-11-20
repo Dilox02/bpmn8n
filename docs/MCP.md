@@ -79,9 +79,9 @@ Two JSON lines come back: the server's identity, then the list of tools.
 | `studio_prompt` | `slug`, `step` (`interview`, `design` or `write`), `activity` | Returns the instructions Studio gives its LLM, with the live context: existing tasks, lanes, the builder's step types, code conventions and the project so far. Follow them. |
 | `studio_save` | `slug`, `messages`, `brief`, `spec` | Saves the interview transcript, the brief or the design. A spec the build cannot use is refused with the list of problems. |
 | `studio_write` | `slug`, `activity`, `code` | Writes one activity's Python module into the project's draft. |
-| `studio_check` | `slug` | Imports the draft, runs each activity's examples and checks the workflow. Returns `{imports, examples, problems}`. |
+| `studio_check` | `slug` | Imports the draft, runs each activity's examples, plays its scenarios and checks the workflow. Returns `{ok, imports, examples, examples_run, scenarios, problems}`: `imports` and `examples` list only failures, `examples_run` counts what ran, `ok` says whether `studio_publish` will accept it. |
 | `studio_publish` | `slug` | Only once the check is clean: writes `projects/<slug>/`, imports or updates the workflow in n8n and reloads the server's tasks. |
-| `api` | `method`, `path`, `body` | Calls any route of the REST API (`/api/openapi.json` lists them) and returns the status and the JSON. |
+| `api` | `method`, `path`, `body` | Calls any route of the REST API and returns the status and the JSON. `GET /api/openapi.json` returns here a compact list of the routes with their query and body fields (the full document is hundreds of kilobytes); an activity takes its input fields at the top level of the body. |
 
 ## Build a process
 
@@ -91,7 +91,7 @@ Ask the client something like *"design an expense approval process in bpmn8n Stu
 2. `studio_prompt step=interview` gives the interview instructions. The client asks you one question at a time in its chat, then `studio_save` stores the transcript (`messages`) and the `brief`.
 3. `studio_prompt step=design` gives the shape of the spec: the assessment (who decides and why, the GDPR notes), the new activities with 2 or 3 examples each, the workflow's steps and flows. `studio_save spec=…` stores it, or refuses it with what to fix.
 4. `studio_prompt step=write activity=<name>` gives the instructions for each new activity, and `studio_write` writes its module.
-5. `studio_check` runs until it is clean: no import errors, every example passing, no errors and no `human` problems. Fix modules with `studio_write` and the design with `studio_save`.
+5. `studio_check` runs until `ok` is true: no import errors, every example passing, no errors and no `human` problems. Fix modules with `studio_write` and the design with `studio_save`.
 6. `studio_publish` publishes the project. **Studio never activates a workflow**: publish it in the n8n editor. On a rebuild, the workflow keeps its id and webhook. If it is active, n8n saves the change as a draft for you to publish.
 
 The project lands in `projects/<slug>/`, with `tasks/`, `examples.json`, `process.py`, `workflow.json` and `INTERVIEW.md`, exactly as a web build writes it. The Studio page at `http://localhost:8000/studio/<slug>/` shows it, with its canvas.
@@ -108,6 +108,10 @@ Ask, for example, *"which user tasks are open?"* or *"show the variables of case
 | Deliver a message to a waiting case | `POST /api/messages/{name}` with `{"correlation_key": "…", "payload": {…}}` |
 | Metrics and process mining | `GET /api/metrics`, `GET /api/processmining?process=…` |
 | Check a workflow before importing it | `POST /api/workflows/check` with the n8n workflow JSON |
+| How to start a process, what it waits for | `GET /api/contracts/{workflow_id}` |
+| What really happened | `GET /api/analytics/overview?process=…` (also `variants`, `activities`, `decisions`, `queues`) |
+| Capacity and the bottleneck | `POST /api/simulation/analytic` with `{"project": "…"}` |
+| The process as a `.bpmn` file | `GET /api/workflows/{workflow_id}.bpmn` |
 
 A message adds variables to its case, but it never changes the ones the case already has. The keys it left out are listed in the reply's `reason`.
 

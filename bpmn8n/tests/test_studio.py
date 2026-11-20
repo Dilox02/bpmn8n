@@ -316,6 +316,8 @@ class BuildTest(TestCase):
         slug = self.project.slug
         self.assertIn("give it 2 or 3 examples", call("studio_save", slug=slug, spec={
             **SPEC, "activities": [{k: v for k, v in SPEC["activities"][0].items() if k != "examples"}]})[1])
+        self.assertIn('no "steps"', call("studio_save", slug=slug, spec={**SPEC, "workflow": {}})[1])  # not "saved"
+        self.assertIn('it needs "workflow"', call("studio_save", slug=slug, spec={"name": "x"})[1])
         self.assertEqual(call("studio_save", slug=slug, spec=SPEC), (False, "saved"))
         self.assertIn("## The activity to write", call("studio_prompt", slug=slug, step="write", activity="quote_price")[1])
         self.assertTrue(call("studio_check", slug=slug)[0])  # no module yet
@@ -323,12 +325,20 @@ class BuildTest(TestCase):
         with patch.dict(os.environ, self.env, clear=True):
             self.assertIn("expected {'price': 50}", call("studio_check", slug=slug)[1])
             call("studio_write", slug=slug, activity="quote_price", code=ACTIVITY)
+            report = json.loads(call("studio_check", slug=slug)[1])  # a model sees that the examples ran and passed
+            self.assertEqual((report["ok"], report["examples"]), (True, {}))
+            self.assertGreater(report["examples_run"]["quote_price"], 0)
             error, text = call("studio_publish", slug=slug)
         self.assertFalse(error, text)
         self.assertIn("skipped", json.loads(text)["import_workflow"])  # no n8n here
         self.assertTrue((PROJECTS / slug / "tasks" / "quote_price.py").exists())
         self.assertEqual(json.loads(call("studio_project", slug=slug)[1])["status"], Project.READY)
         self.assertEqual(json.loads(call("api", method="GET", path="/api/usertasks")[1])["status"], 200)
+        routes = json.loads(call("api", method="GET", path="/api/openapi.json")[1])["body"]  # compact, not 300 KB
+        self.assertIn("POST /api/usertasks/{task_id}/complete: Complete User Task", routes)
+        self.assertLess(len(json.dumps(routes)), 60_000)
+        self.assertEqual(json.loads(call("api", method="GET", path="/api/nowhere")[1]),
+                         {"status": 404, "body": "Not Found: no such API route, see GET /api/openapi.json"})
 
     def test_from_brief_to_a_tested_project(self):
         """The design comes back for its missing examples; the module is fixed until it imports, then until
