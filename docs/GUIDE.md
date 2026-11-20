@@ -414,31 +414,36 @@ Studio writes code that the server then runs: it is for staff only and the code 
 
 ### Pages and addresses
 
-Two levels, as in n8n. **The framework** spans every workflow: `/inbox/` (the home: `/` leads there), `/start/`,
-`/workload/`, `/workflows/`, `/cases/`, `/insights/`, `/simulation/`, `/studio/`, `/activities/`, `/landscape/`,
-`/variables/`, `/docs/` (one section per page), `/editor/` (n8n itself). **One workflow** lives under its n8n id, as
-n8n keys it (`/workflow/<id>/executions/<n>`): `/workflows/<id>/` (overview: its figures, what waits on people, its
-latest cases), and the tabs `editor/`, `cases/`, `cases/<execution>/` (and `cases/<execution>/n8n/`), `insights/`,
-`simulation/` (when it has a model), `versions/`, `start/` (when it is published and takes a form). Every tab carries the
-same header: the workflow's mark, its name and its state in n8n. The old `/cases/<workflow>:<execution>/` redirects.
+The sidebar has three groups. **Work**: the inbox (the home: `/` leads there) and *Start a case*. **Processes**:
+*Workflows* (the ones in n8n, the ones deleted there, and their *Map*), *Studio* and *Activities*. **Settings**:
+*Variables* and *Credentials* (n8n's credentials). Docs, the API and the admin sit at the bottom; a person's
+notification settings beside their name.
 
-**n8n's screens inside bpmn8n.** n8n's editor of a workflow is its *Editor* tab, a case's run in n8n (n8n's own
-execution screen, its debugger) is *In n8n* on the case page, and the sidebar's *n8n* opens n8n's own list of
-workflows, credentials and executions: n8n in a frame of the page (`templates/bpmn8n/n8n_frame.html`, at
-`N8N_PUBLIC_URL`; n8n's `frame-ancestors` lets bpmn8n's address frame it, docker-compose.yml), signed in with n8n's
-session (one origin behind the gateway, or the same host). Inside bpmn8n n8n keeps its own execution screen (the case
-page is bpmn8n's view of it) and shows no bpmn8n strip (the sidebar is there); its unused entries stay hidden.
+**One workflow** lives under its n8n id, as n8n keys it (`/workflow/<id>/executions/<n>`): `/workflows/<id>/` (its
+figures, what waits on people, its latest cases) and its tabs: `editor/` (n8n's editor), `cases/` with
+`cases/<execution>/` (bpmn8n's view of a case) and `cases/<execution>/n8n/` (n8n's own run of it, its debugger),
+`insights/`, `simulation/` (when it has a model), `people/` (its lanes, the group of people each is served by, who did
+the work, what is overdue) and `versions/`. The pages that only repeated these across workflows are gone and lead to
+Workflows: `/cases/`, `/workload/`, `/insights/` and `/simulation/` with nothing chosen (an imported log keeps
+`/insights/?process=`, listed on Workflows; a project's model `/simulation/?project=`). The old
+`/cases/<workflow>:<execution>/` redirects to its new address.
 
-**One workflow at a time.** Every framework page says which workflow each row belongs to (two letters on a tint of its
-own hue: the workflows n8n has take the hues in turn, so they never share one) and offers the row of workflows that have
-something on it, with how much (`?workflow=<id>`): the inbox, the cases, the workload (one block per workflow: its
-lanes, the group of people each lane is served by, who did the work, what is overdue). Insights and Simulation start by
-choosing a workflow; logs of no workflow in n8n (imported, or of deleted workflows) and models of projects not
-imported are listed apart. Activities do the same by project.
+**The inbox, one workflow at a time.** On its left the workflows that have tasks for you, with how many and how many are
+late; choosing one lists only its tasks (and what was done in it), without a column repeating its name.
+
+**n8n's screens inside bpmn8n** are n8n framed in the page (`templates/bpmn8n/n8n_frame.html`, at `N8N_PUBLIC_URL`;
+n8n's `frame-ancestors` allows bpmn8n's address, docker-compose.yml), signed in with n8n's session. Framed, n8n shows no
+side bar, no focus panel and no Executions tab (the workflow's Cases tab is it), draws its canvas as the preview does
+(flat and dark, every node in its tint: `strip.js` sets the dark theme on that frame only, never in n8n's saved
+preference), keeps its own execution screen, and hides its unused entries.
+
+**One workflow at a time everywhere.** Every row says which workflow it belongs to (two letters on a tint of its own
+hue: the workflows n8n has take the hues in turn, so they never share one) and leads to it. Activities show the
+workflow their project defines.
 
 **n8n is the truth about workflows** (`bpmn8n/core/directory.py`, cached 30 s): their names and states (published, draft,
 archived) are n8n's; a workflow bpmn8n saw and n8n no longer has is *deleted in n8n*, on its own tab of Workflows, its
-cases hidden from `/cases/` unless asked (`?deleted=1`). *Start a case* offers only published workflows (a production
+and no list (the inbox and its count, cases, people) shows what belongs to it. *Start a case* offers only published workflows (a production
 webhook answers for nothing else). `manage.py reconcile` (hourly in the scheduler; `--dry-run` says what it would do)
 cancels the tasks and message waits of deleted workflows, which nothing could resume, with that reason in the audit log.
 With n8n's API unreadable nothing is called deleted or cancelled.

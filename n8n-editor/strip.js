@@ -34,14 +34,31 @@
     if (loopback.includes(url.hostname) && loopback.includes(page.hostname)) url.hostname = page.hostname;
     return url.href.replace(/\/$/, '');
   };
-  const Strip = { HEIGHT, HIDDEN, links, workflowId, waitingUrl, badge, sameHost };
+  // inside bpmn8n: no side bars (n8n's menu, the focus panel), no Executions tab (the workflow's Cases tab is it)
+  const FRAMED_HIDDEN = ['#sidebar', '[data-test-id="radio-button-executions"]', '[data-test-id="toggle-focus-panel-button"]',
+    '[data-test-id="focus-panel"]'];
+  const Strip = { HEIGHT, HIDDEN, FRAMED_HIDDEN, links, workflowId, waitingUrl, badge, sameHost };
   if (typeof module === 'object' && module.exports) { module.exports = Strip; return; }  // node --test
 
   const BPMN8N = sameHost(new URL(document.currentScript?.src || location.href).searchParams.get('bpmn8n') || 'http://localhost:8000', location.href);
+  /** n8n inside a bpmn8n page: the canvas in the preview's look (dark and flat, every node in its tint: bpmn.js
+   *  draws that on n8n's dark theme), set on this frame's body only, never in n8n's saved preference; no side bars. */
+  function framed() {
+    const extra = document.createElement('style');
+    extra.textContent = `${FRAMED_HIDDEN.join(', ')} { display: none !important; }`;
+    document.head.appendChild(extra);
+    const dark = () => { if (document.body && document.body.dataset.theme !== 'dark') document.body.dataset.theme = 'dark'; };
+    // ponytail: n8n sets the attribute from its preference when it starts; this keeps setting it back
+    new MutationObserver(dark).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-theme'] });
+    dark();
+  }
   const hide = document.createElement('style');  // n8n's unused entries: hidden on its own and inside bpmn8n's pages
   hide.textContent = `${HIDDEN.join(',\n    ')} { display: none !important; }`;
   document.head.appendChild(hide);
-  if (window.top !== window) return;  // inside a bpmn8n page (or an embedded canvas): bpmn8n's own sidebar is there
+  if (window.top !== window) {  // inside a bpmn8n page: its own sidebar and tabs are there
+    framed();
+    return;
+  }
   const style = document.createElement('style');
   style.textContent = `
     :root { --bpmn8n-strip: ${HEIGHT}px; }

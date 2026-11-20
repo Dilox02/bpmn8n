@@ -1,6 +1,6 @@
 {% extends "bpmn8n/base.html" %}
 {% block title %}Notifications{% endblock %}
-{% block crumbs %}<a href="{% url 'workload' %}">Workload</a><span aria-hidden="true">/</span><span>Notifications</span>{% endblock %}
+{% block crumbs %}<a href="{% url 'inbox' %}">Inbox</a><span aria-hidden="true">/</span><span>Notifications</span>{% endblock %}
 {% block main %}
 <div class="title-row"><div><h1>Notifications</h1>
   <p class="sub">bpmn8n e-mails you at {{ user.email|default:"(you have no e-mail address: ask an administrator to add one)" }} when a task is assigned to you, due soon, overdue or escalated; for a task nobody holds, the members of its lane.</p></div></div>

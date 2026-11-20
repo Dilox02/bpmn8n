@@ -62,7 +62,7 @@ class LinksAndCorsTest(TestCase):
                 self.assertEqual(Project(n8n_id="w1").n8n_url, expected)
         with override_settings(N8N_PUBLIC_URL="/n8n"):
             self.client.force_login(User.objects.create_user("sam", password="pw", is_staff=True))
-            self.assertContains(self.client.get("/editor/"), 'src="/n8n/home/workflows"')  # n8n inside bpmn8n, one origin
+            self.assertContains(self.client.get("/credentials/"), 'src="/n8n/home/credentials"')  # n8n inside bpmn8n, one origin
 
     @override_settings(API_TOKEN="secret", N8N_PUBLIC_URL="http://testserver/n8n")
     def test_same_origin_reads_get_no_cors_header_and_still_use_the_n8n_session(self):

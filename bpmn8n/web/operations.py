@@ -3,14 +3,12 @@ over cases (staff: it shows process data), the workflows bpmn8n has seen and the
 import json
 from collections import Counter
 from datetime import date, datetime, time
-from functools import reduce
-from operator import or_
 from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -20,7 +18,7 @@ from django.views.decorators.http import require_POST
 from ..clients.n8n import N8nError
 from ..core import directory, history, shared
 from ..core.cases import OPERATORS, STATUSES, CaseSearch, SearchError
-from ..models import AuditEntry, Case, UserTask, WorkflowVersion
+from ..models import AuditEntry, Case, Event, UserTask, WorkflowVersion
 from ..ops import health
 from ..workflows.changes import changes
 from . import scope
@@ -96,8 +94,8 @@ def cases(request, workflow=None):
         if workflow:
             found = found.filter(case_id__startswith=f"{workflow.id}:")
         else:
-            if live is not None and not q.get("deleted"):
-                found = found.filter(reduce(or_, (Q(case_id__startswith=f"{w}:") for w in live), Q(pk__in=[])))
+            if not q.get("deleted"):
+                found = found.filter(directory.in_n8n())
             # ponytail: counted in Python over the ids; a GROUP BY on the id's prefix once cases reach the 100,000s
             choices = scope.choices(request, Counter(scope.workflow_of(c) for c in found.values_list("case_id", flat=True)))
             if chosen := q.get("workflow"):
@@ -129,11 +127,15 @@ def workflows(request):
     shown = deleted if show else [r for r in every if r.state != "deleted"]
     waiting = Counter(case_id.rpartition(":")[0] for case_id in UserTask.objects.waiting().values_list("case_id", flat=True))
     page, pager = paginate(request, shown, PAGE)
+    imported = list(Event.objects.exclude(case_id__contains=":").exclude(process="").values("process")
+                    .annotate(cases=Count("case_id", distinct=True)).order_by("process"))
     return render(request, "bpmn8n/workflows.html", {
         "rows": [{"ref": r, "waiting": waiting.get(r.id, 0)} for r in page], "pager": pager, "show": show,
+        "imported": imported,
         "tabs": [{"label": "In n8n", "url": reverse("workflows"), "current": not show, "count": len(every) - len(deleted)},
                  {"label": "Deleted in n8n", "url": f"{reverse('workflows')}?show=deleted", "current": bool(show),
-                  "count": len(deleted)}],
+                  "count": len(deleted)},
+                 {"label": "Map", "url": reverse("landscape"), "current": False, "count": ""}],
         "knows_n8n": any(r.state != "unknown" for r in every) or not every})
 
 

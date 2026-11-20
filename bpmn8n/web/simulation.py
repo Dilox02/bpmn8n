@@ -20,7 +20,6 @@ from ..analytics import Log, Scope
 from ..analytics import stats as logstats
 from ..analytics.log import duration_text
 from ..api.simulation import MAX_CASES, STAFFING_BUDGET, cases, project_folder, source, sources
-from ..core import directory
 from ..models import AuditEntry
 from ..simulation import analytic, des, optimise, scenarios
 from ..simulation.calibrate import calibrate, sim_model
@@ -382,7 +381,7 @@ def simulation(request):
     state.update({k: v.strip() for k, v in request.GET.items() if k.startswith("c:")})
     catalogue, processes = sources(), logstats.processes()
     if not (state["project"] or state["process"]) and not getattr(request, "b8_workflow", None):
-        return choose(request, catalogue)
+        return redirect("workflows")  # a workflow's Simulation tab; a project's model by ?project=
     # ponytail: a log's process is simulated on the project or example named like it, else only calibrated.
     # Upgrade: read its workflow from n8n by the case ids' workflow id (clients.n8n.workflow), as /overlay does.
     if not state["project"] and state["process"]:
@@ -462,19 +461,3 @@ def simulation(request):
             context["run_error"] = str(e)
     return render(request, "bpmn8n/simulation.html", context, status=status)
 
-
-def choose(request, catalogue):
-    """/simulation/ with nothing chosen: the workflows n8n has that have a model (a project's simulation.json, or its
-    elements' defaults), each opening its Simulation tab; then the models of projects not in n8n."""
-    rows, modelled = [], set()
-    for ref in (r for r in directory.workflows() if r.in_n8n):
-        key = next((k for k, name in catalogue.items() if name in (ref.name, ref.process)), None)
-        if key:
-            modelled.add(key)
-            rows.append({"name": ref.name, "url": reverse("workflow_simulation", args=[ref.id]), "meta": ref.state})
-    others = [{"name": name, "url": f"?{urlencode({'project': key})}", "meta": "a model, not in n8n"}
-              for key, name in catalogue.items() if key not in modelled]
-    return render(request, "bpmn8n/chooser.html", {
-        "title": "Simulation", "sub": "How long a case takes, where it waits and how many people each lane needs: choose a workflow.",
-        "workflows": rows, "empty": "No workflow in n8n has a simulation model yet.", "others": others,
-        "others_title": "Models of projects not in n8n", "others_note": "their simulation.json, before they are published"})

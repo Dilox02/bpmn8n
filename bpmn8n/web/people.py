@@ -2,8 +2,6 @@
 import json
 from collections import Counter, defaultdict
 from datetime import timedelta
-from functools import reduce
-from operator import or_
 from statistics import mean
 
 from django.contrib import messages
@@ -72,9 +70,7 @@ def workload(request):
     visible = UserTask.objects.all() if UserTask.manages(request.user) or request.user.is_superuser \
         else UserTask.objects.for_user(request.user)
     tasks = visible.filter(Q(status__in=UserTask.WAITING) | Q(status=UserTask.COMPLETED, completed__gte=since))
-    live = directory.from_n8n()
-    if live is not None:  # as everywhere: n8n's workflows (a deleted one's tasks can never be resumed)
-        tasks = tasks.filter(reduce(or_, (Q(case_id__startswith=f"{w}:") for w in live), Q(pk__in=[])))
+    tasks = tasks.filter(directory.in_n8n())  # as everywhere: n8n's workflows (a deleted one's tasks can never be resumed)
     workflow_choices = scope.choices(request, Counter(scope.workflow_of(c) for c in tasks.values_list("case_id", flat=True)))
     if workflow := request.GET.get("workflow"):
         tasks = tasks.filter(case_id__startswith=f"{workflow}:")

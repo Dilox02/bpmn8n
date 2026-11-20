@@ -1,14 +1,15 @@
 {% extends "bpmn8n/base.html" %}
-{% block title %}Landscape{% endblock %}
-{% block crumbs %}<span>Landscape</span>{% endblock %}
+{% block title %}Map of the workflows{% endblock %}
+{% block crumbs %}<a href="{% url 'workflows' %}">Workflows</a><span aria-hidden="true">/</span><span>Map</span>{% endblock %}
 {% block main %}
 <div class="title-row">
   <div>
-    <h1>Landscape</h1>
-    <p class="sub">{% if tabs and not tabs.1.current %}The workflows in n8n{% else %}Every workflow bpmn8n knows, from its projects, n8n and the event log,{% endif %} and how they meet: a Call Activity runs another workflow, a message one sends wakes another waiting for it. Read from each workflow's contract; nothing here runs.</p>
+    <h1>Map of the workflows</h1>
+    <p class="sub">How the workflows meet: a Call Activity runs another workflow, a message one sends wakes another waiting for it. Read from each workflow's contract; nothing here runs.</p>
   </div>
 </div>
-{% if tabs %}<nav class="tabs" aria-label="Which workflows">{% for t in tabs %}<a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}<span class="num muted">{{ t.count }}</span></a>{% endfor %}</nav>{% endif %}
+<nav class="tabs" aria-label="Which workflows">{% for t in tabs %}<a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}<span class="num muted">{{ t.count }}</span></a>{% endfor %}</nav>
+{% if knows_n8n %}<p class="lead meta">{% if everything %}Everything bpmn8n knows: projects never imported and processes of the event log too. <a class="inline-link" href="{% url 'landscape' %}">Only the workflows in n8n</a>{% else %}The workflows in n8n. <a class="inline-link" href="?all=1">Everything bpmn8n knows ({{ every_count }})</a>{% endif %}</p>{% endif %}
 <dl class="facts">
   <div><dt>Workflows</dt><dd class="num">{{ workflows }}</dd></div>
   <div><dt>Calls</dt><dd class="num">{{ calls }}</dd></div>

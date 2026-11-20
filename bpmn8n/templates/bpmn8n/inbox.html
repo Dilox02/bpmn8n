@@ -12,7 +12,14 @@
 </div>
 {% if filtered %}<p class="notice">The tasks of one execution, from the link in n8n. <a href="{% url 'inbox' %}">All my tasks</a></p>
 {% else %}
-{% include "bpmn8n/workflow_filter.html" %}
+<div class="inbox-layout">
+<nav class="wf-list" aria-label="Workflows">
+  <h2 class="minor">Workflows</h2>
+  {% for c in workflow_choices %}<a href="{{ c.url }}"{% if c.current %} aria-current="page"{% endif %}>
+    {% if c.id %}{{ c.name|process_chip }}{% else %}<span class="proc-name">All tasks</span>{% endif %}
+    <span class="counts"><span class="num">{{ c.count }}</span>{% if c.overdue %}<span class="late num">{{ c.overdue }} late</span>{% endif %}</span></a>{% endfor %}
+</nav>
+<div class="inbox-main">
 <nav class="tabs" aria-label="Show">
   {% for tab in tabs %}<a href="{{ tab.url }}"{% if tab.current %} aria-current="page"{% endif %}>{{ tab.label }}<span class="num muted">{{ tab.count }}</span></a>{% endfor %}
 </nav>
@@ -23,13 +30,13 @@
 {% if tasks %}
 <div class="table-wrap">
   <table class="as-rows">
-    <thead><tr><th scope="col">Task</th><th scope="col">Due</th><th scope="col">Process</th><th scope="col">Lane</th><th scope="col">Status</th><th scope="col" class="n">Waiting</th></tr></thead>
+    <thead><tr><th scope="col">Task</th><th scope="col">Due</th>{% if not one_workflow %}<th scope="col">Process</th>{% endif %}<th scope="col">Lane</th><th scope="col">Status</th><th scope="col" class="n">Waiting</th></tr></thead>
     <tbody>
     {% for task in tasks %}
       <tr>
         <td><a class="name" href="{% url 'task' task.pk %}">{{ task.title }}</a><span class="sub">{% if task.kind == "manualTask" %}Manual task{% else %}User task{% endif %} · {{ task.activity }}</span></td>
         <td class="line2"><span class="urgency">{% include "bpmn8n/urgency.html" %}</span></td>
-        <td class="line2">{% if task.case_id %}<a href="{{ task.case_id|workflow_url }}">{{ task.process|process_chip }}</a>{% else %}{{ task.process|process_chip }}{% endif %}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>
+        {% if not one_workflow %}<td class="line2">{% if task.case_id %}<a href="{{ task.case_id|workflow_url }}">{{ task.process|process_chip }}</a>{% else %}{{ task.process|process_chip }}{% endif %}{% if task.case_id %}<a class="sub num" href="{{ task.case_id|case_url }}">case #{{ task.execution }}</a>{% endif %}</td>{% endif %}
         <td class="line2">{{ task.lane|default:"any lane" }}</td>
         <td class="side"><span class="pill s-{{ task.status }}">{% if task.status == "claimed" %}{{ task.assignee }}{% else %}{{ task.status }}{% endif %}</span></td>
         <td class="n num">{{ task.created|waited }}</td>
@@ -62,4 +69,5 @@
   </div>
 </section>
 {% endif %}
+{% if not filtered %}</div></div>{% endif %}
 {% endblock %}

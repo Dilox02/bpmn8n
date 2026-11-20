@@ -38,18 +38,14 @@ class PageTest(TestCase):
     def get(self, **query):
         return self.client.get("/simulation/", query)
 
-    def test_staff_only_and_in_the_sidebar(self):
-        self.assertContains(self.client.get("/docs/"), 'href="/simulation/"')
+    def test_staff_only_and_a_workflows_tab(self):
+        self.assertNotContains(self.client.get("/docs/"), 'href="/simulation/"')  # not in the sidebar: a workflow's tab
         self.client.force_login(User.objects.create_user("ann"))
-        self.assertEqual(self.get().status_code, 302)
-        self.assertNotContains(self.client.get("/docs/"), 'href="/simulation/"')
+        self.assertEqual(self.get(project="acme").status_code, 302)  # staff only
 
-    def test_empty_state_lists_the_projects_and_the_acme_examples(self):
-        r = self.get()
-        self.assertContains(r, "choose a workflow")
-        self.assertContains(r, "?project=acme")
-        self.assertContains(r, "?project=example%3Alibrary-lending")
-        self.assertNotContains(r, "Capacity now")
+    def test_with_nothing_chosen_it_leads_to_the_workflows(self):
+        self.assertRedirects(self.get(), "/workflows/", fetch_redirect_response=False)
+        self.assertContains(self.get(project="acme"), "Capacity now")  # a project's model, by its key
         self.assertContains(self.get(project="nowhere"), "Cannot read nowhere")
 
     def test_a_project_shows_capacity_scenarios_and_its_spec(self):

@@ -562,11 +562,11 @@ class PagesTest(TestCase):
 
     def test_cases_page(self):
         self.client.force_login(self.staff)
-        page = self.client.get("/cases/", {"path": "amount", "op": "gt", "value": "1000"})
+        page = self.client.get("/workflows/wf1/cases/", {"path": "amount", "op": "gt", "value": "1000"})
         self.assertContains(page, 'href="/workflows/wf1/cases/1/"')  # E1's case page, under its workflow
         self.assertNotContains(page, "wf1:2</a>")
-        self.assertContains(self.client.get("/cases/", {"version": "v1"}), "1 case")
-        self.assertContains(self.client.get("/cases/", {"status": "lost"}, follow=True), "status: one of")
+        self.assertContains(self.client.get("/workflows/wf1/cases/", {"version": "v1"}), "1 case")
+        self.assertContains(self.client.get("/workflows/wf1/cases/", {"status": "lost"}, follow=True), "status: one of")
 
     def test_workflows_and_history(self):
         self.client.force_login(self.person)

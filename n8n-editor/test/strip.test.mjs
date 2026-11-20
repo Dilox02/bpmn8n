@@ -39,5 +39,13 @@ test('n8n\'s unused entries are hidden by its own ids, and the strip waits for <
   const source = (await import('node:fs')).readFileSync(new URL('../strip.js', import.meta.url), 'utf8');
   assert.match(source, /if \(document\.body\) document\.body\.appendChild\(strip\);\s*else addEventListener\('DOMContentLoaded'/);
   // inside bpmn8n (an iframe) the entries stay hidden; only the strip itself is left out
-  assert.ok(source.indexOf("hide.textContent") < source.indexOf("if (window.top !== window) return;"));
+  assert.ok(source.indexOf("hide.textContent") < source.indexOf("if (window.top !== window) {"));
+});
+
+test('inside bpmn8n n8n shows no side bar and no Executions tab, and its canvas takes the preview\'s dark look', async () => {
+  assert.ok(Strip.FRAMED_HIDDEN.includes('#sidebar'));
+  assert.ok(Strip.FRAMED_HIDDEN.some(s => s.includes('radio-button-executions')));
+  const source = (await import('node:fs')).readFileSync(new URL('../strip.js', import.meta.url), 'utf8');
+  assert.match(source, /document\.body\.dataset\.theme = 'dark'/);
+  assert.doesNotMatch(source, /localStorage\.setItem\('N8N_THEME'/);  // the person's own n8n keeps its theme
 });

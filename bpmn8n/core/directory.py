@@ -7,8 +7,11 @@ Every page keys a workflow by its n8n id, as n8n's own URLs do (/workflow/<id>/e
 import zlib
 from dataclasses import dataclass
 from datetime import datetime
+from functools import reduce
+from operator import or_
 
 from django.core.cache import cache
+from django.db.models import Q
 
 from ..clients import n8n
 from ..conf import settings
@@ -55,6 +58,15 @@ def from_n8n():
         found = None
     cache.set(key, found if found is not None else False, TTL)
     return found
+
+
+def in_n8n(field="case_id"):
+    """The rows of the workflows n8n has, as a filter on a case id column ("<workflow id>:<execution>"); everything
+    when n8n cannot be read. One rule for every list: a workflow deleted in n8n can never resume what waits on it."""
+    live = from_n8n()
+    if live is None:
+        return Q()
+    return reduce(or_, (Q(**{f"{field}__startswith": f"{w}:"}) for w in live), Q(pk__in=[]))
 
 
 def workflows():

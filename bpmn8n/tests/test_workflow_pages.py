@@ -69,16 +69,15 @@ class WorkflowPagesTest(TestCase):
             inbox = self.client.get("/inbox/")
             self.assertContains(inbox, "?workflow=wf1")  # the row of workflows, with what each has here
             self.assertNotContains(inbox, "?workflow=gone")  # not in n8n
+            self.assertNotContains(inbox, "Review it")  # a deleted workflow's task: nothing can resume it
+            self.assertContains(inbox, 'aria-label="2 waiting"')  # nor does the sidebar count it
             one = self.client.get("/inbox/", {"workflow": "wf1"})
             self.assertContains(one, "Approve the refund")
             self.assertNotContains(one, "Greet Ada")
-            cases = self.client.get("/cases/")
-            self.assertContains(cases, "3 cases of the workflows in n8n")  # the deleted workflow's case left out
-            self.assertContains(self.client.get("/cases/", {"deleted": "1"}), "4 cases")
-            self.assertContains(self.client.get("/cases/", {"workflow": "wf2"}), "1 case")
-            insights = self.client.get("/insights/")  # choose a workflow first, never a process at random
-            self.assertContains(insights, 'href="/workflows/wf1/insights/"')
-            self.assertContains(insights, "?process=e2e%20copy")  # a log of no workflow in n8n, apart
+            self.assertNotContains(one, '<th scope="col">Process</th>')  # one workflow: no column repeating it
+            for moved in ("/cases/", "/insights/", "/workload/"):  # each now a workflow's tab
+                self.assertRedirects(self.client.get(moved), "/workflows/", fetch_redirect_response=False)
+            self.assertContains(self.client.get("/workflows/wf2/cases/"), "1 case")
 
     def test_reconcile_cancels_only_the_waits_n8n_can_no_longer_resume(self):
         MessageSubscription.objects.create(case_id="gone:5", name="ping", correlation_key="k", resume_url="x")

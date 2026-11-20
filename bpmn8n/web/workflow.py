@@ -3,7 +3,8 @@
     /workflows/<id>/                     overview: how it is doing, what waits, its latest cases
     /workflows/<id>/cases/               its cases               /workflows/<id>/cases/<execution>/   one case
     /workflows/<id>/insights/            what its event log says /workflows/<id>/simulation/          its capacity
-    /workflows/<id>/versions/            the versions kept       /workflows/<id>/start/               start a case
+    /workflows/<id>/people/              its lanes and people    /workflows/<id>/versions/            the versions kept
+    /workflows/<id>/editor/              n8n's editor of it
 
 Each tab is the framework's page for that subject, given this workflow: the header (its mark, name, state in n8n
 and the tabs) is drawn by base.html from request.b8_workflow, so every tab says which workflow it is about."""
@@ -26,7 +27,7 @@ from . import simulation as simulation_pages
 
 TABS = (("workflow", "Overview", False), ("workflow_editor", "Editor", True), ("workflow_cases", "Cases", True),
         ("workflow_insights", "Insights", False),
-        ("workflow_simulation", "Simulation", True), ("workflow_versions", "Versions", False), ("workflow_start", "Start a case", False))
+        ("workflow_simulation", "Simulation", True), ("workflow_people", "People", False), ("workflow_versions", "Versions", False))
 
 
 def in_workflow(current, **inject):
@@ -43,13 +44,11 @@ def in_workflow(current, **inject):
                 request.GET = request.GET.copy()
                 for name, attribute in inject.items():
                     request.GET[name] = getattr(ref, attribute)
-            starts = {p["workflow_id"] for p in people.starts().values()}
             modelled = ref.name in (names := set(simulation_sources().values())) or ref.process in names
             request.b8_workflow = {
                 "ref": ref,
                 "tabs": [{"label": label, "url": reverse(name, args=[ref.id]), "current": name == current}
                          for name, label, staff in TABS if (request.user.is_staff or not staff)
-                         and (name != "workflow_start" or ref.id in starts)
                          and (name != "workflow_simulation" or modelled)
                          and (name != "workflow_editor" or ref.in_n8n)]}
             return view(request, ref, *args, **kwargs)
@@ -99,9 +98,10 @@ def versions(request, ref):
     return operations.workflow_history(request, ref.id)
 
 
-@in_workflow("workflow_start")
-def start(request, ref):
-    return people.start_case(request, workflow_id=ref.id)
+@in_workflow("workflow_people", workflow="id")
+def people_tab(request, ref):
+    """Who works on it: its lanes, the group of people each is served by, what waits and how fast it moves."""
+    return people.workload(request)
 
 
 def old_case(request, case_id):

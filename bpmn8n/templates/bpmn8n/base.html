@@ -32,7 +32,7 @@
       {% if user.is_authenticated %}
       <div class="who">
         <span class="avatar" style="--hue: {{ user_hue }}" aria-hidden="true">{{ user.username|slice:":2"|upper }}</span>
-        <span>{{ user.username }}<small>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}{% if user.is_superuser %}every lane{% else %}no lane{% endif %}{% endfor %}</small></span>
+        <span>{{ user.username }} · <a class="inline-link" href="{% url 'notifications' %}">notifications</a><small>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}{% if user.is_superuser %}every lane{% else %}no lane{% endif %}{% endfor %}</small></span>
       </div>
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="nav-item signout" type="submit">Sign out</button></form>
       {% endif %}

@@ -26,6 +26,7 @@ from django.views.decorators.http import require_POST
 from .. import conf
 from ..api.tasks import TASK_KINDS, TASKS
 from ..clients.http import ServiceUnavailable
+from ..core import directory
 from ..models import Event, TransitionError, UserTask
 from ..ops import health
 from . import scope
@@ -66,18 +67,14 @@ class Nav:
     group: str = ""  # the sidebar's heading above it
 
 
-# the sidebar, in groups: the work people do, the workflows and their cases (each workflow's own pages are tabs under
-# /workflows/<id>/), what the log says across workflows, and what builds them. An entry shows once its URL name
-# resolves, so a page added later appears without editing base.html
+# the sidebar, in three groups: the work people do; the processes (each workflow's own pages are the tabs under
+# /workflows/<id>/: editor, cases, insights, simulation, people, versions); and the settings they share. An entry
+# shows once its URL name resolves, so a page added later appears without editing base.html
 NAV = (Nav("inbox", "Inbox", "inbox", group="Work"), Nav("start_case", "Start a case", "start", group="Work"),
-       Nav("workload", "Workload", "workload", group="Work"),
-       Nav("workflows", "Workflows", "workflows", group="Workflows"), Nav("cases", "Cases", "cases", staff=True, group="Workflows"),
-       Nav("n8n", "n8n", "editor", staff=True, group="Workflows"),
-       Nav("insights", "Insights", "insights", group="Analyse"),
-       Nav("simulation", "Simulation", "simulation", staff=True, group="Analyse"),
-       Nav("studio", "Studio", "studio", staff=True, group="Build"), Nav("activities", "Activities", "activities", group="Build"),
-       Nav("landscape", "Landscape", "landscape", group="Build"),
-       Nav("variables", "Variables", "variables", staff=True, group="Build"))
+       Nav("workflows", "Workflows", "workflows", group="Processes"), Nav("studio", "Studio", "studio", staff=True, group="Processes"),
+       Nav("activities", "Activities", "activities", group="Processes"),
+       Nav("variables", "Variables", "variables", staff=True, group="Settings"),
+       Nav("credentials", "Credentials", "editor", staff=True, group="Settings"))
 NAV_BOTTOM = (Nav("docs", "Docs", "docs"), Nav("api-1:openapi-view", "API", "api"),
               Nav("admin:index", "Admin", "admin", staff=True))
 THEMES, THEME_COOKIE = (("system", "System"), ("light", "Light"), ("dark", "Dark")), "b8-theme"
@@ -115,7 +112,7 @@ def navigation(request):
     context = {"theme": theme_of(request), "themes": THEMES}
     if not request.user.is_authenticated:
         return context
-    waiting = UserTask.objects.workable().for_user(request.user).count()
+    waiting = UserTask.objects.workable().for_user(request.user).filter(directory.in_n8n()).count()
     dots = health.dots()
     down = [d["name"] for d in dots if d["state"] == "down"]
     summary = {"text": f"{', '.join(down).capitalize()} down" if down else "All services up", "state": "down" if down else "up"}
@@ -155,7 +152,7 @@ def inbox(request):
     ?workflow=&execution= (the link in n8n's node) narrows it to one case, and opens the task when it
     is the only one."""
     UserTask.objects.expire_due()
-    visible = UserTask.objects.waiting().for_user(request.user).select_related("assignee")
+    visible = UserTask.objects.waiting().for_user(request.user).filter(directory.in_n8n()).select_related("assignee")
     show = request.GET.get("show", "") if request.GET.get("show", "") in FILTERS else ""
     priority = request.GET.get("priority", "") if request.GET.get("priority") in UserTask.PRIORITIES else ""
     workflow, execution, workflow_choices = request.GET.get("workflow", ""), request.GET.get("execution", ""), []
@@ -169,6 +166,9 @@ def inbox(request):
         visible = visible.filter(priority=priority) if priority else visible
         workflow_choices = scope.choices(request, Counter(
             scope.workflow_of(c) for c in FILTERS[show][1](visible, request.user).values_list("case_id", flat=True)))
+        late = Counter(scope.workflow_of(c) for c in visible.workable().overdue().values_list("case_id", flat=True))
+        for choice in workflow_choices:  # what is late in each, beside what waits
+            choice["overdue"] = late.get(choice["id"], 0) if choice["id"] else sum(late.values())
         visible = visible.filter(case_id__startswith=f"{workflow}:") if workflow else visible
         tasks = FILTERS[show][1](visible, request.user)
     tasks = list(tasks.by_urgency())
@@ -176,7 +176,7 @@ def inbox(request):
              "count": pick(visible, request.user).count()} for key, (label, pick) in FILTERS.items()]
     priorities = [{"label": label, "url": inbox_url(show=show, priority=p), "current": p == priority}
                   for p, label in (("", "Any priority"), *((p, p.capitalize()) for p in reversed(UserTask.PRIORITIES)))]
-    done = UserTask.objects.filter(status=UserTask.COMPLETED).for_user(request.user).select_related("assignee")
+    done = UserTask.objects.filter(status=UserTask.COMPLETED).for_user(request.user).filter(directory.in_n8n()).select_related("assignee")
     page, pager = paginate(request, tasks, TASKS_PAGE)
     filtered = "execution" if workflow and "execution" in request.GET else ""
     return render(request, "bpmn8n/inbox.html", {
@@ -185,7 +185,8 @@ def inbox(request):
         "oldest": min(tasks, key=lambda t: t.created, default=None),
         "overdue": sum(t.overdue for t in tasks), "tabs": tabs, "priorities": priorities, "show": FILTERS[show][0],
         "narrowed": bool(show or priority or workflow), "filtered": filtered,
-        "done": done.order_by("-completed")[:5]})
+        "done": (done.filter(case_id__startswith=f"{workflow}:") if workflow and not filtered else done).order_by("-completed")[:5],
+        "one_workflow": bool(workflow) and not filtered})
 
 
 def form_fields(task, values=None, errors=None):
@@ -346,9 +347,9 @@ def docs(request, section=None):
 
 
 @staff_member_required
-def n8n(request):
-    """n8n's own screens inside bpmn8n: its workflows, credentials and executions, at /editor/ (/n8n/ is the
-    one-origin gateway's address of n8n itself)."""
+def credentials(request):
+    """n8n's credentials inside bpmn8n: the one n8n screen with no page of its own here (the workflows are
+    Workflows, an editor and its runs are a workflow's tabs)."""
     from .workflow import n8n_url
-    return render(request, "bpmn8n/n8n_frame.html", {"src": n8n_url("home/workflows"), "title": "n8n",
-                                                     "what": "n8n: its workflows, credentials and executions"})
+    return render(request, "bpmn8n/n8n_frame.html", {"src": n8n_url("home/credentials"), "title": "Credentials",
+                                                     "what": "n8n's credentials: the accounts its nodes sign in with"})

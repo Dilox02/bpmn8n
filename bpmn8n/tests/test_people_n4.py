@@ -47,7 +47,8 @@ class WorkloadTest(Base):
                       completed=NOW - timedelta(hours=1))
             UserTask.objects.filter(status="completed").update(created=NOW - timedelta(hours=4))
             self.client.force_login(self.boss)
-            page = self.client.get("/workload/")
+            Case.objects.create(case_id="wf:1", process="Expenses")
+            page = self.client.get("/workflows/wf/people/")  # a workflow's People tab
         section = page.context["sections"][0]  # one block per workflow
         lane = section["lanes"][0]
         self.assertEqual((lane["lane"], lane["open"], lane["claimed"], lane["suspended"], lane["overdue"], lane["soon"]),
@@ -62,22 +63,24 @@ class WorkloadTest(Base):
         self.task(lane="managers")
         self.task(lane="others")
         self.client.force_login(self.anna)
-        lanes = lambda: [r["lane"] for s in self.client.get("/workload/").context["sections"] for r in s["lanes"]]
+        Case.objects.create(case_id="wf:1", process="Expenses")
+        lanes = lambda: [r["lane"] for s in self.client.get("/workflows/wf/people/").context["sections"] for r in s["lanes"]]
         self.assertEqual(lanes(), ["managers"])
         self.client.force_login(self.boss)
         self.assertEqual(lanes(), ["managers", "others"])
 
     def test_each_workflow_has_its_own_block(self):
-        self.task(case_id="wfA:1", lane="managers")
-        self.task(case_id="wfB:1", lane="managers")
+        for wid in ("wfA", "wfB"):
+            self.task(case_id=f"{wid}:1", lane="managers")
+            Case.objects.create(case_id=f"{wid}:1", process=wid)
         self.client.force_login(self.boss)
-        sections = self.client.get("/workload/").context["sections"]
-        self.assertEqual(sorted(s["ref"].id for s in sections), ["wfA", "wfB"])
-        self.assertEqual([s["lanes"][0]["open"] for s in sections], [1, 1])
+        sections = self.client.get("/workflows/wfA/people/").context["sections"]
+        self.assertEqual([s["ref"].id for s in sections], ["wfA"])  # only its own lanes
+        self.assertEqual(sections[0]["lanes"][0]["open"], 1)
 
     def test_it_is_in_the_sidebar_and_needs_a_login(self):
         self.client.force_login(self.anna)
-        self.assertContains(self.client.get("/inbox/"), 'href="/workload/"')
+        self.assertNotContains(self.client.get("/inbox/"), 'href="/workload/"')  # a workflow's People tab now
         self.assertContains(self.client.get("/inbox/"), 'href="/start/"')
         self.assertEqual(Client().get("/workload/").status_code, 302)
 

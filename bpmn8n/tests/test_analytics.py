@@ -336,13 +336,10 @@ class InsightsPageTest(TestCase):
         self.client.logout()
         self.assertEqual(self.client.get("/insights/").status_code, 302)
         self.client.force_login(self.user)
-        r = self.client.get("/insights/")
-        self.assertContains(r, "No case in the event log yet")
-        self.assertContains(r, "seed_events")
+        self.assertRedirects(self.client.get("/insights/"), "/workflows/", fetch_redirect_response=False)  # a workflow's tab
 
     def test_renders_every_section_on_a_seeded_log(self):
         generate("Claim Handling", 80, seed=2)
-        self.assertContains(self.client.get("/insights/"), "?process=Claim%20Handling")  # chosen first (no workflow in n8n here)
         r = self.client.get("/insights/", {"process": "Claim Handling"})
         self.assertEqual(r.status_code, 200)
         for text in ("Claim Handling", "Cases in progress", "Closed cases by duration", "Bottlenecks", "assessors",

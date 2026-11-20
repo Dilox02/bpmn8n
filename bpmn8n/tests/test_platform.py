@@ -60,9 +60,9 @@ class ShellTest(TestCase):
         self.assertContains(page, '<a class="nav-item" href="/docs/" aria-current="page">', count=1)
         self.assertContains(page, 'href="/inbox/"')
         self.assertContains(page, 'href="/studio/"')
-        self.assertContains(page, 'href="/editor/"')  # n8n's screens, inside bpmn8n
+        self.assertContains(page, 'href="/credentials/"')  # n8n's credentials, inside bpmn8n
         with override_settings(N8N_PUBLIC_URL="http://n8n.test"):
-            self.assertContains(self.client.get("/editor/"), 'src="http://n8n.test/home/workflows"')
+            self.assertContains(self.client.get("/credentials/"), 'src="http://n8n.test/home/credentials"')
         self.client.force_login(self.person)
         page = self.client.get("/inbox/")
         self.assertNotContains(page, 'href="/studio/"')  # staff only

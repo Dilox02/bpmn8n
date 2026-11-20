@@ -230,7 +230,8 @@ class LandscapePageTest(TestCase):
                                            activity="Wait", process="Motor insurance claim")
         page = self.client.get("/landscape/")
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, '<a class="nav-item" href="/landscape/" aria-current="page">')
+        self.assertContains(page, "Map of the workflows")  # the Workflows page's Map
+        self.assertContains(page, '<a href="/workflows/">Workflows</a>')
         self.assertContains(page, "<b8-process-map")
         self.assertContains(page, "Motor insurance claim")  # a project
         self.assertContains(page, "Old intake")  # the event log

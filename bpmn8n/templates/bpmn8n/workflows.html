@@ -8,6 +8,7 @@
     <h1>Workflows</h1>
     <p class="sub">{% if show %}Workflows n8n no longer has: their cases and versions stay here.{% elif knows_n8n %}The workflows in n8n now, with their state there, what waits on people and their cases.{% else %}n8n's API does not answer: these are the workflows bpmn8n has seen, as it recorded them.{% endif %}</p>
   </div>
+  {% if user.is_staff %}<div class="actions"><a class="btn" href="{% url 'insights_import' %}">Import a log</a></div>{% endif %}
 </div>
 <nav class="tabs" aria-label="Which workflows">{% for t in tabs %}<a href="{{ t.url }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label }}<span class="num muted">{{ t.count }}</span></a>{% endfor %}</nav>
 {% if rows %}

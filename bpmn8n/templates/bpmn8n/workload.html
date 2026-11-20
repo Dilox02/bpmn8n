@@ -7,18 +7,18 @@
 {% block main %}
 <div class="title-row">
   <div>
-    <h1>Workload</h1>
-    <p class="sub">What waits on people in each workflow, and how fast it is taken and done over the last {{ days }} days. A lane is the role a workflow's User or Manual task waits on; its people are the members of the {% if groups_url %}<a class="inline-link" href="{{ groups_url }}">group</a>{% else %}group{% endif %} of the same name.</p>
+    <h1>{% if request.b8_workflow %}People{% else %}Workload{% endif %}</h1>
+    <p class="sub">What waits on people {% if request.b8_workflow %}in this workflow{% else %}in each workflow{% endif %}, and how fast it is taken and done over the last {{ days }} days. A lane is the role a workflow's User or Manual task waits on; its people are the members of the {% if groups_url %}<a class="inline-link" href="{{ groups_url }}">group</a>{% else %}group{% endif %} of the same name.</p>
   </div>
   <div class="actions"><a class="btn" href="{% url 'notifications' %}">Notifications</a></div>
 </div>
-{% include "bpmn8n/workflow_filter.html" %}
+{% if not request.b8_workflow %}{% include "bpmn8n/workflow_filter.html" %}{% endif %}
 <nav class="tabs" aria-label="Window">
   {% for d, label in windows %}<a href="?days={{ d }}{% if request.GET.workflow %}&amp;workflow={{ request.GET.workflow|urlencode }}{% endif %}"{% if d == days %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
 </nav>
 {% for s in sections %}
 <section class="workflow-block" aria-labelledby="wl-{{ forloop.counter }}">
-  <div class="section-head"><h2 id="wl-{{ forloop.counter }}"><a href="{% url 'workflow' s.ref.id %}">{{ s.ref.name|process_chip }}</a></h2>
+  <div class="section-head">{% if request.b8_workflow %}<h2 id="wl-{{ forloop.counter }}">Lanes</h2>{% else %}<h2 id="wl-{{ forloop.counter }}"><a href="{% url 'workflow' s.ref.id %}">{{ s.ref.name|process_chip }}</a></h2>{% endif %}
     <span class="meta">{{ s.waiting }} waiting now · {{ s.done }} done in {{ days }} days · {{ s.lanes|length }} lane{{ s.lanes|length|pluralize }}</span></div>
   <div class="table-wrap">
     <table class="as-rows">

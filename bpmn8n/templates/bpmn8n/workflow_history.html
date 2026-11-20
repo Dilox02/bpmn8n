@@ -13,7 +13,7 @@
 <section class="panel lead" aria-labelledby="v{{ forloop.counter }}">
   <header>
     <h2 id="v{{ forloop.counter }}"><span class="mono">{{ v.version_id|truncatechars:13 }}</span>{% if forloop.first %} <span class="pill s-open">newest</span>{% endif %}</h2>
-    <span class="meta">seen {{ v.created|waited }} ago · <a class="inline-link" href="{% url 'cases' %}?version={{ v.version_id|urlencode }}">{{ row.cases }} case{{ row.cases|pluralize }}</a> · hash <span class="mono">{{ v.content_hash|slice:":8" }}</span></span>
+    <span class="meta">seen {{ v.created|waited }} ago · <a class="inline-link" href="{% url 'workflow_cases' workflow_id %}?version={{ v.version_id|urlencode }}">{{ row.cases }} case{{ row.cases|pluralize }}</a> · hash <span class="mono">{{ v.content_hash|slice:":8" }}</span></span>
   </header>
   {% if row.first %}
     <p class="muted">The first version bpmn8n kept, with {{ v.workflow.nodes|length }} node{{ v.workflow.nodes|length|pluralize }}.</p>

@@ -304,13 +304,15 @@ def landscape(request):
     every, live = known_workflows(), directory.from_n8n()
     everything = live is None or bool(request.GET.get("all"))
     shown = every if everything else [n for n in every if n.workflow_id in live]
-    view = Landscape(shown, subscriptions())
+    names = {n.name for n in shown}  # a message wait of a process not on the map is not on it either
+    view = Landscape(shown, [s for s in subscriptions() if everything or s[1] in names])
     edges = view.edges  # adds the outside and the unknown sub-processes before the page counts the workflows
     return render(request, "bpmn8n/landscape.html", {
         "map": view.svg(), "rows": view.rows(), "findings": view.findings, "outside": OUTSIDE,
         "workflows": sum(n.name != OUTSIDE for n in view.nodes), "calls": sum(e.kind == "call" for e in edges),
         "message_links": sum(e.kind == "message" for e in edges),  # not "messages": the base template shows those
-        "tabs": [] if live is None else [
-            {"label": "In n8n", "url": reverse("landscape"), "current": not everything,
-             "count": sum(n.workflow_id in live for n in every)},
-            {"label": "Everything bpmn8n knows", "url": f"{reverse('landscape')}?all=1", "current": everything, "count": len(every)}]})
+        "everything": everything, "every_count": len(every), "knows_n8n": live is not None,
+        "tabs": [{"label": "In n8n", "url": reverse("workflows"), "current": False, "count": len(live or {})},
+                 {"label": "Deleted in n8n", "url": f"{reverse('workflows')}?show=deleted", "current": False,
+                  "count": sum(r.state == "deleted" for r in directory.workflows())},
+                 {"label": "Map", "url": reverse("landscape"), "current": True, "count": ""}]})
