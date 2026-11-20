@@ -64,7 +64,7 @@ def test_uc2_business_expense_is_approved_by_a_manager(deploy, n8n_api, web_api,
     page.get_by_label("Username").fill(manager["username"])
     page.get_by_label("Password").fill(manager["password"])
     page.get_by_role("button", name="Sign in").click()
-    page.locator(f'a[href="/inbox/{task["id"]}/"]').click()  # the inbox lists this case's task, its page works
+    page.locator(f'a.name[href="/inbox/{task["id"]}/"]').click()  # the inbox lists this case's task, its page works
     expect(page.get_by_role("main")).to_contain_text("within_policy")  # the case data the person decides on
     page.get_by_label("Approve").check()
     page.get_by_label("Note").fill("OK, strategic customer.")
