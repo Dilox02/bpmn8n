@@ -1,0 +1,62 @@
+[
+  {
+    "name": "a pre-approved agreement is approved, signed and the student told",
+    "start": {"student_name": "Elena Costa", "student_email": "elena@example.org", "student_id": "S123456",
+              "host_university": "Universidad de Salamanca", "departure_date": "2027-02-01",
+              "courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 12 | Basi di dati\nSpanish B1 | 12 | Lingua straniera"},
+    "people": {
+      "Coordinator Decision": {"approved": true, "coordinator_feedback": "fine"},
+      "Office Signature": {"signed": true, "office_note": "signed on paper"}
+    },
+    "expect": {
+      "path": ["Agreement Submitted", "Compute Signature Deadline", "Check Agreement", "ECTS Within Limits?",
+               "Opinions Needed?", "Coordinator Decision", "Coordinator Approved?", "Office Signature", "Signed?",
+               "Notify Signature"],
+      "not": ["Professor Opinions"],
+      "variables": {"total_ects": 30, "submission": 1, "alert_date": "2027-01-17T09:00:00+00:00",
+                    "subject": "Learning agreement signed"}
+    }
+  },
+  {
+    "name": "too few credits are revised; a new course needs professors' opinions; the office does not sign",
+    "start": {"student_name": "Luca Ferri", "student_email": "luca@example.org", "student_id": "S654321",
+              "host_university": "TU Delft", "departure_date": "2027-08-25",
+              "courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 12 | Basi di dati"},
+    "people": {
+      "Revise Agreement": {"courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 12 | Basi di dati\nRobotics | 9 | Robotica"},
+      "Professor Opinions": {"opinions_favourable": true, "opinion_notes": "Robotics matches our syllabus"},
+      "Coordinator Decision": {"approved": true, "coordinator_feedback": "ok with the opinion"},
+      "Office Signature": {"signed": false, "office_note": "the host university withdrew the Robotics course"},
+      "Close Agreement": {"closing_note": "the host university withdrew a course: please submit a new agreement"}
+    },
+    "expect": {
+      "path": ["Agreement Submitted", "Compute Signature Deadline", "Check Agreement", "ECTS Within Limits?",
+               "Resubmission Allowed?", "Revise Agreement", "Check Agreement", "ECTS Within Limits?",
+               "Opinions Needed?", "Professor Opinions", "Coordinator Decision", "Coordinator Approved?",
+               "Office Signature", "Signed?", "Close Agreement", "Notify Closure"],
+      "variables": {"total_ects": 27, "submission": 2, "unmatched_count": 1, "needs_opinions": true,
+                    "subject": "Learning agreement closed"}
+    }
+  },
+  {
+    "name": "a coordinator who rejects three submissions closes the agreement",
+    "start": {"student_name": "Marta Riva", "student_email": "marta@example.org", "student_id": "S111222",
+              "host_university": "Universiteit Gent", "departure_date": "2027-09-10",
+              "courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 12 | Basi di dati\nSpanish B1 | 12 | Lingua straniera"},
+    "people": {
+      "Coordinator Decision": [{"approved": false, "coordinator_feedback": "the language course is not accepted"},
+                               {"approved": false, "coordinator_feedback": "still too much language"},
+                               {"approved": false, "coordinator_feedback": "no more submissions"}],
+      "Revise Agreement": [{"courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 12 | Basi di dati\nSpanish B1 | 12 | Lingua straniera"},
+                           {"courses": "Machine Learning | 6 | Machine Learning\nDatabases II | 12 | Basi di dati\nSpanish B1 | 12 | Lingua straniera"}],
+      "Close Agreement": {"closing_note": "three submissions rejected"}
+    },
+    "expect": {
+      "visits": ["Revise Agreement", "Close Agreement", "Notify Closure"],
+      "not": ["Office Signature", "Professor Opinions"],
+      "ends": "Notify Closure",
+      "variables": {"submission": 3, "attempts_left": false, "approved": false},
+      "max_steps": 30
+    }
+  }
+]

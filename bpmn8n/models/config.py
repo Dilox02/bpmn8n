@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from ..clients.llm import LLMError, PROTOCOLS
+from ..core.crypto import EncryptedText, encrypted
 
 
 class Settings(models.Model):
@@ -56,8 +57,12 @@ class LLMProvider(models.Model):
     preset = models.CharField(max_length=20, choices=[(p, p) for p in PRESETS], default="google")
     base_url = models.URLField(blank=True, help_text="Empty: the preset's")
     model = models.CharField(max_length=100, blank=True, help_text="Empty: the preset's, e.g. gemini-3.5-flash")
-    api_key = models.CharField(max_length=500, blank=True, help_text="Empty for local models")
+    api_key = EncryptedText(blank=True, help_text="Empty for local models; stored encrypted")
     timeout = models.PositiveIntegerField(default=120, help_text="Seconds per reply: more for large local models")
+    cost_per_1k_input = models.DecimalField(max_digits=10, decimal_places=5, default=0, blank=True,
+                                            help_text="Price of 1000 input tokens (cost per call, in the simulation); 0 for a local model")
+    cost_per_1k_output = models.DecimalField(max_digits=10, decimal_places=5, default=0, blank=True,
+                                             help_text="Price of 1000 output tokens")
 
     class Meta:
         verbose_name = "LLM provider"
@@ -76,18 +81,27 @@ class LLMProvider(models.Model):
         Settings.load()  # the row providers belong to
         super().save(*args, **kwargs)
 
+    @property
+    def key(self):
+        """The API key in clear; LLMError when it was encrypted with another key (core/crypto.py)."""
+        if encrypted(self.api_key):
+            raise LLMError(f"the API key of the LLM provider {self.name!r} does not decrypt: FIELD_ENCRYPTION_KEY or "
+                           "SECRET_KEY changed since it was saved. Run `manage.py rotate_keys --from-secret-key <old>`, "
+                           "or type the key again in /admin/ → Settings")
+        return self.api_key
+
     def client(self):
         protocol, url, model = self.PRESETS[self.preset]
-        return PROTOCOLS[protocol](self.base_url or url, self.api_key, self.model or model, self.timeout)
+        return PROTOCOLS[protocol](self.base_url or url, self.key, self.model or model, self.timeout)
 
     def n8n_credential(self):
         """(n8n credential type, its data): the same model for the LLM agents of the workflows."""
         protocol, url, _ = self.PRESETS[self.preset]
         if self.preset == "google":
-            return "googlePalmApi", {"host": "https://generativelanguage.googleapis.com", "apiKey": self.api_key}
+            return "googlePalmApi", {"host": "https://generativelanguage.googleapis.com", "apiKey": self.key}
         if protocol == "anthropic":
-            return "anthropicApi", {"apiKey": self.api_key, "url": self.base_url or url}
-        return "openAiApi", {"apiKey": self.api_key or "local", "url": self.base_url or url}  # local servers need none
+            return "anthropicApi", {"apiKey": self.key, "url": self.base_url or url}
+        return "openAiApi", {"apiKey": self.key or "local", "url": self.base_url or url}  # local servers need none
 
     def n8n_chat_model(self, credential_id=None):
         """The n8n chat model node of an LLM agent (Workflow(chat_model=...)), with the credential if known."""

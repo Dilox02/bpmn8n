@@ -1,7 +1,13 @@
+from .analysis import Snapshot
 from .cases import Case, Event
 from .config import LLMProvider, Settings
+from .history import WorkflowVersion
+from .people import CaseEmbedding, Notification, Preference
+from .safety import AppendOnly, AuditEntry, TaskRun
+from .shared import GlobalVariable
 from .studio import Card, Project
-from .waiting import Cancelled, MessageSubscription, TransitionError, UserTask
+from .waiting import Cancelled, MessageSubscription, Reminder, TransitionError, UserTask
 
-__all__ = ["Cancelled", "Card", "Case", "Event", "LLMProvider", "MessageSubscription", "Project", "Settings",
-           "TransitionError", "UserTask"]
+__all__ = ["AppendOnly", "AuditEntry", "Cancelled", "Card", "Case", "CaseEmbedding", "Event", "GlobalVariable", "LLMProvider",
+           "MessageSubscription", "Notification", "Preference", "Project", "Reminder", "Settings", "Snapshot", "TaskRun",
+           "TransitionError", "UserTask", "WorkflowVersion"]

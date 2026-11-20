@@ -109,3 +109,17 @@ test('credentialless preview uses the n8n-supported local HTTP hostname', () => 
   assert.equal(previewURL('http://127.0.0.1:5679'), 'http://localhost:5679');
   assert.equal(previewURL('https://preview.example.com'), 'https://preview.example.com');
 });
+
+test('the trace strip: steps in the order they ran, sub-nodes left out, the verdict from the status', async () => {
+  const { trace } = await import('../live.mjs');
+  const run = (startTime, extra = {}) => [{ startTime, executionTime: 5, executionStatus: 'success', ...extra }];
+  const execution = (status, runData) => ({ status, data: { resultData: { runData } }, workflowData: { connections: {
+    Start: { main: [[{ node: 'Check' }]] }, Check: { main: [[{ node: 'Notify' }]] }, 'Draft: model': { ai_languageModel: [[{ node: 'Check' }]] } } } });
+  const ok = trace(execution('success', { Notify: run(30), Start: run(10), Check: run(20), 'Draft: model': run(21) }));
+  assert.equal(ok.verdict, 'ok');
+  assert.deepEqual(ok.steps.map(s => [s.node, s.status]), [['Start', 'ok'], ['Check', 'ok'], ['Notify', 'ok']]);
+  const failed = trace(execution('error', { Start: run(10), Check: run(20, { error: { message: 'boom' }, executionStatus: 'error' }) }));
+  assert.equal(failed.verdict, 'failed');
+  assert.equal(failed.failedAt, 'Check');
+  assert.equal(trace(execution('waiting', { Start: run(10) })).verdict, 'running');
+});

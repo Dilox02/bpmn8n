@@ -25,6 +25,7 @@ from ninja import Router, Schema
 from ..clients.extraction import Extractor, field_specs
 from ..core.cases import CaseData
 from ..core.observability import measure, profiled, record
+from ..models import TaskRun
 from ..workflows.builder import TASK_KINDS
 from .errors import upstream
 
@@ -61,10 +62,10 @@ class TaskError(TypeError):
 class Task:
     """A @task function: its BPMN kind, its input Schema, its output Schema when the function
     declares one (`-> MyResult`: documented in OpenAPI, checked on every call, and the workflow
-    check knows what it produces), and its two endpoints."""
+    check knows what it produces), the task that undoes it (`compensate`, C9: core/saga.py), and its two endpoints."""
 
-    def __init__(self, fn, kind):
-        self.fn, self.name, self.kind = fn, fn.__name__, kind
+    def __init__(self, fn, kind, compensate=None):
+        self.fn, self.name, self.kind, self.compensate = fn, fn.__name__, kind, compensate
         signature = inspect.signature(fn)
         schemas = [p.annotation for p in signature.parameters.values() if is_schema(p.annotation)]
         if len(schemas) != 1:
@@ -157,10 +158,29 @@ class Task:
             return self.run_in_case(request, data)
 
         router.post(f"/{self.name}/run", operation_id=f"{self.name}_run", tags=[self.kind],
-                    response={200: RunOut, 422: dict})(run)
+                    response={200: RunOut, 409: dict, 422: dict})(run)
 
     def run_in_case(self, request, data: RunIn):
+        """Runs the task in the request's case. n8n repeating a run (retryOnFail, a worker restart: the same case,
+        node, run index and item index) gets the first answer back and the function does not run again, so a
+        send task never sends twice (TaskRun); a run that failed stored nothing, so its retry runs."""
         case = CaseData(request, data.item)
+        run, answer = TaskRun.claim(self.name, case.trace)
+        if answer is not None:
+            return answer
+        try:
+            status, body = self.run_with(request, case, data)
+        except BaseException:
+            if run:
+                run.delete()
+            raise
+        if run and status == 200:
+            run.done({"result": as_data(body["result"]), "extracted": body["extracted"]})
+        elif run:
+            run.delete()
+        return status, body
+
+    def run_with(self, request, case, data):
         extracted = {}
         if data.text is not None:
             with upstream(), measure(f"extract:{self.name}"):
@@ -189,18 +209,22 @@ def same(actual, expected):
     return math.isclose(actual, expected, rel_tol=0, abs_tol=0.005) if numbers else actual == expected
 
 
-def task(kind="serviceTask", **options):
+def task(kind="serviceTask", compensate=None, **options):
     """Registers fn as a BPMN task of `kind` (see Task). Name it verb_noun in the singular
-    (issue_refund, not handle_refunds); its argument is a Schema; `options` go to ninja."""
+    (issue_refund, not handle_refunds); its argument is a Schema; `options` go to ninja. `compensate`: the
+    name of the @task that undoes it (a saga: `POST /api/cases/<case>/compensate` runs the undo of every
+    completed task of a case, newest first, with the input and output the task logged)."""
     if kind not in TASK_KINDS:
         raise ValueError(f"kind must be one of {TASK_KINDS}")
+    if compensate is not None and not (isinstance(compensate, str) and compensate):
+        raise ValueError("compensate is the name of the @task that undoes this one")
 
     def register(fn):
         if fn.__name__ in TASKS:
             raise ValueError(f"task {fn.__name__!r} is already registered by {TASKS[fn.__name__].module}")
         if is_mushy(fn.__name__):
             warnings.warn(f"task {fn.__name__!r}: mushy verb, name it after a countable result", stacklevel=2)
-        TASKS[fn.__name__] = Task(fn, kind)
+        TASKS[fn.__name__] = Task(fn, kind, compensate)
         TASKS[fn.__name__].register(router, **options)
         return fn
 

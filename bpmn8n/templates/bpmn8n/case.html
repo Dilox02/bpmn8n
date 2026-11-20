@@ -1,0 +1,140 @@
+{% extends "bpmn8n/base.html" %}
+{% load bpmn8n %}
+{% block title %}{{ process|default:"Case" }} {{ case_id }}{% endblock %}
+{% block crumbs %}{% url 'cases' as cases_url %}{% if cases_url %}<a href="{{ cases_url }}">Cases</a>{% else %}<span>Cases</span>{% endif %}<span aria-hidden="true">/</span><span class="mono">{{ case_id }}</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <div class="title-line"><h1>{{ process|default:"Case" }}</h1>{{ status|status_pill }}</div>
+    <p class="sub">Case <span class="mono">{{ case_id }}</span>{% if execution_id %}, n8n execution <span class="mono">#{{ execution_id }}</span>{% endif %}</p>
+  </div>
+  {% if n8n_url %}<div class="actions"><a class="btn" href="{{ n8n_url }}" target="_blank" rel="noopener">Open in n8n<span class="sr-only"> (opens a new tab)</span></a></div>{% endif %}
+</div>
+<dl class="facts">
+  <div><dt>Started</dt><dd><time datetime="{{ started|date:'c' }}">{{ started|date:"j M Y, H:i" }}</time></dd></div>
+  <div><dt>Last activity</dt><dd><time datetime="{{ last|date:'c' }}">{{ last|waited }} ago</time></dd></div>
+  <div><dt>{% if status == "completed" or status == "failed" %}Took{% else %}Running for{% endif %}</dt><dd class="num">{{ duration_ms|duration }}</dd></div>
+  <div><dt>Steps</dt><dd class="num">{{ steps|length|add:more_steps }}</dd></div>
+</dl>
+
+<div class="with-rail">
+  <div class="stack">
+    <section aria-labelledby="canvas">
+      <div class="section-head"><h2 id="canvas">Where the case is</h2>{% if workflow %}<span class="legend meta" aria-label="Legend"><span data-state="done">passed</span><span data-state="active">here now</span><span data-state="waiting">not reached</span></span>{% endif %}</div>
+      {% if workflow %}
+      <div class="canvas-well"><iframe id="preview" credentialless title="The workflow of {{ process|default:case_id }} with the steps this case passed" data-src="{{ preview_url }}/workflows/demo"></iframe></div>
+      {{ workflow|json_script:"workflow" }}{{ states|json_script:"states" }}
+      {% else %}
+      <p class="empty">The workflow cannot be drawn: n8n did not give it to bpmn8n (n8n is not reachable, there is no API key here, or the workflow was deleted). The steps below come from bpmn8n's event log.</p>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="steps">
+      <div class="section-head"><h2 id="steps">Steps</h2><span class="meta">open one for what it read and produced</span></div>
+      {% if steps %}
+      <b8-timeline><ol class="timeline">
+        {% for s in steps %}{% with e=s.event %}
+        <li data-status="{{ e.status }}">
+          <details>
+            <summary>
+              <span class="what"><span class="name">{{ e.activity }}</span>{% if s.prompt %}<b8-pill tone="warning">sent to an LLM</b8-pill>{% endif %}{% if s.by_llm %}<b8-pill tone="warning">reads an LLM's answer</b8-pill>{% endif %}
+                <span class="sub">{% if s.kind %}{{ s.kind }} · {% endif %}{% if e.resource == "system" %}automatic{% else %}{{ e.resource }}{% endif %}{% if e.status != "complete" %} · {{ e.status|status_label }}{% endif %}</span></span>
+              <time class="num" datetime="{{ e.started|date:'c' }}">{{ e.started|date:"j M, H:i:s" }}</time>
+              <span class="num dur">{% if e.status == "running" %}…{% else %}{{ e.duration_ms|duration }}{% endif %}</span>
+            </summary>
+            <div class="step-body">
+              {% if e.error %}<p class="error-text">{{ e.error }}</p>{% endif %}
+              {% if s.by_llm %}<p class="meta">An LLM wrote {% for k in s.by_llm %}<code>{{ k }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}: a person reviews it before anything is decided.</p>{% endif %}
+              {% if s.input %}<h3>Input</h3><pre>{{ s.input }}</pre>{% endif %}
+              {% if s.output %}<h3>Output</h3><pre>{{ s.output }}</pre>{% endif %}
+              {% if not s.input and not s.output and not e.error %}<p class="meta">This step kept no data.</p>{% endif %}
+            </div>
+          </details>
+        </li>
+        {% endwith %}{% endfor %}
+      </ol></b8-timeline>
+      {% if more_steps %}<p class="meta below">{{ more_steps }} later step{{ more_steps|pluralize }} not shown: the event log has every one (<a class="inline-link" href="/api/eventlog.csv">/api/eventlog.csv</a>).</p>{% endif %}
+      {% else %}
+      <p class="empty">No step recorded yet: the case has data, but no activity has run.</p>
+      {% endif %}
+    </section>
+
+    {% if decisions %}
+    <section aria-labelledby="decisions">
+      <div class="section-head"><h2 id="decisions">Decisions</h2><span class="meta">what each gateway was asked, its options and the branch taken</span></div>
+      {% for d in decisions %}
+      <article class="decision">
+        <header><h3>{{ d.event.activity }}</h3><span class="meta">{% if d.conditions %}conditions on the variables{% else %}Laya · {{ d.decider }}{% endif %} · <time datetime="{{ d.event.started|date:'c' }}">{{ d.event.started|date:"j M, H:i" }}</time></span></header>
+        {% if d.question %}<p class="question">{{ d.question }}</p>{% endif %}
+        <ul class="options">
+          {% for o in d.options %}
+          <li{% if o.taken %} class="taken"{% endif %}><span class="branch">{{ o.name }}{% if o.taken %}<b8-pill tone="positive">taken</b8-pill>{% endif %}</span>{% if o.score is not None %}<span class="num score" title="Laya's confidence">{{ o.score|floatformat:2 }}</span>{% endif %}<span class="text">{% if d.conditions %}<code>{{ o.text }}</code>{% else %}{{ o.text }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+        {% if d.default %}<p class="meta">No branch held: the case took the default flow{% if not d.conditions %}, for a person to decide{% endif %}.</p>{% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <section class="panel" aria-labelledby="waits">
+      <header><h2 id="waits">People and messages</h2><span class="meta">what the case waited for</span></header>
+      {% if tasks or subscriptions %}
+      <ul class="rows">
+        {% for t in tasks %}
+        <li class="row"><span class="grow"><a class="name" href="{% url 'task' t.pk %}">{{ t.title }}</a><span class="sub">{{ t.activity }} · {% if t.lane %}lane {{ t.lane }}{% else %}any lane{% endif %}{% if t.assignee %} · {{ t.assignee }}{% endif %}</span></span>{{ t.status|status_pill }}</li>
+        {% endfor %}
+        {% for m in subscriptions %}
+        <li class="row"><span class="grow"><span class="name">Message <code>{{ m.name }}</code></span><span class="sub">{{ m.activity }} · key <code>{{ m.correlation_key }}</code>{% if m.expires %} · until {{ m.expires|date:"j M, H:i" }}{% endif %}{% if user.is_staff %} · <a class="inline-link" href="{% url 'admin:bpmn8n_messagesubscription_change' m.pk %}">in the admin</a>{% endif %}</span></span>{{ m.status|status_pill }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">Nobody and no message: this case has not waited.</p>
+      {% endif %}
+    </section>
+
+    {% if audit %}
+    <section class="panel" aria-labelledby="audit">
+      <header><h2 id="audit">Audit</h2><span class="meta">who did what, newest first</span></header>
+      <ul class="rows">
+        {% for a in audit %}
+        <li class="row"><span class="grow"><span class="name"><code>{{ a.action }}</code></span><span class="sub">{{ a.actor }} · {{ a.at|date:"j M, H:i:s" }}{% if a.details.activity %} · {{ a.details.activity }}{% endif %}</span></span></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <section class="panel" aria-labelledby="variables">
+      <header><h2 id="variables">Variables</h2><span class="meta">what the case knows now</span></header>
+      {% if variables %}
+      {% include "bpmn8n/tree.html" with items=variables open=True %}
+      {% if llm %}<p class="meta below">Marked “by an LLM”: an LLM agent wrote it, for a person to review.</p>{% endif %}
+      {% else %}
+      <p class="empty">No variables yet.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<script>
+  // the workflow in n8n's preview, in the page's theme: it says n8nReady, then gets the workflow and the
+  // state of each node (n8n-editor/preview.js: waiting, active, done)
+  const frame = document.getElementById('preview');
+  if (frame) {
+    const origin = new URL(frame.dataset.src).origin;
+    const workflow = JSON.parse(document.getElementById('workflow').textContent);
+    const states = JSON.parse(document.getElementById('states').textContent);
+    frame.src = `${frame.dataset.src}?theme=${b8Theme()}`;
+    addEventListener('message', e => {
+      if (e.source !== frame.contentWindow) return;
+      let m; try { m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (_) { return; }
+      if (m && m.command === 'n8nReady') {
+        frame.contentWindow.postMessage(JSON.stringify({ command: 'openWorkflow', workflow }), origin);
+        frame.contentWindow.postMessage({ command: 'bpmn8nStates', states }, origin);
+      }
+    });
+  }
+</script>
+{% endblock %}

@@ -2,7 +2,7 @@
   "name": "Personal data breach response",
   "nodes": [
     {
-      "id": "8900e553-e676-4a22-a1f3-19907ee111ad",
+      "id": "46e7a9e3-e3eb-583f-aac6-c4a957a8a40a",
       "name": "Incident Reported",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,10 +16,10 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "webhookId": "a09f8764-db18-40ea-833b-404f6e2c776a"
+      "webhookId": "0848c0c8-77c3-5ac5-a407-50fc8d8988bb"
     },
     {
-      "id": "75628bf9-b135-44d0-b5ec-6bae66896efd",
+      "id": "3a111498-fbdc-59a8-a290-44c07d46b0a4",
       "name": "Register Incident",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
@@ -45,7 +45,7 @@
       }
     },
     {
-      "id": "e641bb81-2d64-40b7-9c04-3e506e1ee503",
+      "id": "c95bc799-7ee7-5235-99a2-d36f99bc21ee",
       "name": "Contain Incident",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -57,9 +57,7 @@
         "title": "Contain incident {{incident_id}}",
         "lane": "it-security",
         "description": "",
-        "context": {
-          "Report": "{{description}}"
-        },
+        "context": "{\"Report\": \"{{description}}\"}",
         "form": {
           "fields": [
             {
@@ -70,7 +68,7 @@
           ]
         }
       },
-      "webhookId": "fb97c3f8-c42d-45c3-aef1-5f8187d5b807",
+      "webhookId": "8eba7881-604b-54bc-bf3f-05d38c65931a",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -79,7 +77,7 @@
       }
     },
     {
-      "id": "917b6a5d-0796-4496-bcbb-7e5f2a66a2b8",
+      "id": "bc2159d6-1418-5178-999e-a0bbe98c6bee",
       "name": "Personal Data Involved?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -113,22 +111,19 @@
       }
     },
     {
-      "id": "fad4f212-7cff-4e1a-9684-ca8a78620eb9",
+      "id": "5b8551f7-206d-5c27-affe-258193d8a2b5",
       "name": "Confirm No Personal Data",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
         1120,
-        0
+        200
       ],
       "parameters": {
         "title": "Confirm: no personal data in {{incident_id}}",
         "lane": "dpo",
         "description": "",
-        "context": {
-          "Report": "{{description}}",
-          "Containment": "{{containment_actions}}"
-        },
+        "context": "{\"Report\": \"{{description}}\", \"Containment\": \"{{containment_actions}}\"}",
         "form": {
           "fields": [
             {
@@ -144,7 +139,7 @@
           ]
         }
       },
-      "webhookId": "eda55136-2452-43ca-9215-97f55834547c",
+      "webhookId": "1ae20896-b1ab-53ea-a1dc-d998125a8ff2",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -153,13 +148,13 @@
       }
     },
     {
-      "id": "bae89d8d-7da3-4463-a8c7-a0c3d64f4149",
+      "id": "fc1caa99-69c5-5c75-9f7f-9c3b00a8e132",
       "name": "Overruled?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
         1400,
-        0
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -184,7 +179,7 @@
       }
     },
     {
-      "id": "b0e8e2d5-f63c-4381-bc9d-27c52ba6f2a2",
+      "id": "695359ce-2442-5cda-8129-ff341dcd586e",
       "name": "DPO Risk Assessment",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -196,10 +191,7 @@
         "title": "Assess the risk of {{incident_id}} (deadline {{authority_deadline}})",
         "lane": "dpo",
         "description": "",
-        "context": {
-          "Report": "{{description}}",
-          "Containment": "{{containment_actions}}"
-        },
+        "context": "{\"Report\": \"{{description}}\", \"Containment\": \"{{containment_actions}}\"}",
         "form": {
           "fields": [
             {
@@ -225,7 +217,7 @@
           ]
         }
       },
-      "webhookId": "a9437626-9378-42e9-be10-ab4ad8379beb",
+      "webhookId": "2a8ae751-bc79-580e-853a-7b35daab8374",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -234,7 +226,7 @@
       }
     },
     {
-      "id": "0cb79d84-984a-469c-ab0a-b46d7156fffc",
+      "id": "a2cd8804-86c5-503f-b3b8-7c2d3ae60337",
       "name": "Notify Authority?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -248,11 +240,11 @@
           "values": [
             {
               "name": "no",
-              "condition": "not {{risk_to_people}}"
+              "condition": "not ({{personal_data}} and ({{risk_to_people}} or {{high_risk}}))"
             },
             {
               "name": "yes",
-              "condition": "{{risk_to_people}}"
+              "condition": "{{personal_data}} and ({{risk_to_people}} or {{high_risk}})"
             }
           ]
         }
@@ -265,13 +257,13 @@
       }
     },
     {
-      "id": "085f8552-cda3-42b7-8e6b-edd13974b0ed",
+      "id": "6f7be2e3-f730-52c9-a365-61fd08194547",
       "name": "Draft Authority Notification: prompt",
       "type": "CUSTOM.bpmn8nScriptTask",
       "typeVersion": 1,
       "position": [
         2240,
-        0
+        400
       ],
       "parameters": {
         "task": "/api/tasks/compose_prompt",
@@ -293,13 +285,13 @@
       }
     },
     {
-      "id": "ec1eb32d-3560-4c37-aa6a-00715a5113b7",
+      "id": "c912cf09-8447-59aa-b012-1baea6f00521",
       "name": "Draft Authority Notification",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
         2520,
-        0
+        400
       ],
       "parameters": {
         "promptType": "define",
@@ -314,13 +306,13 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "52dda985-9b55-45ae-a5d4-ad2cde7f4314",
+      "id": "4921879d-c4dd-550e-b518-1f2ba5146e8b",
       "name": "Draft Authority Notification: model",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1.2,
       "position": [
         2520,
-        400
+        600
       ],
       "parameters": {
         "modelName": "models/gemini-3.5-flash",
@@ -334,20 +326,20 @@
       }
     },
     {
-      "id": "466abe6b-9e35-456f-a69a-390faf2e8f9d",
+      "id": "f0bc5fac-ab62-53f8-8ad8-11fe0bd96b1b",
       "name": "Draft Authority Notification: answer",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
         2800,
-        0
+        400
       ],
       "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
             {
-              "id": "1493f51e-4973-4e83-9fa3-70b962d956d5",
+              "id": "50ce377e-8dce-598b-b01e-c3910f47d83f",
               "name": "draft_notification",
               "type": "string",
               "value": "={{ $json.output ?? '(The LLM did not answer: ' + ($json.error?.message ?? $json.error ?? 'no reply') + ')' }}"
@@ -359,21 +351,51 @@
       }
     },
     {
-      "id": "f45c817d-0b55-4ee7-926e-4f0b970d8d33",
+      "id": "8a84be70-496b-563b-a4d4-a21382fc478a",
+      "name": "Draft Authority Notification: usage",
+      "type": "CUSTOM.bpmn8nScriptTask",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        400
+      ],
+      "parameters": {
+        "task": "/api/tasks/record_llm_call",
+        "output": "merge",
+        "input": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "agent": "Draft Authority Notification",
+            "variable": "draft_notification",
+            "prompt": "={{ $('Draft Authority Notification: prompt').item.json.prompt }}",
+            "answer": "={{ $json[\"draft_notification\"] }}",
+            "tokens": "={{ $('Draft Authority Notification').item.json.tokenUsage ?? '' }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "bpmn8nApi": {
+          "id": "jzmpQdG5ZuuZmMrD",
+          "name": "bpmn8n"
+        }
+      }
+    },
+    {
+      "id": "b82f4038-fe16-5d77-ad74-3e65525e5f3a",
       "name": "Review and Send to Garante",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3080,
-        0
+        3360,
+        400
       ],
       "parameters": {
         "title": "Send the notification of {{incident_id}} before {{authority_deadline}}",
         "lane": "dpo",
         "description": "",
-        "context": {
-          "Draft (written by an AI model)": "{{draft_notification}}"
-        },
+        "context": "{\"Draft (written by an AI model)\": \"{{draft_notification}}\"}",
         "form": {
           "fields": [
             {
@@ -387,9 +409,11 @@
               "type": "string"
             }
           ]
-        }
+        },
+        "due": "until",
+        "dueUntil": "{{authority_deadline}}"
       },
-      "webhookId": "509f9f5e-1c66-4c51-8e68-08b5b2f7fbcb",
+      "webhookId": "26d40a40-b2e5-5d8b-a49a-8a0082a07bcc",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -398,13 +422,13 @@
       }
     },
     {
-      "id": "36e171b3-6e11-4976-84c6-806ce721a834",
+      "id": "981c10b0-9a97-5457-9870-d412faa6d6c0",
       "name": "Inform People?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
-        3360,
-        0
+        3640,
+        400
       ],
       "parameters": {
         "decider": "conditions",
@@ -429,21 +453,19 @@
       }
     },
     {
-      "id": "5ce4b051-135f-4a99-9dc4-51e935ce2382",
+      "id": "94590002-9897-5749-bdff-36c77e1dfd67",
       "name": "Inform Data Subjects",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
-        3640,
-        0
+        3920,
+        600
       ],
       "parameters": {
         "title": "Inform the people concerned by {{incident_id}}",
         "lane": "dpo",
         "description": "",
-        "context": {
-          "Assessment": "{{assessment_notes}}"
-        },
+        "context": "{\"Assessment\": \"{{assessment_notes}}\"}",
         "form": {
           "fields": [
             {
@@ -459,7 +481,7 @@
           ]
         }
       },
-      "webhookId": "7454f826-8f31-4230-8549-13671c374450",
+      "webhookId": "9ddfc64e-4b13-5719-99d8-c2baccf39b07",
       "credentials": {
         "bpmn8nApi": {
           "id": "jzmpQdG5ZuuZmMrD",
@@ -468,12 +490,12 @@
       }
     },
     {
-      "id": "c7c1fa46-50f9-4ce5-89ba-050f06e9b406",
+      "id": "accff8dd-6b0a-5148-a42c-90ee3ab4d8f2",
       "name": "Record in Breach Register",
       "type": "CUSTOM.bpmn8nBusinessRuleTask",
       "typeVersion": 1,
       "position": [
-        3920,
+        4200,
         0
       ],
       "parameters": {
@@ -522,6 +544,17 @@
         [
           {
             "node": "Draft Authority Notification: answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Authority Notification: answer": {
+      "main": [
+        [
+          {
+            "node": "Draft Authority Notification: usage",
             "type": "main",
             "index": 0
           }
@@ -644,7 +677,7 @@
         ]
       ]
     },
-    "Draft Authority Notification: answer": {
+    "Draft Authority Notification: usage": {
       "main": [
         [
           {

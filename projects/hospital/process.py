@@ -22,18 +22,18 @@ def appointment_booking(credential=None):
         .condition_gateway("Slots available?", "exclusive", {"yes": "{{slots_available}}",
                                                               "alternatives": "not {{slots_available}}"})
         .user_task("Patient chooses slot", "Choose an available appointment", "patients",
-                   context="{{slots}}", form=[("slot_id", "Slot ID", "number"),
+                   context={"Available slots": "{{slots}}"}, form=[("slot_id", "Slot ID", "number"),
                                                ("selected", "Reserve this slot", "boolean")])
         .condition_gateway("Selected?", "exclusive", {"yes": "{{selected}}", "closed": "not {{selected}}"})
         .task("C · Reserve slot", "serviceTask", "reserve_hospital_slot", output="merge")
         .condition_gateway("Booked?", "exclusive", {"yes": "{{booked}}", "retry": "not {{booked}}"})
-        .user_task("Patient sees confirmation", "Appointment confirmed", "patients", context="{{confirmation}}",
+        .user_task("Patient sees confirmation", "Appointment confirmed", "patients", context={"Confirmation": "{{confirmation}}"},
                    form=[])
         .user_task("Patient changes preferences", "No matching slot. Choose other dates or stop", "patients",
                    form=[("service", "Service", "string"), ("earliest", "First date", "string"),
                          ("latest", "Last date", "string"), ("morning", "Morning only", "boolean"),
                          ("continue_booking", "Search again", "boolean")], row=1)
-        .user_task("0 · Staff referral", "Resolve the booking request", "hospital-staff", context="{{reason}}",
+        .user_task("0 · Staff referral", "Resolve the booking request", "hospital-staff", context={"Reason": "{{reason}}"},
                    form=[("resolution", "Staff resolution", "string")], row=2)
         .manual_task("Request closed", "Patient ended the booking request", "patients", row=3)
         .flow("Patient request", "A · Clarify request", "Patient reviews details", "Continue?")

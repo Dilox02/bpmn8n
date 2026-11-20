@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-bpmn8n",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "BPMN 2.0 nodes for n8n: tasks discovered from a bpmn8n (Django) OpenAPI spec, gateways decided by Laya",
   "license": "MIT",
   "keywords": [
@@ -22,6 +22,7 @@
     ],
     "nodes": [
       "dist/nodes/Bpmn8nMetrics.node.js",
+      "dist/nodes/Bpmn8nGlobalVariable.node.js",
       "dist/nodes/Bpmn8nServiceTask.node.js",
       "dist/nodes/Bpmn8nScriptTask.node.js",
       "dist/nodes/Bpmn8nBusinessRuleTask.node.js",
@@ -35,7 +36,9 @@
       "dist/nodes/Bpmn8nParallelGateway.node.js",
       "dist/nodes/Bpmn8nEventBasedGateway.node.js",
       "dist/nodes/Bpmn8nTimerEvent.node.js",
-      "dist/nodes/Bpmn8nErrorEndEvent.node.js"
+      "dist/nodes/Bpmn8nErrorEndEvent.node.js",
+      "dist/nodes/Bpmn8nTerminateEndEvent.node.js",
+      "dist/nodes/Bpmn8nSignalCatch.node.js"
     ]
   },
   "devDependencies": {

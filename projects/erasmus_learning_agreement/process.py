@@ -1,4 +1,7 @@
-"""Erasmus learning agreement: the workflow, for bpmn8n's builder. workflow.json is the same, for n8n."""
+"""Erasmus learning agreement: the workflow, for bpmn8n's builder. workflow.json is the same, for n8n.
+
+With or without professors' opinions, the case meets at Coordinator Decision, with no Merge: only one branch
+runs, and bpmn8n's check and engine treat a step reached by exclusive branches as their join."""
 from bpmn8n.workflows import Workflow
 
 SPEC = {'name': 'Erasmus learning agreement',
@@ -8,9 +11,10 @@ SPEC = {'name': 'Erasmus learning agreement',
            {'to': ['Revise Agreement', 'Check Agreement'], 'from': 'Resubmission Allowed?', 'branch': 'yes'},
            {'to': ['Close Agreement', 'Notify Closure'], 'from': 'Resubmission Allowed?', 'branch': 'no'},
            {'to': ['Opinions Needed?'], 'from': 'ECTS Within Limits?', 'branch': 'yes'},
-           {'to': ['Professor Opinions', 'Opinions In'], 'from': 'Opinions Needed?', 'branch': 'yes'},
-           {'to': ['Opinions In'], 'from': 'Opinions Needed?', 'branch': 'no'},
-           {'to': ['Coordinator Decision', 'Coordinator Approved?'], 'from': 'Opinions In'},
+           {'to': ['Professor Opinions', 'Coordinator Decision', 'Coordinator Approved?'],
+            'from': 'Opinions Needed?',
+            'branch': 'yes'},
+           {'to': ['Coordinator Decision'], 'from': 'Opinions Needed?', 'branch': 'no'},
            {'to': ['Resubmission Allowed?'], 'from': 'Coordinator Approved?', 'branch': 'no'},
            {'to': ['Office Signature', 'Signed?'], 'from': 'Coordinator Approved?', 'branch': 'yes'},
            {'to': ['Notify Signature'], 'from': 'Signed?', 'branch': 'yes'},
@@ -67,7 +71,6 @@ SPEC = {'name': 'Erasmus learning agreement',
             'type': 'user_task',
             'title': 'Opinion on {{unmatched_count}} course mappings of {{student_name}}',
             'context': {'Mappings outside the table': '{{unmatched_mappings}}'}},
-           {'name': 'Opinions In', 'type': 'merge', 'inputs': 2},
            {'form': [['approved', 'Approve the whole agreement', 'boolean'],
                      ['coordinator_feedback', 'Feedback to the student', 'string']],
             'lane': 'coordinators',

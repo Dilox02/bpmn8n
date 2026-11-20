@@ -1,0 +1,64 @@
+{% extends "bpmn8n/base.html" %}
+{% load static %}
+{% block title %}Import a log{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'bpmn8n/insights.css' %}">{% endblock %}
+{% block crumbs %}<a href="{% url 'insights' %}">Insights</a><span>Import a log</span>{% endblock %}
+{% block main %}
+<div class="title-row"><div>
+  <h1>Import a log</h1>
+  <p class="sub">A CSV or XES event log from another system becomes cases in the event log: say which column is which, check the readiness report, then import.</p>
+</div></div>
+
+{% if not columns %}
+<form class="fields import-form" method="post" enctype="multipart/form-data">
+  {% csrf_token %}<input type="hidden" name="action" value="upload">
+  <label class="field"><span>File (.csv, .xes)</span><input class="input" type="file" name="file" accept=".csv,.tsv,.txt,.xes,.gz" required></label>
+  <button class="btn" type="submit">Preview</button>
+  <p class="meta">Up to 25 MB; a bigger log goes through <code>manage.py import_eventlog</code>. The delimiter is detected.</p>
+</form>
+{% else %}
+<section class="block" aria-labelledby="preview">
+  <div class="section-head"><h2 id="preview">{{ name }}</h2><span class="meta">{{ total }} row{{ total|pluralize }}, the first {{ preview|length }}</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr>{% for h in headers %}<th scope="col">{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in preview %}<tr>{% for v in row %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<form method="post" class="block import-map" aria-labelledby="mapping">
+  {% csrf_token %}
+  <div class="section-head"><h2 id="mapping">Columns</h2><span class="meta">a case id, an activity and a timestamp are needed</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th scope="col">Column</th><th scope="col">Example</th><th scope="col">Is the</th></tr></thead>
+    <tbody>{% for c in columns %}
+      <tr><td>{{ c.header }}</td><td class="muted">{{ c.sample }}</td>
+        <td><select class="input" name="role_{{ c.index }}" aria-label="Role of {{ c.header }}">{% for r in roles %}<option value="{{ r }}" {% if r == c.role %}selected{% endif %}>{% if r == "attribute" %}attribute (kept in the event's data){% elif r == "ignore" %}ignored{% elif r == "end" %}end, or the only timestamp{% else %}{{ r }}{% endif %}</option>{% endfor %}</select></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  <div class="scope">
+    <label class="field"><span>Timestamp format</span>
+      <select class="input" name="fmt"><option value="auto" {% if fmt == "auto" %}selected{% endif %}>detect</option>{% for f in formats %}<option value="{{ f }}" {% if f == fmt %}selected{% endif %}>{{ f }}</option>{% endfor %}</select></label>
+    <label class="field"><span>or a pattern (strptime)</span><input class="input" name="fmt_custom" placeholder="%d/%m/%Y %H:%M"></label>
+    <label class="field"><span>Process name</span><input class="input" name="process" value="{{ process }}" placeholder="Purchase requests"></label>
+    <button class="btn" type="submit" name="action" value="check">Check</button>
+  </div>
+
+  {% if report %}
+  <section class="readiness" aria-label="Readiness report">
+    <h3>Readiness</h3>
+    <ul>
+      <li><strong>{{ report.rows }}</strong> rows, <strong>{{ report.events }}</strong> usable events in <strong>{{ report.cases }}</strong> cases (timestamps read as <code>{{ report.format }}</code>{% if report.first %}, {{ report.first|date:"Y-m-d H:i" }} to {{ report.last|date:"Y-m-d H:i" }}{% endif %})</li>
+      <li class="{% if report.missing_case_or_activity %}warn{% endif %}">{{ report.missing_case_or_activity }} row{{ report.missing_case_or_activity|pluralize }} without a case id or an activity (left out)</li>
+      <li class="{% if report.missing_timestamps %}warn{% endif %}">{{ report.missing_timestamps }} row{{ report.missing_timestamps|pluralize }} with a missing or unreadable timestamp (left out)</li>
+      <li class="{% if report.start_after_end %}warn{% endif %}">{{ report.start_after_end }} row{{ report.start_after_end|pluralize }} that start after they end (kept as instants)</li>
+      <li class="{% if report.ties %}warn{% endif %}">{{ report.ties }} case{{ report.ties|pluralize }} with events at the same instant (their file order is kept)</li>
+      <li class="{% if report.existing %}warn{% endif %}">{{ report.existing }} case id{{ report.existing|pluralize }} already in the event log (events are added, never replaced)</li>
+      <li>Kept in the event's data: {% for a in report.attributes %}{{ a }}{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}. Ignored columns: {% for a in report.ignored %}{{ a }}{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}.</li>
+    </ul>
+  </section>
+  {% endif %}
+  <p><button class="btn primary" type="submit" name="action" value="import">Import</button>
+    <button class="btn" type="submit" name="action" value="cancel" formnovalidate>Start over</button></p>
+</form>
+{% endif %}
+{% endblock %}

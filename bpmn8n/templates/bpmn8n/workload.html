@@ -1,0 +1,58 @@
+{% extends "bpmn8n/base.html" %}
+{% load static bpmn8n %}
+{% block title %}Workload{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'bpmn8n/insights.css' %}">{% endblock %}
+{% block crumbs %}<span>Workload</span>{% endblock %}
+{% block main %}
+<div class="title-row">
+  <div>
+    <h1>Workload</h1>
+    <p class="sub">What waits in {% if request.user.is_staff %}every lane{% else %}your lanes{% endif %} now, and how fast it is taken and done over the last {{ days }} days.</p>
+  </div>
+  <div class="actions"><a class="btn" href="{% url 'notifications' %}">Notifications</a></div>
+</div>
+<nav class="tabs" aria-label="Window">
+  {% for d, label in windows %}<a href="?days={{ d }}"{% if d == days %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+{% if lanes %}
+<div class="pair">{{ open_chart }}{{ late_chart }}</div>
+<div class="table-wrap">
+  <table class="as-rows">
+    <thead><tr><th scope="col">Lane</th><th scope="col" class="n">Open</th><th scope="col" class="n">Claimed</th><th scope="col" class="n">Suspended</th><th scope="col" class="n">Overdue</th><th scope="col" class="n">Due in 24 h</th><th scope="col" class="n">Mean wait to claim</th><th scope="col" class="n">Mean work time</th></tr></thead>
+    <tbody>
+    {% for r in lanes %}
+      <tr><th scope="row">{{ r.lane }}</th><td class="n num">{{ r.open }}</td><td class="n num">{{ r.claimed }}</td><td class="n num">{{ r.suspended }}</td><td class="n num">{{ r.overdue }}</td><td class="n num">{{ r.soon }}</td><td class="n num">{{ r.wait }}</td><td class="n num">{{ r.work }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">No task yet in {% if request.user.is_staff %}any lane{% else %}your lanes{% endif %}.</p>
+{% endif %}
+{% if people %}
+<section class="done" aria-labelledby="people">
+  <div class="section-head"><h2 id="people">People</h2><span class="meta">claimed now, completed in {{ days }} days</span></div>
+  <div class="table-wrap">
+    <table class="as-rows">
+      <thead><tr><th scope="col">Person</th><th scope="col" class="n">Claimed</th><th scope="col" class="n">Completed</th></tr></thead>
+      <tbody>{% for who, n in people %}<tr><th scope="row">{{ who }}</th><td class="n num">{{ n.claimed }}</td><td class="n num">{{ n.completed }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% if late %}
+<section class="done" aria-labelledby="late">
+  <div class="section-head"><h2 id="late">Oldest overdue</h2><span class="meta">the ten longest past their due time</span></div>
+  <div class="table-wrap">
+    <table class="as-rows">
+      <thead><tr><th scope="col">Task</th><th scope="col">Lane</th><th scope="col">Assignee</th><th scope="col" class="n">Due</th></tr></thead>
+      <tbody>
+      {% for t in late %}
+        <tr><td><a class="name" href="{% url 'task' t.pk %}">{{ t.title }}</a><span class="sub">{{ t.process|default:"—" }}</span></td><td class="line2">{{ t.lane|default:"any lane" }}</td><td class="line2">{{ t.assignee|default:"nobody" }}</td><td class="n num">{{ t.due|waited }} ago</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

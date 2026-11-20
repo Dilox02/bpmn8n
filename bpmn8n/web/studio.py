@@ -16,6 +16,7 @@ from ..models import Card, Project, Settings
 from ..workflows.builder import SpecError, Workflow
 from ..studio.build import ProjectBuilder
 from ..studio.interview import Interview
+from .simulation import headline
 
 POLL, KEEP_ALIVE = 1, 15  # seconds: the build runs in another process, its state is in the database
 
@@ -47,7 +48,8 @@ def project(request, slug):
         return redirect("project", slug)
     return render(request, "bpmn8n/project.html", {
         "project": project, "cards": project.cards.all(), "columns": Card.COLUMNS, "workflow": workflow(project),
-        "preview_url": settings.N8N_PREVIEW_URL, "answers": sum(m["role"] == "user" for m in project.messages)})
+        "preview_url": settings.N8N_PREVIEW_URL, "answers": sum(m["role"] == "user" for m in project.messages),
+        "capacity": headline(project.slug)})
 
 
 def workflow(project):

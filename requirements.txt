@@ -6,3 +6,6 @@ pm4py>=2.7  # process mining (AGPL-3.0: README, "Licenze")
 scikit-learn>=1.5  # decision rules
 markdown>=3.6  # /docs/ renders README.md
 anthropic>=1.17  # Studio, when an Anthropic provider is configured (the others speak OpenAI's protocol over HTTP)
+redis>=5  # shared variables across workflows, event stream (the open alternative to n8n's paid Variables and log streaming)
+whitenoise>=6  # static files in production, without a separate web server
+cryptography>=42  # Fernet: the LLM providers' API keys encrypted at rest

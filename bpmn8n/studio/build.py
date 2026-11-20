@@ -113,7 +113,11 @@ class ProjectBuilder:
 
     def design_problems(self, spec):
         if not isinstance(spec.get("workflow"), dict) or not isinstance(spec.setdefault("activities", []), list):
-            return [f"it has no workflow: {json.dumps(spec)[:300]}"]
+            return ['it needs "workflow": {"start_data": [...], "steps": [a "start" step first, ...], "flows": [...]} '
+                    'and "activities": [...] (a list, maybe empty), in the shape of the design prompt\'s example']
+        if not spec["workflow"].get("steps"):
+            return ['its workflow has no "steps": a "start" step (the webhook) first, then the tasks, gateways and '
+                    'people, joined by "flows"']
         taken = {t.name for t in self.prompts.tasks}
         problems, seen = [], set()
         for a in spec["activities"]:
@@ -195,8 +199,9 @@ class ProjectBuilder:
             self.project.save(update_fields=["spec", "updated"])
 
     def check(self):
-        """The draft written out and checked: {"imports", "examples", "problems"} (ProjectCheck). A spec
-        the builder rejects is a problem too; the activities are tested all the same."""
+        """The draft written out and checked: {"imports", "examples", "scenarios", "problems"} (ProjectCheck).
+        A spec the builder rejects is a problem too, and so is a failing scenario; the activities are tested
+        all the same."""
         self.write_spec()
         path, spec_problems = self.draft / "workflow.json", []
         try:
@@ -212,7 +217,12 @@ class ProjectBuilder:
             report = json.loads(result.stdout)
         except ValueError:  # it did not get to the report: Django itself failed to start
             raise BuildError(f"the check did not run:\n{(result.stderr or result.stdout)[-3000:]}") from None
-        report["problems"] += spec_problems
+        report["problems"] += spec_problems + [  # a scenario the process fails is the workflow's error
+            {"node": "", "rule": "scenario", "level": "error", "message": f"scenario {s['name']!r}: {s['failure']}"}
+            for s in report.get("scenarios", []) if not s["passed"]]
+        # what publishing asks: no import error, no failing example, no error and no decision left to a machine
+        report["ok"] = not (report["imports"] or report["examples"] or
+                            any(p["level"] == "error" or p["rule"] == "human" for p in report["problems"]))
         return report
 
     def publish(self):
@@ -263,7 +273,7 @@ class ProjectBuilder:
         self.project.save(update_fields=["n8n_id", "updated"])
         if created.get("draft"):
             note += "\nSaved as a draft of the active workflow: publish it in the n8n editor to run it"
-        return f"{settings.N8N_PUBLIC_URL}/workflow/{created['id']}{note}"
+        return n8n.editor_url(f"workflow/{created['id']}") + note
 
     def reload(self):
         """gunicorn reloads its workers on SIGHUP: they start with the new project's tasks."""

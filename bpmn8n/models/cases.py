@@ -8,24 +8,36 @@ class Case(models.Model):
 
     case_id = models.CharField(max_length=100, primary_key=True)
     process = models.CharField(max_length=200, blank=True)
+    # the n8n versionId of the workflow the case runs (WorkflowVersion), when n8n's API could say
+    process_version = models.CharField(max_length=100, blank=True, db_index=True)
     variables = models.JSONField(default=dict, blank=True)
+    terminated = models.DateTimeField(null=True, blank=True, help_text="a Terminate End Event ended it (C5)")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = (models.Index(fields=["created"]),)
 
     def __str__(self):
         return self.case_id
 
     @classmethod
     def merge(cls, case_id, process, data):
-        """Adds `data` to the case's variables and returns them all. Row-locked: parallel
-        branches of one case may write at the same moment. Nothing to add: a plain read."""
+        """Adds `data` to the case's variables and returns them all (see upsert)."""
+        return cls.upsert(case_id, process, data)[0]
+
+    @classmethod
+    def upsert(cls, case_id, process, data):
+        """(the case's variables with `data` added, whether this call created the case). Row-locked:
+        parallel branches of one case may write at the same moment. Nothing to add: a plain read."""
         if not data:
-            return cls.objects.get_or_create(case_id=case_id, defaults={"process": process})[0].variables
+            case, created = cls.objects.get_or_create(case_id=case_id, defaults={"process": process})
+            return case.variables, created
         with transaction.atomic():
-            case, _ = cls.objects.select_for_update().get_or_create(case_id=case_id, defaults={"process": process})
+            case, created = cls.objects.select_for_update().get_or_create(case_id=case_id, defaults={"process": process})
             case.variables = {**case.variables, **data}
             case.save(update_fields=["variables", "updated"])
-        return case.variables
+        return case.variables, created
 
 
 class EventQuerySet(models.QuerySet):

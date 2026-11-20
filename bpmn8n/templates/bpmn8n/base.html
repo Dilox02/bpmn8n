@@ -1,12 +1,17 @@
 {% load static %}<!doctype html>
-<html lang="en">
+<html lang="en"{% if theme == "light" or theme == "dark" %} data-theme="{{ theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{% endblock %} · bpmn8n</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><!-- taste-skill-ignore: Plex Mono for IDs, keys and code -->
+<link rel="stylesheet" href="{% static 'bpmn8n/tokens.css' %}">
 <link rel="stylesheet" href="{% static 'bpmn8n/app.css' %}">
+<script src="{% static 'bpmn8n/components.js' %}"></script><!-- b8-pill, b8-timeline, b8-process-map: defined before the body, so they never flash unstyled -->
+<script>  // the theme in force (the b8-theme cookie, else the system's): what embedded canvases are drawn in
+  const b8Theme = () => document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+</script>
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -14,37 +19,17 @@
 <div class="app">
   <nav class="sidebar" id="sidebar" aria-label="bpmn8n">
     <a class="brand" href="{% url 'inbox' %}">{% include "bpmn8n/mark.svg" %}bpmn8n</a>
-    {% with here=request.resolver_match.url_name %}
-    <a class="nav-item" href="{% url 'inbox' %}" {% if here == 'inbox' or here == 'task' %}aria-current="page"{% endif %}>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5 3.8 3h8.4L14 9.5V13H2z"/><path d="M2 9.5h3.5l1 1.5h3l1-1.5H14"/></svg>
-      Inbox{% if waiting_count %}<span class="count num" aria-label="{{ waiting_count }} waiting">{{ waiting_count }}</span>{% endif %}
-    </a>
-    {% if user.is_staff %}
-    <a class="nav-item" href="{% url 'studio' %}" {% if here == 'studio' or here == 'project' %}aria-current="page"{% endif %}>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="5" height="4" rx="1"/><rect x="9.5" y="9.5" width="5" height="4" rx="1"/><path d="M4 6.5v4.5h5.5"/></svg>
-      Studio
-    </a>
-    {% endif %}
-    <a class="nav-item" href="{% url 'activities' %}" {% if here == 'activities' %}aria-current="page"{% endif %}>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 2.5c-1.5 0-2 .7-2 2v1.6c0 .9-.5 1.4-1.5 1.9 1 .5 1.5 1 1.5 1.9v1.6c0 1.3.5 2 2 2M10.5 2.5c1.5 0 2 .7 2 2v1.6c0 .9.5 1.4 1.5 1.9-1 .5-1.5 1-1.5 1.9v1.6c0 1.3-.5 2-2 2"/></svg>
-      Activities
-    </a>
-    <a class="nav-item" href="{% url 'docs' %}" {% if here == 'docs' %}aria-current="page"{% endif %}>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2 3c2-.8 4-.8 6 .5 2-1.3 4-1.3 6-.5v10c-2-.8-4-.8-6 .5-2-1.3-4-1.3-6-.5zM8 3.5v10"/></svg>
-      Docs
-    </a>
-    {% endwith %}
+    {% for item in nav %}
+    <a class="nav-item" href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{% include item.icon %}{{ item.label }}{% if item.count %}<span class="count num" aria-label="{{ item.count }} waiting">{{ item.count }}</span>{% endif %}</a>
+    {% endfor %}
     <div class="bottom">
-      <a class="nav-item" href="/api/docs">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 4.5-3.5 3.5L5 11.5M11 4.5l3.5 3.5-3.5 3.5"/></svg>
-        API
-      </a>
-      {% if user.is_staff %}
-      <a class="nav-item" href="{% url 'admin:index' %}">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h7M12.5 4.5h1M2.5 11.5h1M6.5 11.5h7"/><circle cx="11" cy="4.5" r="1.5"/><circle cx="5" cy="11.5" r="1.5"/></svg>
-        Admin
-      </a>
-      {% endif %}
+      {% for item in nav_bottom %}
+      <a class="nav-item" href="{{ item.href }}"{% if item.external %} target="_blank" rel="noopener"{% endif %}>{% include item.icon %}{{ item.label }}{% if item.external %}<span class="sr-only"> (opens a new tab)</span>{% endif %}</a>
+      {% endfor %}
+      <form class="theme-switch" method="post" action="{% url 'theme' %}" role="group" aria-label="Theme">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {% for value, label in themes %}<button type="submit" name="theme" value="{{ value }}" aria-pressed="{% if theme == value %}true{% else %}false{% endif %}">{{ label }}</button>{% endfor %}
+      </form>
       {% if user.is_authenticated %}
       <div class="who">
         <span class="avatar" style="--hue: {{ user_hue }}" aria-hidden="true">{{ user.username|slice:":2"|upper }}</span>
@@ -59,6 +44,10 @@
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
     </button>
     <div class="crumbs">{% block crumbs %}{% endblock %}</div>
+    {% if status_dots %}<span class="spacer"></span>
+    {% if user.is_staff %}<a class="status-dots" href="{% url 'status' %}" aria-label="Service status">{% else %}<span class="status-dots" role="group" aria-label="Service status">{% endif %}
+      {% for dot in status_dots %}<span class="status-dot" data-state="{{ dot.state }}" title="{{ dot.name }}: {{ dot.state }}"><i aria-hidden="true"></i><span class="sr-only">{{ dot.name }}: {% if dot.state == "off" %}not configured{% else %}{{ dot.state }}{% endif %}</span></span>{% endfor %}
+    {% if user.is_staff %}</a>{% else %}</span>{% endif %}{% endif %}
   </header>
   <main class="sheet">
     {% for m in messages %}<p class="notice {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}

@@ -1,7 +1,9 @@
 """Pseudonymise patient data: an activity of Hospital appointment booking UC-01 (bpmn8n Studio). Edit freely.
 
 The privacy gate of the process: every patient text passes here before Agent A (an external LLM) reads it.
-The agents only ever see the pseudonym patient_ref and the redacted conversation."""
+The agents only ever see the pseudonym patient_ref and the redacted conversation. Anyone's emails, phone
+numbers, fiscal codes, IBANs and card numbers are found by bpmn8n's guardrail detectors (bpmn8n.tasks.redact);
+this module adds what only the hospital knows: the patient's own identifiers, name and date of birth."""
 import hashlib
 import hmac
 import re
@@ -12,11 +14,8 @@ from pydantic import Field
 
 from bpmn8n.api import task
 from bpmn8n.conf import settings
+from bpmn8n.tasks import redact as redact_personal_data
 
-EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-FISCAL_CODE = re.compile(r"\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b", re.IGNORECASE)
-PHONE = re.compile(r"(?<![\w+-])(?:\+\d{1,3}[ .-]?)?\(?\d{2,4}\)?(?:[ .-]?\d{2,4}){1,4}(?![\w-])")
-ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 DATE = r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}"
 BIRTH = re.compile(rf"(\b(?:born(?: on)?|date of birth|birth ?date|d\.?o\.?b\.?|nat[oa](?: il)?|data di nascita)\s*:?\s*)({DATE})",
                    re.IGNORECASE)
@@ -62,16 +61,11 @@ def redact(text, data, patient_ref):
     """(text without direct identifiers, how many were replaced)."""
     count = 0
 
-    def sub(pattern, placeholder, text, flags=0, check=None):
+    def sub(pattern, placeholder, text, flags=0):
         nonlocal count
-
-        def replace(m):
-            nonlocal count
-            if check and not check(m.group(0)):
-                return m.group(0)
-            count += 1
-            return placeholder
-        return re.sub(pattern, replace, text, flags=flags)
+        text, n = re.subn(pattern, lambda m: placeholder, text, flags=flags)
+        count += n
+        return text
 
     # the patient's own identifiers, as the hospital app knows them
     if data.patient_id.strip():
@@ -84,20 +78,17 @@ def redact(text, data, patient_ref):
         text = sub(re.escape(data.phone.strip()), "[PHONE]", text)
     for variant in birth_variants(data.date_of_birth):
         text = sub(rf"(?<![\d./-]){re.escape(variant)}(?![\d./-])", "[DATE_OF_BIRTH]", text)
-    text = sub(EMAIL, "[EMAIL]", text)
-    text = sub(FISCAL_CODE, "[FISCAL_CODE]", text)
+    # anyone's identifiers by their shape, before the name (a name is in many emails)
+    text, found = redact_personal_data(text)
+    count += len(found)
     name = data.patient_name.strip()
     if name:
         text = sub(rf"\b{re.escape(name)}\b", "[NAME]", text, re.IGNORECASE)
         for part in name.split():
             if len(part) >= 3:
                 text = sub(rf"\b{re.escape(part)}\b", "[NAME]", text, re.IGNORECASE)
-    # anyone's identifiers, by their shape (emails and fiscal codes went before the name: a name is in many emails)
-    text, births = BIRTH.subn(lambda m: f"{m.group(1)}[DATE_OF_BIRTH]", text)
-    count += births
-    text = sub(PHONE, "[PHONE]", text,
-               check=lambda s: 9 <= sum(c.isdigit() for c in s) <= 13 and not ISO_DATE.fullmatch(s.strip()))
-    return text, count
+    text, births = BIRTH.subn(lambda m: f"{m.group(1)}[DATE_OF_BIRTH]", text)  # anyone's date of birth
+    return text, count + births
 
 
 @task("scriptTask")

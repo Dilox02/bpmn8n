@@ -196,6 +196,21 @@ class EvaluationStore:
         with self.database() as db:
             return [self.summary(r) for r in db.execute("SELECT * FROM runs WHERE workflow=? ORDER BY updated_at DESC,execution DESC LIMIT ?", (workflow_id, limit))]
 
+    def judged(self, project=None, workflow_id=None, last=1):
+        """What an evaluation gate judges: the `last` newest runs of each project's workflow (only `project`'s,
+        only `workflow_id`'s when given), each with the measurements that missed their threshold."""
+        filters = [(column, self.identifier(value)) for column, value in (("project", project), ("workflow", workflow_id))
+                   if value]
+        where = " AND ".join(f"{column}=?" for column, _ in filters) or "1"
+        with self.database() as db:
+            rows = db.execute(f"""SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY project, workflow
+                ORDER BY updated_at DESC, execution DESC) AS newest FROM runs WHERE {where})
+                WHERE newest <= ? ORDER BY project, workflow, newest""", (*(v for _, v in filters), last)).fetchall()
+            return [{**self.summary({k: row[k] for k in row.keys() if k != "newest"}), "missed": [dict(m) for m in db.execute(
+                """SELECT r.node, m.name, m.value, m.unit, m.direction, m.threshold FROM records r
+                JOIN measurements m ON m.record=r.id WHERE r.project=? AND r.workflow=? AND r.execution=? AND m.passed=0
+                ORDER BY r.stamp, r.id""", (row["project"], row["workflow"], row["execution"]))]} for row in rows]
+
     def version(self, workflow_id, execution_id=None):
         with self.database() as db:
             if execution_id is None:

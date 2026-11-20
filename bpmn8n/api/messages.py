@@ -19,6 +19,7 @@ class SubscriptionIn(Schema):
     resume_url: str
     expires: datetime | None = None  # an event-based gateway's timeout
     item: dict[str, Any] = {}  # the n8n item that reached the node
+    broadcast: bool = False  # a signal: no correlation key, POST /api/signals/<name> reaches every waiting catch
 
 
 class SubscriptionOut(Schema):
@@ -49,7 +50,8 @@ def subscribe(request, data: SubscriptionIn):
     activity = case.trace.activity or data.name
     return 201, MessageSubscription.register(
         name=data.name, correlation_key=str(case.text(data.correlation_key)), resume_url=data.resume_url,
-        expires=data.expires, case_id=case.trace.case_id, process=case.trace.process, activity=activity)
+        expires=data.expires, case_id=case.trace.case_id, process=case.trace.process, activity=activity,
+        broadcast=data.broadcast)
 
 
 @router.get("/subscriptions", response=list[SubscriptionOut])

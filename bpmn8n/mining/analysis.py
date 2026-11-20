@@ -141,12 +141,14 @@ class ProcessAnalysis:
             data = events.data.tolist()
             taken = [" + ".join(d["output"]["branches"]) or "(default)" for d in data]
             sure = [c for d in data if (c := certainty(d["output"].get("scores") or {})) is not None]
+            reviewed = [bool(d["overridden"]) for d in data if "overridden" in d]
             closed = [(t, outcome[c]) for t, c in zip(taken, events[CASE]) if c in self.closed]
             report[gateway] = {
                 "decided_by": dict(Counter(d["decider"] for d in data)),
                 "branches": dict(Counter(taken)),
                 "certainty": stats(sure),
                 "low_certainty": round(sum(c < LOW_CONFIDENCE for c in sure) / len(sure), 3) if sure else None,
+                "override_rate": round(sum(reviewed) / len(reviewed), 3) if reviewed else None,  # J6
                 "outcomes": {branch: dict(Counter(o for t, o in closed if t == branch)) for branch in set(taken)},
                 "rules": self.rules([d["input"].get("state") for d in data], taken),
             }
@@ -159,6 +161,8 @@ class ProcessAnalysis:
             return None
         from sklearn.tree import DecisionTreeClassifier, export_text
         x = pd.json_normalize(states)
+        # lists (e.g. hosts: ["h-1"]) are not rule material, and pandas cannot count their distinct values
+        x = x.drop(columns=[c for c in x.columns if x[c].map(lambda v: isinstance(v, (list, dict))).any()])
         text = [c for c in x.columns if x[c].dtype == object and x[c].nunique() > 20]  # free text: no rule material
         x = pd.get_dummies(x.drop(columns=text)).apply(pd.to_numeric, errors="coerce").fillna(-1)
         if x.empty:

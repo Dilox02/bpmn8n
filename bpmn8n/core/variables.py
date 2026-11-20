@@ -6,18 +6,52 @@ every completed form and every received message. Node fields refer to them as {{
 - inside text it is filled in: "Your book {{book}} is ready";
 - dots reach nested data and list items: {{customer.email}}, {{hosts.0}};
 - a task field left empty takes the variable with the same name (binding by name).
-Gateway conditions read like `{{amount}} > 1000 and not {{vip}}`."""
+Gateway conditions read like `{{amount}} > 1000 and not {{vip}}`.
+
+The root `vars` is reserved: {{vars.<key>}} reads a global variable, shared by every workflow
+(core/shared.py), never a case variable called `vars` (that one is shadowed)."""
 import ast
+import json
 import operator
 import re
 
-TEMPLATE = re.compile(r"\{\{\s*([A-Za-z_]\w*(?:\.\w+)*)\s*\}\}")
+TEMPLATE = re.compile(r"\{\{\s*([A-Za-z_]\w*(?:\.[\w-]+)*)\s*\}\}")  # after the root, keys may hold "-"
 MISSING = object()
+GLOBALS = "vars"
+
+
+class Globals(dict):
+    """The global variables a template names, fetched before it is filled (CaseData.scope). A key may hold
+    dots ("acme.rate"): {{vars.acme.rate.max}} reads the longest key that exists, then "max" inside it."""
+
+    def lookup(self, path):
+        parts = path.split(".")
+        for n in range(len(parts), 0, -1):
+            if (key := ".".join(parts[:n])) in self:
+                return walk(self[key], parts[n:])
+        return MISSING
+
+
+def global_keys(value):
+    """The global variable keys `value`'s templates may read (for {{vars.a.b}}: "a.b" and "a"), None when
+    no template starts with `vars`."""
+    keys = None
+    for path in TEMPLATE.findall(json.dumps(value, default=str)):
+        root, *parts = path.split(".")
+        if root == GLOBALS:
+            keys = (keys or set()) | {".".join(parts[:n]) for n in range(1, len(parts) + 1)}
+    return keys
 
 
 def lookup(variables, path):
-    value = variables
-    for part in path.split("."):
+    root, _, rest = path.partition(".")
+    if root == GLOBALS and isinstance(found := variables.get(GLOBALS), Globals):
+        return found.lookup(rest)
+    return walk(variables, path.split("."))
+
+
+def walk(value, parts):
+    for part in parts:
         if isinstance(value, dict) and part in value:
             value = value[part]
         elif isinstance(value, list) and part.isdigit() and int(part) < len(value):
@@ -49,10 +83,17 @@ def bind(schema, given, variables, extracted=None):
     return by_name | (extracted or {}) | filled
 
 
+WEBHOOK_ENVELOPE = ("headers", "params", "query", "body", "webhookUrl", "executionMode")
+
+
 def from_item(item):
-    """The variables an n8n item brings: a webhook item's body, else the item itself. Keys
-    starting with "_" are bpmn8n's bookkeeping, not process data."""
-    data = item["body"] if isinstance(item.get("body"), dict) and "headers" in item else item
+    """The variables an n8n item brings: a webhook item's body plus what later steps set next to it
+    (a task's merged output, a sub-process's results), which wins over the body; else the item itself.
+    Keys starting with "_" are bpmn8n's bookkeeping, not process data."""
+    if isinstance(item.get("body"), dict) and "headers" in item:
+        data = {**item["body"], **{k: v for k, v in item.items() if k not in WEBHOOK_ENVELOPE}}
+    else:
+        data = item
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 

@@ -8,13 +8,21 @@
 // handles move onto the shape's outline, where the flows then start and end.
 // ponytail: n8n's class names are hashed per build, so the CSS matches data-* attributes and
 // [class*=...]; an n8n upgrade that renames them only brings back n8n's own look.
+// Colours are bpmn8n's tokens (bpmn8n/static/bpmn8n/tokens.css, mounted as <base>static/bpmn8n-tokens.css and
+// linked here once for every hook), each with its old value as fallback. The canvas follows the user's n8n
+// theme: in dark mode it is flat and every node a tint from its name; in light mode n8n's own colours.
 (() => {
-  // the editor (no ?theme, which only Studio's preview gets) in n8n's dark theme, as in Studio's preview:
-  // light marks and names on the dark canvas. ponytail: overrides the user's n8n theme on every load
-  if (!new URLSearchParams(location.search).has('theme')) {
-    try { localStorage.setItem('N8N_THEME', 'dark'); } catch (_) { /* private mode: n8n's default */ }
+  // n8n's base path: '/', or N8N_PATH behind the one-origin gateway ('/n8n/'); else from this file's own URL
+  const BASE = window.BASE_PATH || new URL('../', document.currentScript?.src || location.href).pathname;
+  if (!document.querySelector('link[data-bpmn8n-tokens]')) {
+    const tokens = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: `${BASE}static/bpmn8n-tokens.css?v=1` });
+    tokens.dataset.bpmn8nTokens = '';
+    document.head.prepend(tokens);  // first: n8n's and the hooks' own styles come after it
   }
-  const ICONS = '/icons/CUSTOM/nodes/icons/';
+  // a page that embeds the preview forces its theme (?theme=dark|light); the editor follows n8n's
+  const forced = new URLSearchParams(location.search).get('theme');
+  const dark = forced === 'dark' ? ':root' : forced === 'light' ? null : 'body[data-theme=dark]';
+  const ICONS = `${BASE}icons/CUSTOM/nodes/icons/`;
   const SIDE = 96, TASK = 120, DIAMOND = 64, CIRCLE = 44;  // px: BPMN's 100x80 task, 50 gateway, 36 event, scaled
   const type = t => `[data-test-id=canvas-node][data-node-type="${t}"]`;
   const bpmn = (...kinds) => kinds.map(k => type(`CUSTOM.bpmn8n${k}`));
@@ -59,8 +67,8 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    .vue-flow { --bpmn-stroke: #22242a; --bpmn-fill: #ffffff; }
-    body[data-theme=dark] .vue-flow { --bpmn-stroke: #e4e4ea; --bpmn-fill: #2b2b2b; }
+    .vue-flow { --bpmn-stroke: var(--b8-shape-stroke, #22242a); --bpmn-fill: var(--b8-shape-fill, #ffffff); }
+    body[data-theme=dark] .vue-flow { --bpmn-stroke: var(--b8-shape-stroke, #e4e4ea); --bpmn-fill: var(--b8-shape-fill, #2b2b2b); }
     ${onBpmn} { --canvas-edge--color: var(--bpmn-stroke); }  /* sequence flows: n8n still colours runs and hovers */
     ${onBpmn} [data-test-id=canvas-node] ${subtitle} { display: none; }  /* BPMN labels a shape with its name only */
     ${onBpmn} .vue-flow__node:not(:hover) [class*=_dot_] { opacity: 0; }  /* n8n's handles, shown to connect */
@@ -111,31 +119,33 @@
       `${onBpmn} ${type(t)} ${icon} { background-image: url(${ICONS}bpmn/events/${glyph}.svg); }`).join('\n')}
     body[data-theme=dark] ${any([MERGE, STARTS])} ${icon} { filter: invert(1); }
 
-    /* Studio's look (n8n-editor/preview.js) in the editor too: a flat dark canvas, no dot grid */
-    ${onBpmn} { background: #0d0d12 !important; }
-    ${onBpmn} [data-test-id=canvas-background] { display: none !important; }
+    ${dark === null ? '' : `
+    /* dark mode: Studio's look (n8n-editor/preview.js) in the editor too, a flat canvas with no dot grid */
+    ${dark} ${onBpmn} { background: var(--b8-canvas, #0d0d12) !important; }
+    ${dark} ${onBpmn} [data-test-id=canvas-background] { display: none !important; }
 
     /* tints (below): a flat colour per node, white marks on it */
-    ${onBpmn} [data-test-id=canvas-node][style*="--tinta"] { --bpmn-fill: var(--tinta); }
-    :where(${onBpmn} [data-test-id=canvas-node][style*="--tinta"]) ${box} {  /* :where: gateways, events stay bare */
-      background: var(--tinta) !important;
+    ${dark} ${onBpmn} [data-test-id=canvas-node][style*="--b8-tint"] { --bpmn-fill: var(--b8-tint); }
+    :where(${dark} ${onBpmn} [data-test-id=canvas-node][style*="--b8-tint"]) ${box} {  /* :where: gateways, events stay bare */
+      background: var(--b8-tint) !important;
     }
-    ${onBpmn} [style*="--tinta"] .n8n-node-icon, ${onBpmn} [style*="--tinta"] .n8n-node-icon * { color: #f4f4f8 !important; }
-    ${TASKS}[style*="--tinta"] ${name} { color: #f4f4f8 !important; }
+    ${dark} ${onBpmn} [style*="--b8-tint"] .n8n-node-icon, ${dark} ${onBpmn} [style*="--b8-tint"] .n8n-node-icon * {
+      color: var(--b8-canvas-mark, #f4f4f8) !important;
+    }
+    ${dark} ${TASKS}[style*="--b8-tint"] ${name} { color: var(--b8-canvas-mark, #f4f4f8) !important; }`}
   `;
   document.head.appendChild(style);
 
-  // every node a flat tint from its name (the same name, the same tint), in the editor as in Studio's
-  // preview; ?theme=light (Studio's page in light mode) keeps n8n's own colours
-  if (new URLSearchParams(location.search).get('theme') === 'light') return;
+  // every node a tint from its name (the same name, the same tint), in the editor as in Studio's preview;
+  // the CSS above draws it in dark mode only, and the node card (panel.js) wears it in both
   const hue = text => {  // the name without the " 2", " 3"... n8n adds to repeated names
     let h = 2166136261;  // FNV-1a: deterministic, well spread
     for (const c of text.replace(/ \d+$/, '')) h = Math.imul(h ^ c.codePointAt(0), 16777619);
     return ((h >>> 0) * 137.508) % 360;  // golden angle: near names drift apart
   };
   const paint = () => document.querySelectorAll('[data-test-id=canvas-node][data-node-name]').forEach(node => {
-    const tint = `hsl(${hue(node.dataset.nodeName)} 45% 36%)`;  // dark enough for white marks, clear of #0d0d12
-    if (node.style.getPropertyValue('--tinta') !== tint) node.style.setProperty('--tinta', tint);
+    const tint = `hsl(${hue(node.dataset.nodeName)} var(--b8-tint-saturation, 45%) var(--b8-tint-lightness, 36%))`;
+    if (node.style.getPropertyValue('--b8-tint') !== tint) node.style.setProperty('--b8-tint', tint);
   });
   new MutationObserver(paint).observe(document.documentElement, { childList: true, subtree: true });
 })();

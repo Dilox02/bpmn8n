@@ -1,10 +1,10 @@
 // Shared transport and keyed DOM updates for the editor's local live views.
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const numericFormat = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 4 });
-const percentFormat = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
+const numericFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 4 });
+const percentFormat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 });
 export const number = value => value == null ? '—' : numericFormat.format(value);
 export const measurement = (value, unit = '') => unit === 'ratio' ? `${percentFormat.format(value * 100)} %` : `${number(value)}${unit ? ' ' + unit : ''}`;
-export const date = value => value ? new Date(value).toLocaleString('it-IT') : '—';
+export const date = value => value ? new Date(value).toLocaleString('en-GB') : '—';
 export const metricKey = m => JSON.stringify([m.node_name, m.name, m.unit, m.direction, m.threshold]);
 export const runKey = r => `${r.project}/${r.execution_id}`;
 export const text = (el, value) => { const next = String(value ?? ''); if (el.textContent !== next) el.textContent = next; };
@@ -29,6 +29,8 @@ export function localURL(configured, locationURL = globalThis.location.href) {
   if (loopback.has(url.hostname) && loopback.has(location.hostname)) url.hostname = location.hostname;
   return url.href.replace(/\/$/, '');
 }
+/** n8n's base path: '/', or N8N_PATH behind the one-origin gateway ('/n8n/'); else from the hook's own URL (<base>static/…). */
+export const editorBase = (scriptURL, basePath = globalThis.BASE_PATH) => basePath || new URL('../', scriptURL).pathname;
 export function previewURL(configured) {
   const url = new URL(configured);
   // n8n permits local HTTP previews on localhost; the iframe isolates cookies with credentialless.
@@ -57,7 +59,7 @@ export class ApiClient {
       headers });
     if (response.status === 304 && cached) return { data: cached.data, changed: false };
     if (!response.ok) throw Error(response.status === 401 || response.status === 403
-      ? 'Sessione scaduta o accesso negato. Accedi nuovamente e aggiorna.' : `Impossibile recuperare i dati (HTTP ${response.status}). Riprova con Aggiorna.`);
+      ? 'Session expired or access denied: sign in again and refresh.' : `Could not read the data (HTTP ${response.status}): try Refresh.`);
     const data = await response.json();
     this.cache.delete(path);
     this.cache.set(path, { etag: response.headers.get('ETag'), data });
@@ -76,9 +78,9 @@ export class LiveUpdates {
   connect() {
     if (this.events || this.closed) return;
     this.events = new EventSource(sessionURL(this.url), { withCredentials: true });
-    this.events.onopen = () => this.state('Aggiornamenti live connessi');
+    this.events.onopen = () => this.state('Live updates connected');
     this.events.addEventListener('change', () => this.change());
-    this.events.onerror = () => this.state('Riconnessione agli aggiornamenti live…');
+    this.events.onerror = () => this.state('Reconnecting to live updates…');
   }
   disconnect() { this.events?.close(); this.events = null; }
   destroy() { this.closed = true; this.disconnect(); document.removeEventListener('visibilitychange', this.visible); }
@@ -184,4 +186,19 @@ export function executionState(execution, activity = { active: [], recent: [] })
     }
   }
   return { states, tokens, active: terminal ? [] : activity.active, recent: activity.recent || [], terminal };
+}
+
+/** How the execution went, for the strip under its title: every step that ran, in the order it started, ok / error /
+ *  waiting, and the verdict (ok, failed, running). Only the flow's nodes: an agent's chat model or tool runs off it. */
+export function trace(execution) {
+  const runData = execution.data?.resultData?.runData || {}, flow = new Set();
+  for (const [source, outputs] of Object.entries(execution.workflowData?.connections || {})) {
+    for (const targets of outputs?.main || []) for (const t of targets || []) { flow.add(source); flow.add(t.node); }
+  }
+  const steps = Object.entries(runData).filter(([node]) => !flow.size || flow.has(node))
+    .flatMap(([node, runs]) => runs.map(run => ({ node, start: run.startTime ?? 0, ms: run.executionTime ?? 0,
+      status: run.error || run.executionStatus === 'error' ? 'error' : run.executionStatus === 'waiting' ? 'waiting' : 'ok' })))
+    .sort((a, b) => a.start - b.start);
+  const verdict = { success: 'ok', error: 'failed', crashed: 'failed', canceled: 'failed' }[execution.status] ?? 'running';
+  return { verdict, steps, failedAt: steps.find(s => s.status === 'error')?.node ?? null };
 }

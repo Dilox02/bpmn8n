@@ -1,0 +1,47 @@
+# Production, on top of docker-compose.yml (Compose 2.24 or later, for !reset):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# web runs the image of the Dockerfile: DEBUG=0, the code baked in (no source mount), no pip at boot, no --reload.
+# A TLS proxy in front publishes it; docs/GUIDE.md, "Production", lists the settings.
+services:
+  web:
+    image: ${BPMN8N_WEB_IMAGE:-bpmn8n-web:latest}  # or one your CI pushed to a registry
+    build: .
+    volumes: !reset []
+    command: !reset null  # the image's: migrate, then gunicorn
+    restart: unless-stopped
+    environment: &web-prod-env
+      DEBUG: "0"
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY, a long random string (python -c "import secrets; print(secrets.token_urlsafe(50))")}
+      BPMN8N_API_TOKEN: ${BPMN8N_API_TOKEN:?set BPMN8N_API_TOKEN, the token n8n's bpmn8n credential and Prometheus send}
+      # encrypts the LLM providers' API keys; empty: derived from SECRET_KEY (docs/GUIDE.md, "Data safety")
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+      # the public host names, comma-separated; web: n8n's nodes call http://web:8000 inside the network
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:?set ALLOWED_HOSTS, the public host names of bpmn8n (comma-separated)},web
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}  # e.g. https://bpmn8n.example.org
+      SECURE_PROXY_SSL_HEADER: ${SECURE_PROXY_SSL_HEADER:-}  # e.g. X-Forwarded-Proto, when the proxy sets it
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-0}
+      HSTS_SECONDS: ${HSTS_SECONDS:-31536000}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    # ponytail: Metrics samples (projects/*/run/, projects/.evaluations.sqlite3) live in the container and go
+    # with it on a redeploy; mount a volume on a project's run/ folder to keep them
+
+  scheduler:  # the same image and settings as web, running the jobs on a clock (run_deadlines, prune)
+    image: ${BPMN8N_WEB_IMAGE:-bpmn8n-web:latest}
+    volumes: !reset []
+    command: sh -c "until python manage.py migrate --check >/dev/null 2>&1; do sleep 3; done && exec python manage.py run_scheduler"
+    healthcheck: {disable: true}  # the image's checks web's port
+    environment:
+      <<: *web-prod-env
+
+  postgres:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+  n8n:
+    restart: unless-stopped
+  n8n-worker:
+    restart: unless-stopped
+  n8n-preview:
+    restart: unless-stopped
+  searxng:
+    restart: unless-stopped

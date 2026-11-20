@@ -1,3 +1,4 @@
+import type { SubscriptionIn } from './shared/contract';
 import { CORRELATION_KEY, SUBSCRIPTIONS } from './shared/messages';
 import { WaitingNode } from './shared/WaitingNode';
 
@@ -27,7 +28,7 @@ export class Bpmn8nReceiveTask extends WaitingNode {
 					name: ctx.getNodeParameter('message', 0) as string,
 					correlation_key: String(ctx.getNodeParameter('correlationKey', 0)),
 					resume_url: resumeUrl,
-				}),
+				} satisfies SubscriptionIn),
 		});
 	}
 }

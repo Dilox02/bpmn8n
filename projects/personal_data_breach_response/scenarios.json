@@ -1,0 +1,78 @@
+[
+  {
+    "name": "an outage without personal data is confirmed by a person and registered",
+    "start": {"reporter_email": "ops@example.org", "description": "the billing server was down for two hours",
+              "detected_at": "2026-11-18T10:30:00+00:00"},
+    "decisions": {"Personal Data Involved?": "no"},
+    "people": {
+      "Contain Incident": {"containment_actions": "failover to the standby server"},
+      "Confirm No Personal Data": {"personal_data": false, "assessment_notes": "availability only, no data lost"}
+    },
+    "expect": {
+      "path": ["Incident Reported", "Register Incident", "Contain Incident", "Personal Data Involved?",
+               "Confirm No Personal Data", "Overruled?", "Record in Breach Register"],
+      "variables": {"incident_id": "INC-20261118T1030", "authority_deadline": "2026-11-21T10:30:00+00:00",
+                    "authority_notified": false,
+                    "register_entry": "INC-20261118T1030: personal data no; risk no; authority not notified; reasons: availability only, no data lost"}
+    }
+  },
+  {
+    "name": "a high-risk leak is notified to the Garante with a drafted text and the people are informed",
+    "start": {"reporter_email": "it@example.org", "description": "a laptop with the customer list was stolen",
+              "detected_at": "2026-11-17T08:00:00+00:00"},
+    "decisions": {"Personal Data Involved?": "yes"},
+    "outputs": {"Draft Authority Notification": "Notification of personal data breach INC-20261117T0800: a laptop holding 2,300 customer records was stolen..."},
+    "people": {
+      "Contain Incident": {"containment_actions": "remote wipe requested, passwords rotated"},
+      "DPO Risk Assessment": {"personal_data": true, "risk_to_people": true, "high_risk": true,
+                              "assessment_notes": "unencrypted names, addresses and IBANs"},
+      "Review and Send to Garante": {"authority_sent": true, "final_text": "Notification sent through the Garante portal"},
+      "Inform Data Subjects": {"people_informed": true, "channel": "email"}
+    },
+    "expect": {
+      "path": ["Incident Reported", "Register Incident", "Contain Incident", "Personal Data Involved?",
+               "DPO Risk Assessment", "Notify Authority?", "Draft Authority Notification: prompt",
+               "Draft Authority Notification", "Draft Authority Notification: answer", "Draft Authority Notification: usage", "Review and Send to Garante",
+               "Inform People?", "Inform Data Subjects", "Record in Breach Register"],
+      "variables": {"authority_notified": true, "people_informed": true,
+                    "register_entry": "INC-20261117T0800: personal data yes; risk high; authority notified; reasons: unencrypted names, addresses and IBANs"}
+    }
+  },
+  {
+    "name": "a high risk the DPO did not also mark as a risk is still notified and the people informed",
+    "start": {"reporter_email": "sec@example.org", "description": "ransomware encrypted the patient archive",
+              "detected_at": "2026-11-15T21:10:00+00:00"},
+    "decisions": {"Personal Data Involved?": "yes"},
+    "outputs": {"Draft Authority Notification": "Notification of personal data breach INC-20261115T2110..."},
+    "people": {
+      "Contain Incident": {"containment_actions": "network isolated, restore from backup started"},
+      "DPO Risk Assessment": {"personal_data": true, "risk_to_people": false, "high_risk": true,
+                              "assessment_notes": "health data unavailable for days"},
+      "Review and Send to Garante": {"authority_sent": true, "final_text": "sent"},
+      "Inform Data Subjects": {"people_informed": true, "channel": "letter"}
+    },
+    "expect": {
+      "visits": ["Review and Send to Garante", "Inform Data Subjects"],
+      "ends": "Record in Breach Register",
+      "variables": {"authority_notified": true}
+    }
+  },
+  {
+    "name": "the person overrules Laya's no: the DPO assesses a low risk, nobody is notified",
+    "start": {"reporter_email": "hr@example.org", "description": "an HR spreadsheet was emailed to the wrong colleague",
+              "detected_at": "2026-11-16T15:45:00+00:00"},
+    "decisions": {"Personal Data Involved?": "no"},
+    "people": {
+      "Contain Incident": {"containment_actions": "the colleague deleted it and confirmed in writing"},
+      "Confirm No Personal Data": {"personal_data": true, "assessment_notes": "salaries of three employees"},
+      "DPO Risk Assessment": {"personal_data": true, "risk_to_people": false, "high_risk": false,
+                              "assessment_notes": "internal recipient bound by confidentiality, deleted"}
+    },
+    "expect": {
+      "visits": ["Confirm No Personal Data", "Overruled?", "DPO Risk Assessment", "Notify Authority?"],
+      "not": ["Draft Authority Notification", "Review and Send to Garante", "Inform Data Subjects"],
+      "ends": "Record in Breach Register",
+      "variables": {"authority_notified": false}
+    }
+  }
+]

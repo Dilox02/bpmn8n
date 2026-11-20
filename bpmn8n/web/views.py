@@ -3,60 +3,196 @@ the activities this server runs, and the documentation."""
 import inspect
 import re
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import NoReverseMatch, reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
+from .. import conf
 from ..api.tasks import TASK_KINDS, TASKS
 from ..clients.http import ServiceUnavailable
 from ..models import Event, TransitionError, UserTask
+from ..ops import health
+from .similar import similar_cases
 from .text import to_html
 
 ACTIONS = {  # what a person can do on the task page; the model allows it or raises TransitionError
     "claim": (lambda task, request: task.claim(request.user), "You claimed “{task}”."),
     "release": (lambda task, request: task.release(request.user), "You released “{task}”."),
     "complete": (lambda task, request: task.complete(request.user, task.clean_result(request.POST)), "“{task}” completed."),
+    "suspend": (lambda task, request: task.suspend(request.user),
+                "“{task}” is suspended: the process still waits, and nobody can claim it until it is resumed."),
+    "resume": (lambda task, request: task.resume(request.user), "“{task}” is back in its lane."),
+    "reassign": (lambda task, request: task.reassign(request.user, person(request)), "“{task}” is now {task.assignee}’s."),
+    "delegate": (lambda task, request: task.delegate(request.user, person(request)),
+                 "You handed “{task}” to {task.assignee}."),
 }
+FILTERS = {  # the inbox's tabs (?show=): which waiting tasks it lists
+    "": ("All", lambda tasks, user: tasks.workable()),
+    "mine": ("Mine", lambda tasks, user: tasks.workable().filter(assignee=user)),
+    "lanes": ("My lanes", lambda tasks, user: tasks.workable().filter(lane__in=user.groups.values("name"))),
+    "overdue": ("Overdue", lambda tasks, user: tasks.workable().overdue()),
+    "suspended": ("Suspended", lambda tasks, user: tasks.filter(status=UserTask.SUSPENDED)),
+}
+INPUTS = {"number": "number", "date": "date", "email": "email"}  # form field type -> <input type>
+
+
+@dataclass(frozen=True)
+class Nav:
+    """A sidebar entry: a page by URL name, or a setting that holds an address outside this server."""
+    target: str
+    label: str
+    icon: str  # templates/bpmn8n/icons/<icon>.svg
+    staff: bool = False
+
+
+# the sidebar; an entry shows once its URL name resolves, so a page added later appears without editing base.html
+NAV = (Nav("inbox", "Inbox", "inbox"), Nav("start_case", "Start a case", "start"), Nav("workload", "Workload", "workload"),
+       Nav("cases", "Cases", "cases"), Nav("insights", "Insights", "insights"),
+       Nav("simulation", "Simulation", "simulation", staff=True), Nav("studio", "Studio", "studio", staff=True),
+       Nav("activities", "Activities", "activities"),
+       Nav("workflows", "Workflows", "workflows"), Nav("landscape", "Landscape", "landscape"),
+       Nav("variables", "Variables", "variables", staff=True),
+       Nav("docs", "Docs", "docs"))
+NAV_BOTTOM = (Nav("api-1:openapi-view", "API", "api"), Nav("N8N_PUBLIC_URL", "Editor", "editor", staff=True),
+              Nav("admin:index", "Admin", "admin", staff=True))
+THEMES, THEME_COOKIE = (("system", "System"), ("light", "Light"), ("dark", "Dark")), "b8-theme"
+
+
+def nav_entries(items, request, counts=None):
+    """The entries this person may see and this server has, with their address and whether they are open."""
+    shown = []
+    for item in items:
+        if item.staff and not request.user.is_staff:
+            continue
+        if external := item.target.isupper():
+            href = getattr(conf.settings, item.target, "")
+        else:
+            try:
+                href = reverse(item.target)
+            except NoReverseMatch:  # a page this server does not have (yet)
+                continue
+        if href:
+            shown.append({"href": href, "label": item.label, "icon": f"bpmn8n/icons/{item.icon}.svg",
+                          "external": external, "count": (counts or {}).get(item.target),
+                          "current": not external and request.path.startswith(href)})
+    return shown
+
+
+def theme_of(request):
+    """The theme the person chose (the b8-theme cookie): system, light or dark."""
+    chosen = request.COOKIES.get(THEME_COOKIE)
+    return chosen if chosen in dict(THEMES) else "system"
 
 
 def navigation(request):
-    """Context processor: the inbox count in the sidebar and the person's stable hue."""
+    """Context processor: the theme on every page; for a person also the sidebar, with the inbox count
+    (suspended tasks wait for nobody), and their stable hue."""
+    context = {"theme": theme_of(request), "themes": THEMES}
     if not request.user.is_authenticated:
-        return {}
-    return {"waiting_count": UserTask.objects.waiting().for_user(request.user).count(),
-            "user_hue": zlib.crc32(request.user.username.encode()) % 360}
+        return context
+    waiting = UserTask.objects.workable().for_user(request.user).count()
+    return {**context, "status_dots": health.dots(), "waiting_count": waiting, "user_hue": zlib.crc32(request.user.username.encode()) % 360,
+            "nav": nav_entries(NAV, request, {"inbox": waiting}), "nav_bottom": nav_entries(NAV_BOTTOM, request)}
+
+
+@require_POST
+def theme(request):
+    """The theme switch: kept a year in the b8-theme cookie (n8n's hooks may read it: not HttpOnly), then back."""
+    back = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(back, {request.get_host()}, request.is_secure()):
+        back = "/"
+    response = redirect(back)
+    if (chosen := request.POST.get("theme")) in dict(THEMES):
+        response.set_cookie(THEME_COOKIE, chosen, max_age=365 * 24 * 3600, samesite="Lax")
+    return response
+
+
+def person(request):
+    """The person a reassign or a delegation hands the task to (the form's `username`)."""
+    if user := get_user_model().objects.filter(username=request.POST.get("username", ""), is_active=True).first():
+        return user
+    raise TransitionError("choose the person to hand the task to")
+
+
+def inbox_url(**query):
+    query = {k: v for k, v in query.items() if v}
+    return reverse("inbox") + (f"?{urlencode(query)}" if query else "")
 
 
 @login_required
 def inbox(request):
-    """Waiting tasks in the person's lanes, oldest first. ?workflow=&execution= (the link in n8n's node)
-    narrows it to one case, and opens the task when it is the only one."""
-    tasks = UserTask.objects.waiting().for_user(request.user).select_related("assignee").order_by("created")
+    """Waiting tasks in the person's lanes, most urgent first: overdue, then by priority, then the earliest
+    due, then the oldest. Tabs narrow it (?show=mine|lanes|overdue|suspended), and so does ?priority=.
+    ?workflow=&execution= (the link in n8n's node) narrows it to one case, and opens the task when it
+    is the only one."""
+    UserTask.objects.expire_due()
+    visible = UserTask.objects.waiting().for_user(request.user).select_related("assignee")
+    show = request.GET.get("show", "") if request.GET.get("show", "") in FILTERS else ""
+    priority = request.GET.get("priority", "") if request.GET.get("priority") in UserTask.PRIORITIES else ""
     if workflow := request.GET.get("workflow"):
         execution = request.GET.get("execution", "")
-        tasks = tasks.filter(case_id=f"{workflow}:{execution}") if execution.isdigit() else \
-            tasks.filter(case_id__startswith=f"{workflow}:")
+        tasks = visible.filter(case_id=f"{workflow}:{execution}") if execution.isdigit() else \
+            visible.filter(case_id__startswith=f"{workflow}:")
         if len(found := list(tasks[:2])) == 1:
             return redirect("task", found[0].pk)
-    tasks = list(tasks)
+    else:
+        visible = visible.filter(priority=priority) if priority else visible
+        tasks = FILTERS[show][1](visible, request.user)
+    tasks = list(tasks.by_urgency())
+    tabs = [{"label": label, "url": inbox_url(show=key, priority=priority), "current": key == show,
+             "count": pick(visible, request.user).count()} for key, (label, pick) in FILTERS.items()]
+    priorities = [{"label": label, "url": inbox_url(show=show, priority=p), "current": p == priority}
+                  for p, label in (("", "Any priority"), *((p, p.capitalize()) for p in reversed(UserTask.PRIORITIES)))]
     done = UserTask.objects.filter(status=UserTask.COMPLETED).for_user(request.user).select_related("assignee")
-    return render(request, "bpmn8n/inbox.html", {"tasks": tasks, "oldest": tasks[0] if tasks else None,
-                                                 "filtered": bool(workflow), "done": done.order_by("-completed")[:5]})
+    return render(request, "bpmn8n/inbox.html", {
+        "tasks": tasks, "first": tasks[0] if tasks else None, "oldest": min(tasks, key=lambda t: t.created, default=None),
+        "overdue": sum(t.overdue for t in tasks), "tabs": tabs, "priorities": priorities, "show": FILTERS[show][0],
+        "narrowed": bool(show or priority), "filtered": bool(workflow), "done": done.order_by("-completed")[:5]})
+
+
+def form_fields(task, values=None, errors=None):
+    """The task's form as the page draws it: defaults filled in (older forms have only name, label and
+    type), with what was submitted and the error of each field."""
+    values, errors, fields = values or {}, errors or {}, []
+    for i, f in enumerate(task.form, 1):
+        kind, error = f.get("type", "string"), " ".join(errors.get(f["name"], []))
+        fields.append({**f, "id": f"field-{i}", "label": f.get("label") or f["name"], "type": kind,
+                       "input": INPUTS.get(kind, "text"), "required": kind != "boolean" and f.get("required", True),
+                       "options": f.get("options", []), "help": f.get("help", ""), "value": values.get(f["name"], ""),
+                       "error": error, "described": " ".join(
+                           id_ for id_, shown in ((f"help-{i}", f.get("help")), (f"error-{i}", error)) if shown)})
+    return fields
+
+
+def task_page(request, task, values=None, errors=None, status=200):
+    trail = Event.objects.filter(case_id=task.case_id, started__lt=task.created).order_by("started") if task.case_id else []
+    allowed = task.allowed(request.user)
+    similar, similar_how = similar_cases(task, request.user)
+    return render(request, "bpmn8n/task.html", {
+        "similar": similar, "similar_how": similar_how,
+        "task": task, "mine": task.assignee_id == request.user.pk, "trail": trail, "allowed": allowed,
+        "barred": task.barred(request.user) if task.status in task.WORKABLE else "",
+        "fields": form_fields(task, values, errors),
+        "candidates": task.candidates().exclude(pk=task.assignee_id) if {"reassign", "delegate"} & set(allowed) else []},
+        status=status)
 
 
 @login_required
 def task(request, pk):
-    task = get_object_or_404(UserTask.objects.for_user(request.user).select_related("assignee"), pk=pk)
-    trail = Event.objects.filter(case_id=task.case_id, started__lt=task.created).order_by("started") if task.case_id else []
-    return render(request, "bpmn8n/task.html", {"task": task, "mine": task.assignee_id == request.user.pk,
-                                                "trail": trail})
+    UserTask.objects.filter(pk=pk).expire_due()
+    return task_page(request, get_object_or_404(UserTask.objects.for_user(request.user).select_related("assignee"), pk=pk))
 
 
 @login_required
@@ -69,8 +205,9 @@ def act(request, pk, action):
     try:
         do(task, request)
         messages.success(request, done.format(task=task))
-    except ValidationError as e:
-        messages.error(request, "; ".join(f"{k}: {', '.join(v)}" for k, v in e.message_dict.items()))
+    except ValidationError as e:  # the form again, each error next to its field
+        messages.error(request, "Some fields need another look: see below.")
+        return task_page(request, task, request.POST, e.message_dict, status=422)
     except TransitionError as e:  # someone else was faster, or n8n no longer waits (Cancelled)
         messages.warning(request, str(e))
     except ServiceUnavailable:

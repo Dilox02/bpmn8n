@@ -56,18 +56,19 @@ def test_uc2_business_expense_is_approved_by_a_manager(deploy, n8n_api, web_api,
     known = set(event_log.cases())
     expense = {"employee": "ann@acme.test", "category": "meal", "amount": 180, "attendees": 2,
                "justification": "Dinner with the Contoso procurement team to close the 2027 renewal contract."}
+    before = {t["id"] for t in web_api.get("/api/usertasks").json()}  # tasks other runs may have left open
     assert n8n_api.post(f"{N8N}/webhook/{path}", data=expense).ok
-    wait_user_task(web_api, "Approve Expense")
+    task = wait_open(web_api, "/api/usertasks", lambda t: t["activity"] == "Approve Expense" and t["id"] not in before)
 
     page.goto(f"{WEB}/inbox/")  # -> login
     page.get_by_label("Username").fill(manager["username"])
     page.get_by_label("Password").fill(manager["password"])
     page.get_by_role("button", name="Sign in").click()
-    card = page.get_by_role("article").filter(has_text="ann@acme.test").last
-    expect(card).to_contain_text("within_policy")
-    card.get_by_label("Approve").check()
-    card.get_by_label("Note").fill("OK, strategic customer.")
-    card.get_by_role("button", name="Complete").click()
+    page.locator(f'a[href="/inbox/{task["id"]}/"]').click()  # the inbox lists this case's task, its page works
+    expect(page.get_by_role("main")).to_contain_text("within_policy")  # the case data the person decides on
+    page.get_by_label("Approve").check()
+    page.get_by_label("Note").fill("OK, strategic customer.")
+    page.get_by_role("button", name="Complete").click()
     expect(page.get_by_role("status")).to_contain_text("completed")
 
     rows = event_log.wait_for_case(known, until=lambda acts: acts[-1] == "Notify Employee")

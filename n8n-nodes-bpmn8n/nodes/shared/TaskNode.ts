@@ -6,6 +6,7 @@ import type {
 	ResourceMapperValue,
 } from 'n8n-workflow';
 import { Bpmn8nClient, bpmnDescription, routeItems } from './Bpmn8nClient';
+import type { RunOut } from './contract';
 import { EXTRACTION_DETAILS, INPUT_PROPERTIES, inputRequest, unpackReply, type InputMode } from './input';
 import { OUTPUT_PROPERTIES, shapeOutput, type OutputMode } from './output';
 
@@ -84,7 +85,7 @@ export abstract class TaskNode implements INodeType {
 				this.getNodeParameter('minConfidence', i, 0.5) as number,
 				this.getNodeParameter('verify', i, false) as boolean,
 			);
-			const { result, extraction } = unpackReply(await client.post(path, body, i));
+			const { result, extraction } = unpackReply(await client.post<RunOut>(path, body, i));
 			const json = shapeOutput(
 				this.getNodeParameter('output', i, 'result') as OutputMode,
 				item.json,

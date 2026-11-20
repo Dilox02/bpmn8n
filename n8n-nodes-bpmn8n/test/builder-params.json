@@ -1,0 +1,119 @@
+{
+  "CUSTOM.bpmn8nBusinessRuleTask": [
+    "input",
+    "output",
+    "task"
+  ],
+  "CUSTOM.bpmn8nCallActivity": [
+    "inputs",
+    "outputs",
+    "workflowId"
+  ],
+  "CUSTOM.bpmn8nErrorEndEvent": [
+    "code",
+    "message"
+  ],
+  "CUSTOM.bpmn8nEventBasedGateway": [
+    "amount",
+    "branches",
+    "correlationKey",
+    "mode",
+    "unit"
+  ],
+  "CUSTOM.bpmn8nExclusiveGateway": [
+    "branches",
+    "decider",
+    "decisionScope",
+    "minConfidence",
+    "question",
+    "state"
+  ],
+  "CUSTOM.bpmn8nGlobalVariable": [
+    "by",
+    "key",
+    "operation",
+    "output",
+    "ttl",
+    "value"
+  ],
+  "CUSTOM.bpmn8nInclusiveGateway": [
+    "branches",
+    "decider",
+    "decisionScope",
+    "minConfidence",
+    "question",
+    "state"
+  ],
+  "CUSTOM.bpmn8nManualTask": [
+    "context",
+    "description",
+    "due",
+    "dueUntil",
+    "form",
+    "lane",
+    "priority",
+    "title"
+  ],
+  "CUSTOM.bpmn8nMetrics": [
+    "label",
+    "metrics",
+    "project"
+  ],
+  "CUSTOM.bpmn8nParallelGateway": [
+    "branches"
+  ],
+  "CUSTOM.bpmn8nReceiveTask": [
+    "correlationKey",
+    "message"
+  ],
+  "CUSTOM.bpmn8nScriptTask": [
+    "input",
+    "output",
+    "task"
+  ],
+  "CUSTOM.bpmn8nSendTask": [
+    "input",
+    "output",
+    "task"
+  ],
+  "CUSTOM.bpmn8nServiceTask": [
+    "includeExtraction",
+    "input",
+    "inputFrom",
+    "output",
+    "task",
+    "text"
+  ],
+  "CUSTOM.bpmn8nSignalCatch": [
+    "signal"
+  ],
+  "CUSTOM.bpmn8nTerminateEndEvent": [
+    "reason"
+  ],
+  "CUSTOM.bpmn8nTimerEvent": [
+    "amount",
+    "mode",
+    "unit",
+    "until"
+  ],
+  "CUSTOM.bpmn8nUserTask": [
+    "assignee",
+    "completion",
+    "context",
+    "deadline",
+    "description",
+    "due",
+    "dueAmount",
+    "dueUnit",
+    "dueUntil",
+    "escalateTo",
+    "form",
+    "lane",
+    "notSameAs",
+    "priority",
+    "quorum",
+    "remindAmount",
+    "remindUnit",
+    "title"
+  ]
+}

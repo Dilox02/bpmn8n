@@ -43,6 +43,17 @@
       "output": {
         "authority_notified": false
       }
+    },
+    {
+      "input": {
+        "incident_id": "INC-3",
+        "personal_data": true,
+        "risk_to_people": false,
+        "high_risk": true
+      },
+      "output": {
+        "authority_notified": true
+      }
     }
   ]
 }

@@ -64,6 +64,14 @@
     </section>
     {% endif %}{% endwith %}
 
+    {% if capacity %}
+    <section class="capacity-card" aria-labelledby="capacity">
+      <div class="section-head"><h2 id="capacity">Capacity</h2><a class="inline-link" href="{{ capacity.url }}">Open the simulation</a></div>
+      <p>{% if not capacity.steady %}{{ capacity.note|capfirst }}.{% elif not capacity.bottleneck %}No step waits for people: a case takes {{ capacity.cycle_time }} on average.{% elif not capacity.stable %}<b>{{ capacity.bottleneck }}</b> cannot keep up (ρ = {{ capacity.utilisation|floatformat:2 }}): its queue grows without bound.{% else %}The bottleneck is <b>{{ capacity.bottleneck }}</b>, busy {% widthratio capacity.utilisation 1 100 %} % of the time (ρ = {{ capacity.utilisation|floatformat:2 }}); a case takes {{ capacity.cycle_time }} on average.{% endif %}</p>
+      <p class="meta">In closed form, from <span class="mono">simulation.json</span> and the elements' defaults: what-if, staffing and the simulation are on its page.</p>
+    </section>
+    {% endif %}
+
     <section aria-labelledby="canvas">
       <div class="section-head"><h2 id="canvas">Workflow</h2>{% if workflow %}<span class="meta">read-only, as n8n draws it</span>{% endif %}</div>
       {% if workflow %}
@@ -99,8 +107,7 @@
   // the workflow in n8n's preview: it says n8nReady and is sent the workflow, in the page's light or dark
   const frame = document.getElementById('preview');
   if (frame) {
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    frame.src = `${frame.dataset.src}?theme=${dark ? 'dark' : 'light'}`;
+    frame.src = `${frame.dataset.src}?theme=${b8Theme()}`;
     const workflow = JSON.parse(document.getElementById('workflow').textContent);
     addEventListener('message', e => {
       if (e.source !== frame.contentWindow) return;

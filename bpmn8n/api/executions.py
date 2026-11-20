@@ -4,13 +4,19 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from ..core.evaluations import EvaluationStore
-from ..models import Event
+from ..models import Event, UserTask
 from .conditional import conditional, revision
 from .evaluations import evaluation_read_auth
 from .tasks import TASKS
 from .stream import ChangeStream
 
 router = Router(tags=["executions"])
+
+
+@router.get("/{workflow_id}/waiting", auth=evaluation_read_auth)
+def waiting(request, workflow_id: str):
+    """How many tasks wait for people (the inbox's count): what the strip in n8n's editor shows beside Inbox."""
+    return {"waiting": UserTask.objects.workable().count(), "overdue": UserTask.objects.workable().overdue().count()}
 
 
 @router.get("/{workflow_id}/{execution_id}/stream", auth=evaluation_read_auth)
@@ -54,22 +60,25 @@ def activity(request, workflow_id: str, execution_id: str):
                                      recent=[as_row(e) for e in completed.order_by("-ended", "-id")[:100]]), tag)
 
 
+def preview(value, depth=0):
+    """A bounded copy of an event's data, to show: 5 levels, 2000 characters, 20 items, 50 keys."""
+    if depth >= 5:
+        return "[deeper levels: open n8n's inspector]"
+    if isinstance(value, str):
+        return value if len(value) <= 2000 else value[:2000] + f"… [{len(value)} characters]"
+    if isinstance(value, list):
+        return [preview(v, depth+1) for v in value[:20]] + ([f"… {len(value)-20} more items"] if len(value) > 20 else [])
+    if isinstance(value, dict):
+        result = {k: preview(v, depth+1) for k, v in list(value.items())[:50]}
+        if len(value) > 50:
+            result["…"] = f"{len(value)-50} more keys"
+        return result
+    return value
+
+
 @router.get("/{workflow_id}/{execution_id}/activity/{event_id}", auth=evaluation_read_auth)
 def invocation(request, workflow_id: str, execution_id: str, event_id: int):
     event = Event.objects.filter(pk=event_id, case_id=f"{workflow_id}:{execution_id}").first()
     if not event:
         raise HttpError(404, "Invocation not found")
-    def preview(value, depth=0):
-        if depth >= 5:
-            return "[ulteriori livelli: usa l’ispettore n8n]"
-        if isinstance(value, str):
-            return value if len(value) <= 2000 else value[:2000] + f"… [{len(value)} caratteri]"
-        if isinstance(value, list):
-            return [preview(v, depth+1) for v in value[:20]] + ([f"… altri {len(value)-20} elementi"] if len(value) > 20 else [])
-        if isinstance(value, dict):
-            result = {k: preview(v, depth+1) for k, v in list(value.items())[:50]}
-            if len(value) > 50:
-                result["…"] = f"Altre {len(value)-50} proprietà"
-            return result
-        return value
     return {"input": preview(event.data.get("input")), "output": preview(event.data.get("output")), "error": event.error}

@@ -2,7 +2,7 @@
   "name": "Hospital · Intelligent appointment booking",
   "nodes": [
     {
-      "id": "629d56f2-fb74-417c-bebb-e684393d7726",
+      "id": "6d9afd23-1656-5d66-9955-07a85982b0bf",
       "name": "Patient request",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,10 +16,10 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "webhookId": "56cb11f6-c029-44a0-a194-ff42c0768988"
+      "webhookId": "9d1be1b9-f182-5c4d-ba8c-e8198b3eb39c"
     },
     {
-      "id": "cbd322ed-ea06-4bbf-9386-46af9c96acd2",
+      "id": "6690d119-fa77-5463-bbb9-8fbe9ca135a9",
       "name": "A · Clarify request",
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
@@ -40,7 +40,7 @@
       "notes": "Agent responsibility A (#096D76)"
     },
     {
-      "id": "68e88ba0-553c-4dc7-b67f-e430f5acd664",
+      "id": "91127486-e210-5e63-aebd-bde86095fc15",
       "name": "Patient reviews details",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
@@ -83,10 +83,10 @@
           ]
         }
       },
-      "webhookId": "5a250bf6-3c13-4a90-9e04-f311ba83e419"
+      "webhookId": "7da9829b-290f-5de9-a829-24a56f9024fc"
     },
     {
-      "id": "217f02bd-6c46-484b-8f35-8280c26a9f88",
+      "id": "b9175c4c-dc57-5b75-9295-502a9c635f8d",
       "name": "Continue?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
@@ -112,13 +112,13 @@
       "notes": "Agent responsibility C (#305C99)"
     },
     {
-      "id": "77a69ec1-bbe4-44cf-863f-fb1467a4613e",
+      "id": "ce4481d3-fab0-5b64-8c86-f7b7f315b75b",
       "name": "B · Check requirements",
       "type": "CUSTOM.bpmn8nBusinessRuleTask",
       "typeVersion": 1,
       "position": [
         1120,
-        0
+        200
       ],
       "parameters": {
         "task": "/api/tasks/validate_hospital_request",
@@ -133,13 +133,13 @@
       "notes": "Agent responsibility B (#96461D)"
     },
     {
-      "id": "ed4c1e1f-4f3d-4242-b950-6fdf244467da",
+      "id": "e3a3c253-06ee-54e9-ad21-e7c802171280",
       "name": "Valid?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
         1400,
-        0
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -158,13 +158,13 @@
       }
     },
     {
-      "id": "118fe0bc-9854-4d63-a73a-b627801b30d5",
+      "id": "bf108d1e-ae33-5603-8787-2f14c60452f6",
       "name": "C · Find slots",
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
       "position": [
         1680,
-        -100
+        200
       ],
       "parameters": {
         "task": "/api/tasks/find_hospital_slots",
@@ -179,13 +179,13 @@
       "notes": "Agent responsibility C (#305C99)"
     },
     {
-      "id": "55f5ea3b-dbb2-4bd0-a7ca-ab7adcf963f9",
+      "id": "6ddf4a34-80af-5346-b436-f53c6f12f5be",
       "name": "Slots available?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
         1960,
-        0
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -204,19 +204,19 @@
       }
     },
     {
-      "id": "2e9808fd-0a93-49fb-ad3a-9b1617642df8",
+      "id": "0b9afb9d-af01-592d-9e11-d63f8b43845f",
       "name": "Patient chooses slot",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
         2240,
-        -100
+        200
       ],
       "parameters": {
         "title": "Choose an available appointment",
         "lane": "patients",
         "description": "",
-        "context": "{{slots}}",
+        "context": "{\"Available slots\": \"{{slots}}\"}",
         "form": {
           "fields": [
             {
@@ -232,16 +232,16 @@
           ]
         }
       },
-      "webhookId": "2f833bd0-7d02-4de7-9273-408282370a4a"
+      "webhookId": "a0aee190-29a4-5489-80ba-9ce55548803b"
     },
     {
-      "id": "82c74685-f0a5-4e2d-8062-be4748b6ecac",
+      "id": "1cf2830e-0a1d-5ff1-8a73-4be50ea8ec0f",
       "name": "Selected?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
         2520,
-        0
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -260,13 +260,13 @@
       }
     },
     {
-      "id": "8de1233d-f179-4f93-8719-430bc879e57c",
+      "id": "412a6847-a431-547b-9248-23f8835aeae8",
       "name": "C · Reserve slot",
       "type": "CUSTOM.bpmn8nServiceTask",
       "typeVersion": 1,
       "position": [
         2800,
-        -100
+        200
       ],
       "parameters": {
         "task": "/api/tasks/reserve_hospital_slot",
@@ -281,13 +281,13 @@
       "notes": "Agent responsibility C (#305C99)"
     },
     {
-      "id": "4ced2955-e829-428d-afef-ee647eea7c0c",
+      "id": "eda1ebd6-f8c4-5ccc-ad1d-272716c5d55a",
       "name": "Booked?",
       "type": "CUSTOM.bpmn8nExclusiveGateway",
       "typeVersion": 1,
       "position": [
         3080,
-        0
+        200
       ],
       "parameters": {
         "decider": "conditions",
@@ -307,33 +307,33 @@
       "notes": "Agent responsibility B (#96461D)"
     },
     {
-      "id": "ce3aad9a-81ba-42e2-962c-911aa0e46e66",
+      "id": "c52720ff-a24f-5701-909a-c1d0ad763bc2",
       "name": "Patient sees confirmation",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
         3360,
-        0
+        200
       ],
       "parameters": {
         "title": "Appointment confirmed",
         "lane": "patients",
         "description": "",
-        "context": "{{confirmation}}",
+        "context": "{\"Confirmation\": \"{{confirmation}}\"}",
         "form": {
           "fields": []
         }
       },
-      "webhookId": "8a280e74-fba7-4348-979e-a48f8cfc6f35"
+      "webhookId": "16774edc-19d0-5731-be63-7e3a76ea864f"
     },
     {
-      "id": "cdd73b67-1d09-4943-a9e2-5b94df1289f0",
+      "id": "11b1af47-c954-5d20-9e48-e41d2bd08d01",
       "name": "Patient changes preferences",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
         2240,
-        100
+        400
       ],
       "parameters": {
         "title": "No matching slot. Choose other dates or stop",
@@ -370,22 +370,22 @@
           ]
         }
       },
-      "webhookId": "c78ff0b8-6d68-4d7f-b89a-e8df05661633"
+      "webhookId": "4c10e2f5-82e7-5279-89b6-9a5af0b0af3a"
     },
     {
-      "id": "143cf844-a58e-4fcb-b407-fa104f0c23e0",
+      "id": "b298b1c3-d5e5-50d5-8e5b-b4ef7269d753",
       "name": "0 · Staff referral",
       "type": "CUSTOM.bpmn8nUserTask",
       "typeVersion": 1,
       "position": [
         1680,
-        100
+        400
       ],
       "parameters": {
         "title": "Resolve the booking request",
         "lane": "hospital-staff",
         "description": "",
-        "context": "{{reason}}",
+        "context": "{\"Reason\": \"{{reason}}\"}",
         "form": {
           "fields": [
             {
@@ -396,17 +396,17 @@
           ]
         }
       },
-      "webhookId": "51a8c035-68e7-49d7-9d45-f9836b3fd7d0",
+      "webhookId": "d7a3eea5-fe5a-501d-893e-7d39701e6816",
       "notes": "Agent responsibility 0 (#674497)"
     },
     {
-      "id": "6f0ac0b2-d7fa-4ebd-95d0-c2417b51d879",
+      "id": "8534f3a8-abfa-54b1-bdf2-04ad86b556d6",
       "name": "Request closed",
       "type": "CUSTOM.bpmn8nManualTask",
       "typeVersion": 1,
       "position": [
         2800,
-        100
+        0
       ],
       "parameters": {
         "title": "Patient ended the booking request",
@@ -417,7 +417,7 @@
           "fields": []
         }
       },
-      "webhookId": "d298fb74-4bd9-4845-b60e-02d6dba138c8"
+      "webhookId": "3e08746d-7c6a-5d09-85e0-8c55604b97ab"
     }
   ],
   "connections": {

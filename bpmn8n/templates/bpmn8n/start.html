@@ -1,0 +1,41 @@
+{% extends "bpmn8n/base.html" %}
+{% block title %}Start a case{% endblock %}
+{% block crumbs %}<span>Start a case</span>{% endblock %}
+{% block main %}
+<div class="title-row"><div><h1>Start a case</h1>
+  <p class="sub">The processes a webhook starts. Each form is generated from the process contract: its start data, typed, required as declared.</p></div></div>
+{% if failure %}<p class="notice error" role="alert">{{ failure }}</p>{% endif %}
+{% for p in processes %}
+<section class="panel" aria-labelledby="p-{{ forloop.counter }}">
+  <header><h2 id="p-{{ forloop.counter }}">{{ p.name }}</h2><span class="meta mono">POST /webhook/{{ p.path }}</span></header>
+  {% if answer and chosen == p.path %}
+    <p class="notice success" role="status">n8n took it.{% if case_id %} <a href="/cases/{{ case_id|urlencode:'' }}/">Open the case</a>{% else %} <a href="{% url 'inbox' %}">Go to the inbox</a>{% endif %}</p>
+    <pre class="mono">{{ answer }}</pre>
+  {% endif %}
+  <form class="fields" method="post" action="{% url 'start_run' p.path %}">
+    {% csrf_token %}
+    {% for f in p.fields %}
+      <div class="field">
+        {% if f.kind == "boolean" %}
+          <label class="check"><input type="checkbox" name="{{ f.name }}"{% if f.checked %} checked{% endif %}> {{ f.name }}</label>
+        {% elif f.kind == "choice" %}
+          <label for="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{{ f.name }}{% if not f.required %} <span class="meta">optional</span>{% endif %}</label>
+          <select class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" name="{{ f.name }}"{% if f.required %} required{% endif %}>
+            <option value=""></option>{% for o in f.options %}<option value="{{ o }}"{% if f.value == o %} selected{% endif %}>{{ o }}</option>{% endfor %}
+          </select>
+        {% else %}
+          <label for="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{{ f.name }}{% if not f.required %} <span class="meta">optional</span>{% endif %}</label>
+          {% if f.kind == "json" %}<textarea class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" name="{{ f.name }}" rows="3"{% if f.required %} required{% endif %}>{{ f.value }}</textarea>
+          {% else %}<input class="input" id="f-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" type="{% if f.kind == 'number' %}number{% elif f.kind == 'date' %}date{% else %}text{% endif %}" name="{{ f.name }}"{% if f.kind == "number" %} step="any"{% endif %} value="{{ f.value }}"{% if f.required %} required{% endif %}>{% endif %}
+        {% endif %}
+        {% if f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+        {% if f.error %}<p class="error">{{ f.error }}</p>{% endif %}
+      </div>
+    {% empty %}<p class="muted">This process takes no start data.</p>{% endfor %}
+    <div class="form-actions"><button class="btn primary" type="submit">Start</button></div>
+  </form>
+</section>
+{% empty %}
+<p class="empty">No process starts by a webhook here yet. Build one in Studio, or publish it in n8n.</p>
+{% endfor %}
+{% endblock %}

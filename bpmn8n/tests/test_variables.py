@@ -47,6 +47,17 @@ class ProcessVariablesTest(TestCase):
         self.assertEqual((decision["decider"], decision["output"]["branches"]), ("conditions", ["big"]))
         self.assertEqual(decision["input"]["state"]["amount"], 1500)  # what was decided on: for decision mining
 
+    def test_what_a_sub_process_returns_next_to_the_webhook_body_decides(self):
+        """A Call Activity's results sit next to the webhook's body in the item; the case of the calling
+        execution never saw them (the sub-process's steps wrote to its own case)."""
+        self.post("/api/gateways/conditions", {"kind": "exclusive", "item": {"done": False},
+                                               "conditions": {"done": "{{done}} == true"}})  # the case: not done
+        item = {"headers": {"host": "x"}, "params": {}, "query": {}, "webhookUrl": "u", "executionMode": "production",
+                "body": {"run_dir": "r", "done": False}, "done": True}
+        r = self.post("/api/gateways/conditions", {"kind": "exclusive", "item": item,
+                                                   "conditions": {"done": "{{done}} == true"}})
+        self.assertEqual(r.json()["branches"], ["done"])
+
     def test_tasks_keep_input_and_output_in_the_event_log(self):
         self.post("/api/tasks/calculate_refund/run", {"fields": {"amount": "120"}})
         data = Event.objects.get(case_id="wf1:7", endpoint="calculate_refund").data

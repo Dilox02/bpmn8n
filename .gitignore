@@ -62,3 +62,13 @@ playwright-report/
 !/projects/motor_insurance_claim/
 !/projects/personal_data_breach_response/
 /requirements.local.txt
+
+# collectstatic output (production images collect their own)
+/staticfiles/
+
+# Claude Code agents' git worktrees
+/.claude/worktrees/
+
+# Operations output: backups (python -m bpmn8n backup) and pruned events (manage.py prune)
+/backups/
+/archive/

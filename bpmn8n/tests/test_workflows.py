@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase
 from projects.acme.processes import PROCESSES
 from ..workflows import SpecError, Workflow
 from ..workflows.check import WorkflowCheck
+from ..workflows.rules import PeopleDecide
 
 EXAMPLES = Path(__file__).parents[2] / "examples" / "workflows"
 LANES = ("managers", "librarians", "support-leads", "soc-analysts")
@@ -35,9 +36,21 @@ class BuilderTest(SimpleTestCase):
                   {"from": "Join", "to": ["Decide"]},
                   {"from": "Decide", "branch": "default", "to": ["Review"]}]}
 
+    def test_the_same_spec_builds_the_same_ids_and_another_workflow_other_ids(self):
+        spec = {**self.SPEC, "steps": [*self.SPEC["steps"], {"type": "llm_agent", "name": "Draft", "prompt": "{{item}}",
+                                                            "output": "draft"}]}
+        first, again = Workflow.from_spec(spec).as_json(), Workflow.from_spec(spec).as_json()
+        self.assertEqual(first, again)  # a regenerated workflow.json diffs only where the spec changed
+        ids = [n["id"] for n in first["nodes"]]
+        self.assertEqual(len(set(ids)), len(ids))
+        other = Workflow.from_spec({**spec, "name": "Other purchases"}).as_json()
+        self.assertFalse(set(ids) & {n["id"] for n in other["nodes"]})
+        self.assertNotEqual(first["nodes"][0]["webhookId"], other["nodes"][0]["webhookId"])
+
     def test_only_explicit_technical_condition_gateways_run_without_a_person(self):
         def human_rules(workflow):
-            return {(p.node, p.rule, p.level) for p in WorkflowCheck(workflow, fetch=lambda _: None).people_decide()}
+            check = WorkflowCheck(workflow, fetch=lambda _: None)
+            return {(p.node, p.rule, p.level) for p in PeopleDecide().check(check)}
 
         def technical(scope=None):
             return (Workflow("Dataset batches").start("In", "dataset")
@@ -147,7 +160,7 @@ class BuilderTest(SimpleTestCase):
                 ([start, {"type": "gateway", "name": "G", "kind": "exclusive", "question": "q", "branches": ["a"]}],
                  "AttributeError"),
                 ([start, {"type": "user_task", "name": "U", "title": "t", "lane": "l",
-                          "form": [{"name": "ok", "label": "OK", "type": "boolean"}]}], r"\[name, label, type\]"),
+                          "form": {"ok": "boolean"}}], r"\[name, label, type\]"),
                 ([start, {"type": "event_gateway", "name": "E", "messages": ["m"], "correlation_key": "k",
                           "timeout": {"amount": 1}}], "KeyError")):
             with self.subTest(error), self.assertRaisesRegex(SpecError, error):
@@ -157,7 +170,7 @@ class BuilderTest(SimpleTestCase):
         self.assertEqual(workflow.connections["In"]["main"][0][0]["node"], "Wait")  # null branch, a single "to"
 
 
-    def test_an_llm_agent_is_four_nodes_with_its_chat_model(self):
+    def test_an_llm_agent_is_five_nodes_with_its_chat_model(self):
         model = {"type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini", "typeVersion": 1.2,
                  "parameters": {"modelName": "models/gemini-3.5-flash"}, "credentials": {"googlePalmApi": {"id": "7"}}}
         workflow = Workflow.from_spec({"steps": [
@@ -166,8 +179,8 @@ class BuilderTest(SimpleTestCase):
             {"type": "user_task", "name": "Review", "title": "Review", "lane": "managers", "form": []}],
             "flows": [{"from": "In", "to": ["Draft", "Review"]}]}, chat_model=model).as_json()
         nodes, links = {n["name"]: n for n in workflow["nodes"]}, workflow["connections"]
-        self.assertEqual([links[n]["main"][0][0]["node"] for n in ("In", "Draft: prompt", "Draft", "Draft: answer")],
-                         ["Draft: prompt", "Draft", "Draft: answer", "Review"])
+        self.assertEqual([links[n]["main"][0][0]["node"] for n in ("In", "Draft: prompt", "Draft", "Draft: answer", "Draft: usage")],
+                         ["Draft: prompt", "Draft", "Draft: answer", "Draft: usage", "Review"])
         self.assertEqual(links["Draft: model"], {"ai_languageModel": [[{"node": "Draft", "type": "ai_languageModel", "index": 0}]]})
         self.assertEqual(nodes["Draft: model"]["credentials"], {"googlePalmApi": {"id": "7"}})
         self.assertEqual(nodes["Draft: prompt"]["parameters"]["input"]["value"], {"prompt": "Reply to {{message}}"})
@@ -188,7 +201,8 @@ class CheckTest(TestCase):
             problems = WorkflowCheck(json.loads(path.read_text()), fetch=lambda _: None).problems
             self.assertEqual([p for p in problems if p.level == "error"], [], path.name)
         self.assertEqual(rules(PROCESSES["ticket-triage"]().as_json()),  # it refunds and closes tickets on its own
-                         {("", "start-data", "info"), ("Route Ticket", "human", "warning")})
+                         {("", "start-data", "info"), ("Route Ticket", "human", "warning"),
+                          ("Triage Ticket", "handoffs", "info")})
 
     def test_people_take_the_final_decisions(self):
         def agent(*after):
@@ -222,6 +236,24 @@ class CheckTest(TestCase):
         self.assertTrue({("Ghost", "task", "error"), ("Wrong Node", "task", "error"),
                          ("Bad Condition", "condition", "error"), ("Bad Condition", "condition", "warning"),
                          ("Bad Condition", "output", "warning"), ("Orphan", "reachable", "error")} <= rules(workflow))
+
+    def test_a_user_task_context_is_an_object(self):
+        w = Workflow("Review").start("In", "in")
+        w.user_task("Check", "Check", "managers", form=[["ok", "OK", "boolean"]], context={"Report": "{{report}}"})
+        self.assertEqual(json.loads(w.node("Check")["parameters"]["context"]), {"Report": "{{report}}"})
+        with self.assertRaises(ValueError):  # the node would fail on it at run time
+            Workflow("Review").user_task("Check", "Check", "managers", form=[], context="Report: {{report}}")
+
+    def test_a_sub_process_starts_from_its_caller(self):
+        sub = (Workflow("Batch").subprocess_start("Called").task("Score", "businessRuleTask", "check_expense_policy")
+               .flow("Called", "Score")).as_json()
+        self.assertEqual(sub["nodes"][0]["type"], "n8n-nodes-base.executeWorkflowTrigger")
+        self.assertFalse({p for p in rules(sub) if p[1] in ("trigger", "reachable", "empty")})
+        caller = Workflow("Main").start("In", "in").call_activity("Batch", "7").flow("In", "Batch").as_json()
+        check = lambda active: {(p.node, p.rule, p.level) for p in WorkflowCheck(  # noqa: E731
+            caller, fetch=lambda _: {**sub, "active": active}).problems}
+        self.assertIn(("Batch", "subprocess", "warning"), check(False))  # n8n 2 would not run it
+        self.assertNotIn(("Batch", "subprocess", "warning"), check(True))
 
     def test_metrics_must_be_able_to_decide(self):
         def measured(*metrics, gate=False):
@@ -259,7 +291,8 @@ class CheckTest(TestCase):
                     .task("Refund", "businessRuleTask", "calculate_refund")
                     .flow("Start", "Route", "Approve", "Refund")).as_json()
         self.assertEqual(rules(workflow), {("Route", "output", "warning"),  # "default" leads nowhere
-                                           ("Approve", "lane", "warning"), ("", "start-data", "info")})
+                                           ("Approve", "lane", "warning"), ("", "start-data", "info"),
+                                           ("Refund", "handoffs", "info")})
         self.assertIn(("", "trigger", "warning"), rules({"nodes": [workflow["nodes"][1]], "connections": {}}))
 
     def test_the_start_data_a_workflow_needs_is_listed(self):
@@ -298,7 +331,8 @@ class CheckTest(TestCase):
         call_command("check_workflow", str(EXAMPLES / "library-lending.json"), "--json", stdout=out)
         problems = json.loads(out.getvalue())[str(EXAMPLES / "library-lending.json")]
         # No start_data was declared: required initial variables are listed as information.
-        self.assertEqual([(p["rule"], p["level"]) for p in problems], [("start-data", "info"), ("human", "warning")])
+        self.assertEqual([(p["rule"], p["level"]) for p in problems], [("start-data", "info"), ("human", "warning"), ("handoffs", "info"),
+                          ("handoffs", "info")])  # the librarians' lane and back
         broken = Path(self.id().replace(".", "_") + ".json")
         broken.write_text(json.dumps(Workflow("x").start("S", "s").task("T", "serviceTask", "nope").flow("S", "T").as_json()))
         try:

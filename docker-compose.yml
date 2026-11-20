@@ -1,6 +1,6 @@
 # bpmn8n stack: Django (tasks API, inbox, Studio, docs) + n8n with the BPMN nodes + Laya and GLiNER models.
 services:
-  web:
+  web: &web
     image: python:3.12-slim
     working_dir: /app
     volumes: [".:/app"]
@@ -11,12 +11,14 @@ services:
     # the graceful timeout covers bounded local generation + critic calls, including JSON repair (up to 720 s);
     # requirements.local.txt (git-ignored) holds the packages of local projects that are not in the repository
     ports: ["127.0.0.1:8000:8000"]
-    environment:
+    environment: &web-env
+      DEBUG: "1"  # development: docker-compose.prod.yml runs the built image with DEBUG=0
       # ./start.sh sets them: the models server on the Mac (host.docker.internal:8001) or containers
       LAYA_URL: ${LAYA_URL:-http://laya:8000/v1/systemone}
       EXTRACTOR_URL: ${EXTRACTOR_URL:-http://models:8001/v1/extract}
       OCR_URL: ${OCR_URL:-http://models:8001/v1/ocr}  # only the native models server on a Mac reads images
       N8N_URL: http://n8n:5678  # user tasks resume executions here
+      PYTHONPYCACHEPREFIX: /tmp/pycache  # the container's bytecode apart from the host's: both write the mounted tree
       N8N_PUBLIC_URL: ${N8N_PUBLIC_URL:-http://localhost:5678}  # links to the editor
       N8N_API_KEY: ${N8N_API_KEY:-}  # ./start.sh creates it: conformance reads workflows, Studio creates them
       N8N_PREVIEW_URL: ${N8N_PREVIEW_URL:-http://localhost:5679}  # Studio embeds the workflow's canvas from it
@@ -26,8 +28,37 @@ services:
       WEB_WORKERS: ${WEB_WORKERS:-4}
       POSTGRES_HOST: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bpmn8n-dev}
+      # global variables and the event stream; database 1, n8n's queue uses 0
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      EVENT_WEBHOOKS: ${EVENT_WEBHOOKS:-}  # comma-separated URLs that receive every finished step
+      # people's notifications (docs/GUIDE.md, "People"); the console backend only prints them
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-1}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-bpmn8n@localhost}
     depends_on:
       postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  # The jobs on a clock (docs/GUIDE.md, "Production"): run_deadlines every minute, `prune` daily. PRUNE_DAYS:
+  # archive events and delete task runs older than that many days; empty: nothing is pruned. A second scheduler
+  # (`python -m bpmn8n schedule` included) waits on a database lock
+  scheduler:
+    <<: *web
+    ports: []
+    command: sh -c "pip install -q --root-user-action=ignore -r requirements.txt && until python manage.py migrate --check >/dev/null 2>&1; do sleep 3; done && exec python manage.py run_scheduler"
+    restart: unless-stopped
+    environment:
+      <<: *web-env
+      PYTHONUNBUFFERED: "1"  # its log lines show as they happen (the dev image does not set it)
+      PRUNE_DAYS: ${PRUNE_DAYS:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      web: {condition: service_started}
 
   postgres:
     image: postgres:17-alpine
@@ -44,8 +75,11 @@ services:
 
   # n8n in queue mode: `n8n` receives webhooks and serves the editor, `n8n-worker` runs the
   # executions (scale with `docker compose up -d --scale n8n-worker=N`); Redis is the queue.
+  # Pinned: the editor hooks (n8n-editor/: bpmn.js matches n8n's class names, panel.js reads its stores) are
+  # verified against this version. Bump it here and on n8n-preview (n8n-worker inherits it) together, only after
+  # the hooks' checks pass on the new version (docs/GUIDE.md, "Production").
   n8n: &n8n
-    image: docker.n8n.io/n8nio/n8n
+    image: docker.n8n.io/n8nio/n8n:2.42.3
     ports: ["127.0.0.1:5678:5678"]
     environment: &n8n-env
       N8N_CUSTOM_EXTENSIONS: /bpmn8n-nodes  # ./start.sh builds n8n-nodes-bpmn8n into it
@@ -64,20 +98,36 @@ services:
       QUEUE_BULL_REDIS_HOST: redis
       OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
       N8N_RUNNERS_ENABLED: "true"
+      # one origin (PUBLIC_URL, the gateway below): the editor under /n8n/, webhooks and resume URLs at the
+      # gateway's root; empty: n8n's defaults, the editor at the root of :5678
+      N8N_PATH: ${N8N_PATH:-/}
+      N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
       # BPMN shapes on the canvas, and bpmn8n's card on top of a node's panel (it reads bpmn8n's OpenAPI at
-      # ?bpmn8n=); n8n caches /static for a day: bump v on edits
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=5;/static/bpmn8n-panel.js?v=4&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-evaluations.js?v=7&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};/static/bpmn8n-executions.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679}
+      # ?bpmn8n=); under N8N_PATH; n8n caches /static for a day: bump v on edits
+      EXTERNAL_FRONTEND_HOOKS_URLS: ${N8N_PATH:-/}static/bpmn8n-bpmn.js?v=7;${N8N_PATH:-/}static/bpmn8n-panel.js?v=5&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-evaluations.js?v=11&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-executions.js?v=9&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}&preview=${N8N_PREVIEW_URL:-http://localhost:5679};${N8N_PATH:-/}static/bpmn8n-insights.js?v=4&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000};${N8N_PATH:-/}static/bpmn8n-strip.js?v=2&bpmn8n=${BPMN8N_PUBLIC_URL:-http://localhost:8000}
       N8N_DIAGNOSTICS_ENABLED: "false"  # no telemetry, and none of its surveys in the editor
+      # n8n's extras this stack does not use: its agents and AI builder, its Insights (bpmn8n has /insights/), its
+      # instance MCP, chat and promotions, the migration report, and the licensed modules that only show an
+      # upgrade page on the community edition (bpmn8n replaces log streaming and source control); the editor
+      # hook strip.js hides the menu entries no switch removes (docs/GUIDE.md, "One look on both servers")
+      N8N_DISABLED_MODULES: agents,agent-evals,workflow-builder,instance-ai,quick-connect,insights,mcp,mcp-registry,chat-hub,promotions,breaking-changes,external-secrets,source-control,sso-oidc,sso-saml,ldap,log-streaming,otel
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_HIDE_USAGE_PAGE: "true"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"  # n8n is pinned above: its update notices only distract
     volumes:  # the shared n8n_data volume also shares the credentials' encryption key
       - n8n_data:/home/node/.n8n
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro
+      - ./bpmn8n/static/bpmn8n/tokens.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-tokens.css:ro  # bpmn8n's tokens, linked by bpmn.js
       - ./n8n-editor/panel.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-panel.js:ro
       - ./n8n-editor/evaluations.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-evaluations.js:ro
       - ./n8n-editor/evaluations.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-evaluations.css:ro
       - ./n8n-editor/live.mjs:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-live.mjs:ro
       - ./n8n-editor/executions.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-executions.js:ro
       - ./n8n-editor/executions.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-executions.css:ro
+      - ./n8n-editor/insights.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-insights.js:ro
+      - ./n8n-editor/strip.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-strip.js:ro
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -91,19 +141,38 @@ services:
   # own preview architecture (its n8n-demo component): an instance in preview mode opens /workflows/demo
   # without login and draws the workflow received by postMessage; it stores and runs nothing.
   n8n-preview:
-    image: docker.n8n.io/n8nio/n8n
+    image: docker.n8n.io/n8nio/n8n:2.42.3  # the same version as n8n
     ports: ["127.0.0.1:5679:5678"]
     environment:
       N8N_PREVIEW_MODE: "true"
       N8N_CUSTOM_EXTENSIONS: /bpmn8n-nodes
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       N8N_CONTENT_SECURITY_POLICY: '{"frame-ancestors": ["''self''", "http://localhost:5678", "http://127.0.0.1:5678", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8080", "http://127.0.0.1:8080"]}'
-      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=4;/static/bpmn8n-theme.js?v=10  # bump v on edits
+      # over plain HTTP on a host other than localhost (preview.localhost behind the gateway) n8n's editor shows
+      # only a warning when its cookie is Secure; the preview signs nobody in
+      N8N_SECURE_COOKIE: ${N8N_PREVIEW_SECURE_COOKIE:-true}
+      EXTERNAL_FRONTEND_HOOKS_URLS: /static/bpmn8n-bpmn.js?v=6;/static/bpmn8n-theme.js?v=11  # bump v on edits
     volumes:
       - ./n8n-nodes-bpmn8n/dist:/bpmn8n-nodes:ro
       - ./n8n-editor/bpmn.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-bpmn.js:ro
+      - ./bpmn8n/static/bpmn8n/tokens.css:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-tokens.css:ro  # bpmn8n's tokens, linked by bpmn.js
       - ./n8n-editor/preview.js:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist/static/bpmn8n-theme.js:ro
+
+  # One origin (docs/GUIDE.md, "One origin (optional)"), off by default: Caddy serves Django at /, the editor at
+  # /n8n/, the webhooks at the root and the preview on its own host (deploy/Caddyfile). PUBLIC_URL turns it on:
+  # `python -m bpmn8n up` passes the profile and n8n's variables (bpmn8n/config.py, compose_env)
+  gateway:
+    profiles: ["one-origin"]
+    image: caddy:2.11-alpine
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8090}:80"]
+    environment:
+      PREVIEW_ADDRESS: ${PREVIEW_ADDRESS:-http://preview.localhost}
+      BPMN8N_PUBLIC_URL: ${BPMN8N_PUBLIC_URL:-http://localhost:8090}  # the pages that may frame the preview
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    depends_on: [web, n8n, n8n-preview]
 
   # web search for Studio's domain research: SearXNG asks several search engines and answers in JSON, with
   # no API key; only the web container reaches it (no port on the host)
@@ -115,6 +184,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes  # global variables survive a restart
+    volumes: ["redis_data:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -148,6 +219,7 @@ services:
 
 volumes:
   pg_data:
+  redis_data:
   n8n_data:
   laya_cache:
   models_cache:

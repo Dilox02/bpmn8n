@@ -1,5 +1,10 @@
 """n8n's public API (/api/v1 with N8N_API_KEY): read workflows (conformance, checks), create and update
-them (Studio)."""
+them (Studio); its editor's REST API (/rest, signed in) for accounts; and the links a browser follows to it."""
+import json
+import urllib.error
+import urllib.request
+from urllib.parse import parse_qs, urlencode, urlsplit
+
 from ..conf import settings
 from .http import ServiceUnavailable, request_json
 
@@ -45,12 +50,85 @@ def save_workflow(data, workflow_id=""):
     return create_workflow(data)
 
 
+def pages(path, **query):
+    """Every item of a listing, following n8n's nextCursor."""
+    items, cursor = [], ""
+    while True:
+        page = request("GET", f"{path}?{urlencode({'limit': 100, **query, **({'cursor': cursor} if cursor else {})})}")
+        items += page.get("data", [])
+        if not (cursor := page.get("nextCursor")):
+            return items
+
+
+def workflows(name):
+    """The workflows named `name` (archived ones left out)."""
+    return [w for w in pages("/workflows", name=name) if w.get("name") == name and not w.get("isArchived")]
+
+
+def credentials():
+    """Every credential: id, name and type (never the secret)."""
+    return pages("/credentials")
+
+
 def ensure_credential(name, type_, data):
     """The id of the credential named `name`, created or updated with `data` (the key may have changed)."""
-    # ponytail: first page only (100 credentials); follow nextCursor if an instance ever has more
-    found = next((c["id"] for c in request("GET", "/credentials?limit=100").get("data", [])
-                  if c["name"] == name and c["type"] == type_), None)
+    found = next((c["id"] for c in credentials() if c["name"] == name and c["type"] == type_), None)
     if found:
         request("PATCH", f"/credentials/{found}", {"name": name, "type": type_, "data": data})
         return found
     return request("POST", "/credentials", {"name": name, "type": type_, "data": data})["id"]
+
+
+def editor_url(path=""):
+    """Where a browser opens `path` in n8n's editor: under N8N_PUBLIC_URL, an origin of its own or a path on
+    bpmn8n's origin ("/n8n" behind the one-origin gateway, docs/GUIDE.md)."""
+    return "/".join(filter(None, (settings.N8N_PUBLIC_URL.rstrip("/"), path.lstrip("/"))))
+
+
+def rest(method, path, body=None, cookie=""):
+    """n8n's editor REST API (/rest): returns its `data` and the n8n-auth cookie it set, if any. The cookie is
+    Secure, so it is carried by hand: bpmn8n reaches n8n over plain HTTP inside the network."""
+    request = urllib.request.Request(f"{settings.N8N_URL}/rest{path}", method=method,
+                                     data=None if body is None else json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json", **({"Cookie": cookie} if cookie else {})})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 (N8N_URL is configuration)
+            data = json.loads(response.read() or b"{}").get("data")
+            auth = [c.split(";")[0] for c in response.headers.get_all("Set-Cookie") or [] if c.startswith("n8n-auth=")]
+            return data, auth[0] if auth else ""
+    except urllib.error.HTTPError as e:
+        raise N8nError(f"n8n {method} /rest{path}: HTTP {e.code} {e.read()[:200].decode(errors='replace')}", e.code) from e
+    except OSError as e:
+        raise N8nError(f"n8n {method} /rest{path}: {e}") from e
+
+
+def _token(url):
+    return parse_qs(urlsplit(url).query)["token"][0]
+
+
+def sync_account(email, password, first_name, last_name, owner=None):
+    """The n8n account of a bpmn8n staff user, with the same email and password (n8n Community Edition takes no
+    identity from bpmn8n: docs/spikes/one-origin.md). A fresh n8n gets it as its owner; otherwise the owner
+    (`owner`: email, password) signs in and creates it as a member, or sets its password. Returns what it did."""
+    if rest("GET", "/settings")[0]["userManagement"].get("showSetupOnFirstLoad"):
+        rest("POST", "/owner/setup", {"email": email, "password": password, "firstName": first_name, "lastName": last_name})
+        return "owner created"
+    if not owner:
+        raise N8nError("n8n already has an owner: give its email and password (N8N_EMAIL, N8N_PASSWORD)")
+    _, cookie = rest("POST", "/login", {"emailOrLdapLoginId": owner[0], "password": owner[1]})
+    users = rest("GET", "/users", cookie=cookie)[0]["items"]
+    found = next((u for u in users if u["email"].lower() == email.lower()), None)
+    if found and found.get("role") == "global:owner":
+        if found["email"].lower() != owner[0].lower():
+            raise N8nError(f"{email} is n8n's owner: give its own password as the owner's")
+        if password != owner[1]:
+            rest("PATCH", "/me/password", {"currentPassword": owner[1], "newPassword": password}, cookie)
+        return "owner updated"
+    if found:
+        link = rest("GET", f"/users/{found['id']}/password-reset-link", cookie=cookie)[0]["link"]
+        rest("POST", "/change-password", {"token": _token(link), "password": password})
+        return "member updated"
+    invited = rest("POST", "/invitations", [{"email": email, "role": "global:member"}], cookie)[0][0]["user"]
+    rest("POST", "/invitations/accept", {"token": _token(invited["inviteAcceptUrl"]), "firstName": first_name,
+                                         "lastName": last_name, "password": password})
+    return "member created"

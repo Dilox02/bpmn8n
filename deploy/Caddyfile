@@ -1,0 +1,32 @@
+# One origin (docs/GUIDE.md, "One origin (optional)"): the `gateway` service of docker-compose.yml, profile
+# one-origin, which PUBLIC_URL turns on. Django at /, n8n's editor at /n8n/ (n8n runs with N8N_PATH=/n8n/ but
+# serves at its root, so the prefix is stripped), n8n's webhooks, resume URLs and forms at the root paths
+# N8N_WEBHOOK_URL gives them, and the read-only preview on its own host: on the same origin its anonymous
+# session would clear the editor's cookie. Plain HTTP: a TLS proxy in front terminates HTTPS for both hosts.
+{
+	admin off
+	servers {
+		trusted_proxies static private_ranges # keep the TLS proxy's X-Forwarded-Proto
+	}
+}
+
+{$PREVIEW_ADDRESS:http://preview.localhost} {
+	reverse_proxy {$N8N_PREVIEW_UPSTREAM:n8n-preview:5678} {
+		# the pages that embed it (Studio, the case page, the editor's executions) are on the one origin
+		header_down Content-Security-Policy "frame-ancestors 'self' {$BPMN8N_PUBLIC_URL:http://localhost:8090}"
+	}
+}
+
+:80 {
+	redir /n8n /n8n/
+	handle_path /n8n/* {
+		reverse_proxy {$N8N_UPSTREAM:n8n:5678}
+	}
+	@n8n path /webhook/* /webhook-test/* /webhook-waiting/* /form/* /form-test/* /form-waiting/* /mcp/* /mcp-test/*
+	handle @n8n {
+		reverse_proxy {$N8N_UPSTREAM:n8n:5678}
+	}
+	handle {
+		reverse_proxy {$WEB_UPSTREAM:web:8000}
+	}
+}
